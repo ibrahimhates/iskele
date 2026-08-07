@@ -11,12 +11,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ibrahimhates/iskele/internal/config"
+	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/logging"
 	"github.com/ibrahimhates/iskele/internal/server"
 	"github.com/ibrahimhates/iskele/internal/version"
 )
+
+// dockerConnectTimeout bounds the startup handshake with the daemon, so a
+// hung socket delays the listener by seconds rather than forever.
+const dockerConnectTimeout = 5 * time.Second
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -72,7 +78,31 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	router := server.NewRouter(server.Deps{Config: cfg, Logger: log})
+	// A missing daemon must not stop iskeled from starting: the operator needs
+	// the panel to tell them Docker is down. Docker-backed routes answer
+	// DOCKER_UNAVAILABLE until the connection is established.
+	dockerClient, err := docker.Connect(ctx, cfg.DockerHost, dockerConnectTimeout)
+	if err != nil {
+		log.Warn("docker daemon is not reachable; container features are disabled until it returns",
+			slog.String("docker_host", cfg.DockerHost),
+			slog.String("reason", docker.Message(err)),
+		)
+	} else {
+		defer func() {
+			if closeErr := dockerClient.Close(); closeErr != nil {
+				log.Warn("closing the docker client failed", slog.Any("error", closeErr))
+			}
+		}()
+
+		if pong, pingErr := dockerClient.Ping(ctx); pingErr == nil {
+			log.Info("connected to docker",
+				slog.String("docker_host", cfg.DockerHost),
+				slog.String("api_version", pong.APIVersion),
+			)
+		}
+	}
+
+	router := server.NewRouter(server.Deps{Config: cfg, Logger: log, Docker: dockerClient})
 
 	srv, err := server.New(ctx, cfg, router, log)
 	if err != nil {

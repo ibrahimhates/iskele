@@ -43,11 +43,11 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
+	// The request-scoped logger already carries method, path and request ID.
 	log := middleware.LoggerFrom(r.Context())
 	attrs := []any{
 		slog.String("code", string(apiErr.Code)),
 		slog.Int("status", apiErr.Status),
-		slog.String("path", r.URL.Path),
 	}
 	if cause := apiErr.Unwrap(); cause != nil {
 		attrs = append(attrs, slog.Any("cause", cause))

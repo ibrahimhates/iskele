@@ -26,6 +26,18 @@ const (
 	CodePayloadTooLarge  Code = "PAYLOAD_TOO_LARGE"
 	CodeInternal         Code = "INTERNAL"
 	CodeUnavailable      Code = "SERVICE_UNAVAILABLE"
+	CodeCanceled         Code = "REQUEST_CANCELED"
+)
+
+// Docker-specific error codes. The frontend switches on these to offer the
+// right recovery action (reconnect, refresh the list, force-remove, ...).
+const (
+	CodeContainerNotFound Code = "CONTAINER_NOT_FOUND"
+	CodeImageNotFound     Code = "IMAGE_NOT_FOUND"
+	CodeVolumeNotFound    Code = "VOLUME_NOT_FOUND"
+	CodeNetworkNotFound   Code = "NETWORK_NOT_FOUND"
+	CodeDockerUnavailable Code = "DOCKER_UNAVAILABLE"
+	CodeDockerError       Code = "DOCKER_ERROR"
 )
 
 // APIError is the error type every handler returns. It carries both the HTTP

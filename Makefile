@@ -42,7 +42,7 @@ test: ## Run the Go test suite with the race detector
 
 .PHONY: test-cover
 test-cover: ## Run tests and write coverage.out / coverage.html
-	$(GO) test -race -coverprofile=coverage.out -covermode=atomic ./...
+	$(GO) test -race -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@$(GO) tool cover -func=coverage.out | tail -1
 

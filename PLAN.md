@@ -40,9 +40,9 @@ yönetimini web arayüzünden yapar.
 
 | Katman | Seçim | Not |
 |---|---|---|
-| Dil (backend) | Go 1.23+ | `CGO_ENABLED=0`; chi v5.3.1 go1.23 gerektiriyor (D-013) |
+| Dil (backend) | Go 1.25+ | `CGO_ENABLED=0`; Docker SDK bağımlılık ağacı 1.25 gerektiriyor (D-019) |
 | Modül yolu | `github.com/ibrahimhates/iskele` | bkz. D-001 |
-| Docker | `github.com/docker/docker/client` | resmi SDK, API negotiation açık |
+| Docker | `github.com/docker/docker v28.5.2` | resmi SDK, API negotiation açık (D-020) |
 | Router | `github.com/go-chi/chi/v5` | + chi middleware |
 | DB | `modernc.org/sqlite` | saf Go, cgo yok |
 | Migration | Elle yazılmış, `embed.FS` ile gömülü sıralı SQL | bkz. D-004 |
@@ -535,7 +535,7 @@ Docker gerektiren entegrasyon testleri `//go:build integration` etiketi arkasın
 
 **ldflags:** `-s -w -X .../internal/version.Version=... .Commit=... .BuildDate=...`
 
-**CI (`ci.yml`):** `go` job (matrix 1.23/1.24: tidy kontrolü, gofmt, vet, build, `go test -race -coverprofile`, coverage özeti) · `lint` job (golangci-lint v2.5.0) · `vuln` job (govulncheck) · `cross-compile` job (amd64/arm64/armv7). M3'ten sonra `web` job eklenir: `npm ci`, `npm run lint`, `npm run test`, `npm run build`.
+**CI (`ci.yml`):** `go` job (matrix 1.25/stable: tidy kontrolü, gofmt, vet, build, `go test -race -coverpkg=./...`, coverage özeti) · `lint` job (golangci-lint v2.5.0) · `vuln` job (govulncheck) · `cross-compile` job (amd64/arm64/armv7). M3'ten sonra `web` job eklenir: `npm ci`, `npm run lint`, `npm run test`, `npm run build`.
 
 **Release (`release.yml`):** `v*` tag → GoReleaser → 3 mimari arşiv + `.deb`/`.rpm` + `checksums.txt`
 + CHANGELOG'dan release notu.

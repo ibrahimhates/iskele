@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-07 · **Aktif faz:** M1 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-07 · **Aktif faz:** M2 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -14,7 +14,7 @@
 |---|---|---|---|---|
 | — | Planlama | ✅ Bitti | 4/4 | PLAN/PROGRESS/DECISIONS/ACCEPTANCE üretildi |
 | M0 | İskelet | ✅ Bitti | 14/14 | Servis ayakta, CI kuruldu, kapsam %84.3 |
-| M1 | Docker katmanı + temel API | ⬜ Bekliyor | 0/13 | |
+| M1 | Docker katmanı + temel API | ✅ Bitti | 13/13 | 12 endpoint, offline istemci, kapsam %82.1 |
 | M2 | Auth + DB | ⬜ Bekliyor | 0/16 | |
 | M3 | Frontend iskeleti | ⬜ Bekliyor | 0/14 | |
 | M4 | Container yönetimi (tam) | ⬜ Bekliyor | 0/16 | |
@@ -26,18 +26,20 @@
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-07, M0 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-07, M1 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
 | `go build ./...` | ✅ | — |
 | `gofmt -l` | ✅ | temiz |
 | `go vet ./...` | ✅ | — |
-| `go test -race ./...` | ✅ | 8 paket, hepsi yeşil |
+| `go test -race ./...` | ✅ | 11 paket, hepsi yeşil |
 | `golangci-lint run` | ✅ | 0 issue (v2.5.0) |
+| Cross-compile | ✅ | amd64 / arm64 / armv7 |
+| `govulncheck` | ⚠️ | yerelde proxy engelliyor (`vuln.go.dev` 403); CI'da koşuyor |
 | `npm run lint` | — | M3'te devreye girer |
 | `npm run build` | — | M3'te devreye girer |
-| Backend coverage | ✅ **%84.3** | hedef ≥ %60 |
+| Backend coverage | ✅ **%82.1** | hedef ≥ %60 (`-coverpkg=./...`) |
 
 ---
 
@@ -68,7 +70,7 @@
 - [x] `cmd/iskeled/main.go` — wiring, SIGINT/SIGTERM, public bind uyarısı
 - [x] `Makefile` (build/run/test/test-cover/lint/fmt/fmt-check/vuln/clean/check) + `.gitignore` + `.editorconfig` + `.golangci.yml` (v2)
 - [x] `LICENSE` (Apache-2.0) + README taslağı + `deploy/config.example.yaml`
-- [x] `.github/workflows/ci.yml` — go matrix (1.23/1.24) + lint + govulncheck + cross-compile (amd64/arm64/armv7)
+- [x] `.github/workflows/ci.yml` — go matrix + lint + govulncheck + cross-compile (amd64/arm64/armv7)
 
 **Ek olarak yapıldı:** `internal/httpx` paketi (standart hata gövdesi, hata kodları, `Handler` tipi) — handler↔server import döngüsünü kırmak için (D-014).
 
@@ -77,23 +79,32 @@
 
 ---
 
-## M1 — Docker katmanı + temel API  ⬜
+## M1 — Docker katmanı + temel API  ✅
 
-- [ ] `internal/docker/client.go` — `Client` interface tanımı (tüm alt kümeler)
-- [ ] SDK implementasyonu + API version negotiation + ping/erişim kontrolü
-- [ ] `DOCKER_UNAVAILABLE` hatası + "docker grubu" ipuçlu mesaj
-- [ ] `container.go` — list / inspect / start / stop / restart / remove
-- [ ] `image.go` — list · `volume.go` — list · `network.go` — list
-- [ ] `system.go` — info / df
-- [ ] `types.go` — UI DTO'ları ve dönüşüm fonksiyonları
-- [ ] `internal/docker/fake` — testler için tam fake implementasyon
-- [ ] `internal/service/container.go` (+ image/volume/network servisleri)
-- [ ] `internal/server/errors.go` + `response.go` — standart hata gövdesi
-- [ ] Handler'lar: containers, images, volumes, networks
-- [ ] Handler testleri (200 / 404 / 500 yolları)
-- [ ] `docs/openapi.yaml` — ilk sürüm (M1 endpoint'leri)
+- [x] `internal/docker/client.go` — `Client` interface (14 metot), `Connect` + versiyon negotiation
+- [x] SDK implementasyonu (`docker/docker v28.5.2`) + ping/erişim kontrolü + 5 sn bağlantı zaman aşımı
+- [x] `DOCKER_UNAVAILABLE` hatası + "docker grubu" ipuçlu mesaj + `Offline` istemci (D-021)
+- [x] `container.go` — list / inspect / inspect-raw / start / stop / restart / remove
+- [x] `image.go` — list (dangling tri-state) · `volume.go` — list · `network.go` — list
+- [x] `system.go` — info / df (reclaimable hesabıyla)
+- [x] `types.go` — 14 UI DTO'su + dönüşüm fonksiyonları (health parse, port binding, -1 sentinel)
+- [x] `internal/docker/fake` — çağrı kaydı + operasyon bazlı hata enjeksiyonu + engine semantiği
+- [x] `internal/service` — container, image, volume, network, system servisleri
+- [x] `internal/httpx` + `handlers/errors.go` — engine hatası → HTTP kod eşlemesi (7 sınıf)
+- [x] Handler'lar: containers (7 route), images, volumes, networks, system (ping/info/df)
+- [x] Handler testleri — 200 / 400 / 404 / 409 / 500 / 502 / 503 yolları
+- [x] `docs/openapi.yaml` — 14 path, 14 şema, tüm `$ref`'ler doğrulandı
 
-**DoD:** gerçek Docker'a bağlı `GET /api/v1/containers` doğru veri döner · testler yeşil · commit + push
+**Ek olarak yapıldı:** `GET /system/ping` (planda M8'di) — UI'nın bağlantı bandı için, daima 200 (D-025).
+
+**Testler:** engine hata sınıflandırması (8 vaka) · DTO dönüşümleri (container/detail/image/volume/network) ·
+health status parse · docker zaman damgası sentinel'i · offline istemcinin 13 metodu · fake'in engine
+sözleşmesine uyumu (+ race testi) · servis katmanı (boş ID reddi, opsiyon iletimi, force/volumes) ·
+handler'lar (filtre iletimi, tri-state dangling, verbatim inspect, boş listeler `[]`, hata eşlemesi)
+
+**DoD:** ✅ Docker'sız ortamda servis ayakta, her engine route'u `503 DOCKER_UNAVAILABLE` + eyleme
+dönüştürülebilir mesaj döndürüyor (uçtan uca `curl` ile doğrulandı) · ✅ lint 0 issue · ✅ coverage %82.1 ·
+✅ 3 mimariye cross-compile · ✅ commit + push
 
 ---
 
@@ -288,6 +299,7 @@
 | Tarih | Faz | Not |
 |---|---|---|
 | 2026-08-07 | Planlama | PLAN/PROGRESS/DECISIONS/ACCEPTANCE oluşturuldu. Kodlamaya başlama komutu bekleniyor. |
+| 2026-08-07 | M1 ✅ | Docker katmanı: `Client` interface + SDK implementasyonu + fake + offline istemci. 12 yeni endpoint, OpenAPI spec'i, engine hatası → HTTP eşlemesi. Docker soketi olmayan ortamda uçtan uca doğrulandı. **Go minimumu 1.25'e yükseldi** (D-019, Docker SDK bağımlılık ağacı). Lint 0 issue, coverage %82.1. |
 | 2026-08-07 | M0 ✅ | İskelet tamam: config zinciri, slog, chi router + 4 middleware, health/version, graceful shutdown, Makefile, CI (4 job). Uçtan uca doğrulandı: binary ayağa kalkıyor, `/api/v1/health` 200 dönüyor, SIGTERM ile temiz kapanıyor. Lint 0 issue, coverage %84.3. |
 
 ---

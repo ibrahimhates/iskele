@@ -49,7 +49,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 
 ## Building from source
 
-Requirements: Go 1.23+ (and Node 20+ once the frontend lands in M3).
+Requirements: Go 1.25+ (and Node 20+ once the frontend lands in M3).
 
 ```sh
 make build      # -> bin/iskeled
@@ -104,15 +104,35 @@ All endpoints live under `/api/v1`. Errors use a single envelope:
 { "error": { "code": "CONTAINER_NOT_FOUND", "message": "no such container: abc", "details": {} } }
 ```
 
-Available today (both unauthenticated):
+Available today — all still unauthenticated, which is why the default bind
+address is loopback. Authentication arrives in M2.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/health` | Liveness probe — `{"status":"ok","uptime":"1m2s"}` |
-| `GET` | `/api/v1/version` | Build metadata of the running binary |
+| `GET` | `/health` | Liveness probe — `{"status":"ok","uptime":"1m2s"}` |
+| `GET` | `/version` | Build metadata of the running binary |
+| `GET` | `/system/ping` | Is the Docker daemon reachable? Always 200 |
+| `GET` | `/system/info` | Docker engine and host summary |
+| `GET` | `/system/df` | Disk usage (`docker system df`) |
+| `GET` | `/containers` | List containers — `all`, `size`, `label`, `status`, `name` |
+| `GET` | `/containers/{id}` | Container detail |
+| `GET` | `/containers/{id}/inspect` | The engine's raw inspect payload, verbatim |
+| `POST` | `/containers/{id}/start` | Start |
+| `POST` | `/containers/{id}/stop` | Stop — optional `timeout` |
+| `POST` | `/containers/{id}/restart` | Restart — optional `timeout` |
+| `DELETE` | `/containers/{id}` | Remove — `force`, `volumes` |
+| `GET` | `/images` | List images — `all`, `dangling`, `label` |
+| `GET` | `/volumes` | List volumes |
+| `GET` | `/networks` | List networks |
 
-The full surface is specified in [`PLAN.md`](PLAN.md#6-api-yüzeyi) and will be
-published as `docs/openapi.yaml`.
+Collection endpoints return `{"items": [...], "total": N}`; `items` is never
+`null`. The full specification is [`docs/openapi.yaml`](docs/openapi.yaml), and
+the planned surface is in [`PLAN.md`](PLAN.md#6-api-yüzeyi).
+
+**When Docker is down**, iskeled still starts and serves: `/health` keeps
+answering and every engine-backed route returns `503 DOCKER_UNAVAILABLE` with
+the endpoint it tried and the most likely fix. Losing the daemon should not
+also cost you the panel that would tell you so.
 
 ---
 

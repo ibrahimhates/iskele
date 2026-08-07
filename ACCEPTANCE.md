@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 7 (M0 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 9 (M1 sonu)
 
 ---
 
@@ -24,7 +24,7 @@
 | A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [x] |
 | A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [x] |
 | A11 | `SIGTERM` ile graceful shutdown: aktif istekler tamamlanır, WS'ler kapanır, DB kapanır | manuel | M0 | [x] |
-| A12 | Docker erişilemezken servis açılır, UI `DOCKER_UNAVAILABLE` uyarısı gösterir | manuel | M1 | [ ] |
+| A12 | Docker erişilemezken servis açılır, UI `DOCKER_UNAVAILABLE` uyarısı gösterir | manuel | M1 | [x] |
 | A13 | `install.sh` temiz bir Linux VM'de kurulumu uçtan uca tamamlar (idempotent) | manuel | M9 | [ ] |
 | A14 | `uninstall.sh` servisi ve dosyaları temizler; `--purge` veriyi de siler | manuel | M9 | [ ] |
 | A15 | `systemctl status iskeled` aktif; reboot sonrası otomatik başlar | manuel | M9 | [ ] |
@@ -190,7 +190,7 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| L1 | Docker katmanı interface arkasında; handler testleri fake kullanır | test | M1 | [ ] |
+| L1 | Docker katmanı interface arkasında; handler testleri fake kullanır | test | M1 | [x] |
 | L2 | Auth testleri: üretim, doğrulama, expiry, revoke, RBAC matrisi, brute-force | test | M2 | [ ] |
 | L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M6 | [ ] |
 | L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [ ] |

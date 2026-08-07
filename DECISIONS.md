@@ -99,7 +99,7 @@ kullanılarak `web/src/api/schema.d.ts` üretilir. Üretilen dosya repoya commit
 ## M0 Sırasında Alınan Kararlar
 
 ### D-013 — Minimum Go sürümü 1.23 (PLAN'daki 1.22 yerine)
-**Durum:** Kabul · **Faz:** M0
+**Durum:** ~~Kabul~~ **Değişti** → D-019 (M1'de 1.25'e yükseltildi) · **Faz:** M0
 **Bağlam:** PLAN §2'de "Go 1.22+" yazıyordu. `github.com/go-chi/chi/v5 v5.3.1` `go 1.23` gerektiriyor.
 **Karar:** `go.mod` içinde `go 1.23`; CI matrisi `1.23` ve `1.24`. `toolchain` direktifi kaldırıldı ki
 1.23 kurulu bir runner ek indirme yapmasın.
@@ -146,10 +146,73 @@ adresleri için açılan açık bir ayar eklenecek (v0.2). README'de belirtilece
 
 ---
 
+## M1 Sırasında Alınan Kararlar
+
+### D-019 — Minimum Go 1.25 (D-013'ü değiştirir)
+**Durum:** Kabul · **Faz:** M1 · **Değiştirdiği karar:** D-013 (Go 1.23)
+**Bağlam:** `github.com/docker/docker v28.5.2` bağımlılık ağacı `go.opentelemetry.io/otel v1.45`,
+`otelhttp v0.70` ve `golang.org/x/sys v0.47` çekiyor; bunların hepsi `go >= 1.25` istiyor.
+**Değerlendirilen alternatif:** Bu paketleri eski sürümlere pinlemek (otel v1.37, x/sys v0.4x).
+Denendi ve çalıştı, ancak her `go mod tidy` sonrası tekrar kırılıyor ve bilerek eski —
+dolayısıyla potansiyel olarak zafiyetli — bağımlılıklarla yaşamak demek. CI'da `govulncheck`
+çalıştıran, Docker soketine erişen bir projede bu kabul edilemez.
+**Karar:** `go.mod` içinde `go 1.25.0`; CI matrisi `1.25` ve `stable`.
+**Sonuç:** PLAN §2, README ve CI güncellendi. Son kullanıcıyı etkilemez (statik binary).
+
+### D-020 — `docker/docker` modülü `v28.5.2+incompatible` olarak sabitlendi
+**Durum:** Kabul · **Faz:** M1
+**Bağlam:** `github.com/docker/docker/client@latest` artık `github.com/moby/moby/client` olarak
+yayınlanıyor; eski yol ile `go get` hata veriyor.
+**Karar:** `go get github.com/docker/docker@v28.5.2+incompatible` ile ana modül çekiliyor,
+import yolu `github.com/docker/docker/client` olarak kalıyor.
+**Sonuç:** Moby'nin yeni modül yoluna geçiş ayrı bir iş olarak v0.2'ye bırakıldı.
+
+### D-021 — Docker erişilemezken servis ayakta kalır (`Offline` istemci)
+**Durum:** Kabul · **Faz:** M1 · **Kabul kriteri:** A12
+**Bağlam:** Daemon çökmüşse, operatörün bunu öğrenmesi gereken yer tam da paneldir.
+**Karar:** `docker.Offline(reason)` — her çağrısı `KindUnavailable` dönen bir `Client`
+implementasyonu. Başlangıçta bağlantı kurulamazsa router bunu kullanır; `/health` ve `/version`
+çalışmaya devam eder, Docker'a dayanan her route `503 DOCKER_UNAVAILABLE` döner.
+**Sonuç:** Hata mesajı endpoint'i ve en olası çözümü (`docker` grubu üyeliği) içerir.
+
+### D-022 — Engine hata metni olduğu gibi geçirilir
+**Durum:** Kabul · **Faz:** M1 · **Gereksinim:** PROMPT §7
+**Karar:** `docker.Error.Message` Docker'ın kendi metnini taşır ve yanıt gövdesine birebir yazılır.
+Docker dışı hatalar (programlama hataları) ise opak `500 INTERNAL` olur — yalnız log'a düşer.
+**Gerekçe:** Daemon güvenilen yerel bir bileşen; "container is running: stop the container before
+removing or force remove" gibi mesajlar operatöre ne yapacağını söyleyen tek şey.
+
+### D-023 — Bilinmeyen değerler için `-1` sentinel'i
+**Durum:** Kabul · **Faz:** M1
+**Bağlam:** `size_rw`, `size_root_fs`, volume `size`/`ref_count` engine tarafından yalnız istendiğinde
+hesaplanır; hesaplanmadığında 0 dönmek "boş" ile "bilinmiyor"u karıştırır.
+**Karar:** Hesaplanmamış sayısal alanlar `-1` döner. `docs/openapi.yaml`'da belgelenmiştir.
+
+### D-024 — Liste endpoint'leri `{items, total}` zarfı kullanır
+**Durum:** Kabul · **Faz:** M1
+**Karar:** `GET /containers|images|volumes|networks` çıplak dizi yerine
+`{"items":[...],"total":N}` döner; `items` hiçbir zaman `null` olmaz.
+**Gerekçe:** İleride sayfalama metadata'sı eklemek için yer bırakır ve istemcide null kontrolü gerektirmez.
+
+### D-025 — `/system/ping` M1'de eklendi (planda M8'di) ve daima 200 döner
+**Durum:** Kabul · **Faz:** M1
+**Karar:** `GET /system/ping` → `{"reachable":bool,"api_version":"...","error":"..."}`.
+Daemon erişilemez olsa bile HTTP 200 döner.
+**Gerekçe:** UI'nın bağlantı bandı (K8) bunu yoklayacak; erişilemez daemon bir *cevap*, başarısız
+bir istek değil. `/system/info` ve `/system/df` ise normal 503 semantiğini korur.
+
+### D-026 — Coverage `-coverpkg=./...` ile ölçülür
+**Durum:** Kabul · **Faz:** M1
+**Bağlam:** Handler'lar router testlerinden (farklı paket) geçiyor; varsayılan ölçüm bunu %3 gösteriyordu.
+**Karar:** `make test-cover` ve CI `-coverpkg=./...` kullanır → paketler arası atıf doğru olur.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
-### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+)
-Negotiation açık; daha düşük sürümde anlamlı hata verilir. M1'de doğrulanır.
+### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**
+`client.WithAPIVersionNegotiation()` açık; `docker.MinimumAPIVersion` sabiti 1.41.
+Daemon erişilemezse `KindUnavailable` + `docker` grubu ipucu ile anlamlı hata verilir.
 
 ### A-002 — Health/version endpoint'leri auth'suz kalır
 `/api/v1/health` yalnız `{"status":"ok"}` döner, iç durum sızdırmaz. `/api/v1/version` sürüm + commit döner.
@@ -170,7 +233,9 @@ PROMPT §4.7'de opsiyonel. Zaman kalırsa M5'te, kalmazsa v0.2.
 
 ## Değişen / İptal Edilen Kararlar
 
-_(Henüz yok.)_
+| Karar | Ne oldu | Yerine |
+|---|---|---|
+| D-013 (Go 1.23) | Docker SDK bağımlılık ağacı Go 1.25 gerektiriyor | D-019 |
 
 ---
 
