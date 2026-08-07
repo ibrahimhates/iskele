@@ -1,0 +1,52 @@
+# Iskele daemon configuration.
+#
+# Install to /etc/iskele/config.yaml. Every key is optional: the values shown
+# here are the built-in defaults.
+#
+# Precedence, highest first:
+#   command-line flag  >  environment variable  >  this file  >  built-in default
+#
+# The matching environment variables are ISKELE_LISTEN, ISKELE_DOCKER_HOST,
+# ISKELE_DATA_DIR, ISKELE_ALLOWED_PATHS, ISKELE_LOG_LEVEL, ISKELE_LOG_FORMAT,
+# ISKELE_TLS_ENABLED, ISKELE_TLS_CERT_FILE, ISKELE_TLS_KEY_FILE,
+# ISKELE_ACCESS_TTL and ISKELE_REFRESH_TTL.
+
+# Address the web UI and API are served on.
+#
+# SECURITY: iskeled talks to the Docker socket, which is root-equivalent.
+# Keep this on loopback and publish it through a reverse proxy with TLS and
+# authentication, or enable the built-in TLS listener below. Binding to
+# 0.0.0.0 exposes full control of the host's containers to the network.
+listen: "127.0.0.1:8377"
+
+# Docker Engine endpoint. unix://, tcp://, http:// and https:// are accepted.
+docker_host: "unix:///var/run/docker.sock"
+
+# Mutable state: SQLite database, build logs.
+data_dir: "/var/lib/iskele"
+
+# Host directories that may be used as bind-mount sources and Docker build
+# contexts. Everything outside this list is rejected, including paths reached
+# through symlinks. Keep it as narrow as possible.
+allowed_paths:
+  - "/opt/stacks"
+  - "/srv"
+
+# debug, info, warn or error.
+log_level: "info"
+
+# auto, text or json. "auto" writes text on a terminal and JSON otherwise,
+# which is what you want under systemd.
+log_format: "auto"
+
+# Optional built-in HTTPS listener. Leave disabled when terminating TLS at a
+# reverse proxy.
+tls:
+  enabled: false
+  cert_file: ""
+  key_file: ""
+
+# Token lifetimes. access_ttl must be shorter than refresh_ttl.
+session:
+  access_ttl: "15m"
+  refresh_ttl: "168h"

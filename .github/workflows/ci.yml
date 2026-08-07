@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "main", "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CGO_ENABLED: "0"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.23", "1.24"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: gofmt
+        run: make fmt-check
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage
+        if: matrix.go == '1.24'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      # Installed from the pinned release script rather than the action, so the
+      # version here matches the .golangci.yml schema (v2) exactly.
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v2.5.0/install.sh \
+            | sh -s -- -b "$(go env GOPATH)/bin" v2.5.0
+      - name: Run golangci-lint
+        run: "$(go env GOPATH)/bin/golangci-lint run"
+
+  vuln:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  cross-compile:
+    name: Cross-compile
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.goarm }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -trimpath -o /dev/null ./cmd/iskeled

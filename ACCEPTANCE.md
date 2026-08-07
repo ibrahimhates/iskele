@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 0
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 7 (M0 sonu)
 
 ---
 
@@ -13,17 +13,17 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| A1 | `make build` tek statik binary üretir (`CGO_ENABLED=0`) | CI | M0 | [ ] |
+| A1 | `make build` tek statik binary üretir (`CGO_ENABLED=0`) | CI | M0 | [x] |
 | A2 | `go build ./...` ve `go vet ./...` temiz | CI | tüm | [ ] |
 | A3 | `go test ./...` yeşil, `-race` ile de geçer | CI | tüm | [ ] |
 | A4 | `golangci-lint run` (errcheck, govet, staticcheck, gosec) temiz | CI | tüm | [ ] |
 | A5 | `npm run lint` ve `npm run build` yeşil | CI | M3+ | [ ] |
 | A6 | Binary `linux/amd64`, `linux/arm64`, `linux/armv7` için cross-compile edilir | CI | M9 | [ ] |
 | A7 | Frontend `embed.FS` ile binary'ye gömülüdür; harici dosya gerekmez | manuel | M3 | [ ] |
-| A8 | `iskeled --help` tüm flag'leri açıklar; `--version` sürüm/commit/tarih basar | manuel | M0 | [ ] |
-| A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [ ] |
-| A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [ ] |
-| A11 | `SIGTERM` ile graceful shutdown: aktif istekler tamamlanır, WS'ler kapanır, DB kapanır | manuel | M0 | [ ] |
+| A8 | `iskeled --help` tüm flag'leri açıklar; `--version` sürüm/commit/tarih basar | manuel | M0 | [x] |
+| A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [x] |
+| A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [x] |
+| A11 | `SIGTERM` ile graceful shutdown: aktif istekler tamamlanır, WS'ler kapanır, DB kapanır | manuel | M0 | [x] |
 | A12 | Docker erişilemezken servis açılır, UI `DOCKER_UNAVAILABLE` uyarısı gösterir | manuel | M1 | [ ] |
 | A13 | `install.sh` temiz bir Linux VM'de kurulumu uçtan uca tamamlar (idempotent) | manuel | M9 | [ ] |
 | A14 | `uninstall.sh` servisi ve dosyaları temizler; `--purge` veriyi de siler | manuel | M9 | [ ] |
@@ -67,7 +67,7 @@
 | C12 | Servis `iskele` sistem kullanıcısıyla çalışır (root varsayılan değil), `docker` grubunda | manuel | M9 | [ ] |
 | C13 | `README.md` ve `SECURITY.md` "docker socket = root eşdeğeri" uyarısını açıkça içerir | gözle | M9 | [ ] |
 | C14 | CI'da `govulncheck` ve `npm audit` çalışır | CI | M9 | [ ] |
-| C15 | Güvenlik başlıkları (CSP, X-Frame-Options, nosniff, Referrer-Policy) yanıtlarda mevcut | test | M0 | [ ] |
+| C15 | Güvenlik başlıkları (CSP, X-Frame-Options, nosniff, Referrer-Policy) yanıtlarda mevcut | test | M0 | [x] |
 | C16 | Opsiyonel yerleşik TLS (cert/key) çalışır | manuel | M9 | [ ] |
 
 ## D. Container Yönetimi
@@ -208,7 +208,7 @@
 | M3 | `SECURITY.md`: tehdit modeli, socket=root uyarısı, zafiyet bildirim süreci | gözle | M9 | [ ] |
 | M4 | `CONTRIBUTING.md`: geliştirme kurulumu, commit kuralları, PR süreci | gözle | M9 | [ ] |
 | M5 | `CHANGELOG.md`: v0.1.0 girdisi | gözle | M9 | [ ] |
-| M6 | `LICENSE`: Apache-2.0 | gözle | M0 | [ ] |
+| M6 | `LICENSE`: Apache-2.0 | gözle | M0 | [x] |
 | M7 | `docs/openapi.yaml` tüm endpoint'lerle senkron ve doğrulanabilir (lint'ten geçer) | CI | M9 | [ ] |
 | M8 | `docs/architecture.md`, `docs/template-schema.md`, `docs/configuration.md`, `docs/security-model.md` mevcut | gözle | M9 | [ ] |
 | M9 | `PLAN.md`, `PROGRESS.md`, `DECISIONS.md` son duruma göre güncel | gözle | M9 | [ ] |

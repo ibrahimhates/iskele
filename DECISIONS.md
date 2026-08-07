@@ -96,6 +96,56 @@ kullanılarak `web/src/api/schema.d.ts` üretilir. Üretilen dosya repoya commit
 
 ---
 
+## M0 Sırasında Alınan Kararlar
+
+### D-013 — Minimum Go sürümü 1.23 (PLAN'daki 1.22 yerine)
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** PLAN §2'de "Go 1.22+" yazıyordu. `github.com/go-chi/chi/v5 v5.3.1` `go 1.23` gerektiriyor.
+**Karar:** `go.mod` içinde `go 1.23`; CI matrisi `1.23` ve `1.24`. `toolchain` direktifi kaldırıldı ki
+1.23 kurulu bir runner ek indirme yapmasın.
+**Sonuç:** PLAN §2 ve README güncellendi. Bu, desteklenen dağıtımlarda sorun değil — binary statik
+derlendiği için son kullanıcıda Go gerekmiyor.
+
+### D-014 — Ortak HTTP sözlüğü için `internal/httpx` paketi
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** PLAN'da `errors.go` ve `response.go` `internal/server` altındaydı. Ancak `server` paketi
+`handlers`'ı import ediyor; handler'lar da hata gövdesini yazmak için aynı yardımcılara ihtiyaç duyuyor
+→ import döngüsü.
+**Karar:** Standart hata zarfı, hata kodları, `WriteJSON`/`WriteError` ve hata dönebilen `Handler` tipi
+`internal/httpx` paketine taşındı. Hem `server` hem `handlers` buradan import eder.
+**Sonuç:** Katman kuralı korunuyor; sonraki milestone'larda tüm handler'lar `httpx.Handler` imzasını
+kullanacak (`func(w, r) error`), böylece hata yazma boilerplate'i tekrarlanmıyor.
+
+### D-015 — Test kütüphanesi: stdlib `testing`, testify yok
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** PLAN §2'de `testify/require` yazıyordu.
+**Karar:** Yalnız stdlib `testing` + tablo testleri kullanılıyor; testify bağımlılığı `go mod tidy` ile düştü.
+**Gerekçe:** M0'da tüm testler assertion helper'ı olmadan okunaklı yazılabildi; bağımlılık yüzeyini
+küçük tutmak tek binary hedefiyle uyumlu.
+**Sonuç:** İleride gerçekten gerekirse eklenir; şimdilik `go.mod` yalnız chi ve yaml.v3 içeriyor.
+
+### D-016 — `listen` portu 0 kabul edilmez
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** Port 0 "boş port ata" demek; testlerde kullanışlı ama üretimde kullanıcı servisin hangi
+porta bağlandığını bulamaz.
+**Karar:** Config doğrulaması portu 1-65535 aralığına zorlar. Testler `server.New`'i doğrudan çağırarak
+0 portunu kullanmaya devam edebilir (doğrulamadan geçmez).
+
+### D-017 — Log formatı `auto` ve `log_format` ayarı
+**Durum:** Kabul · **Faz:** M0
+**Karar:** D-003'te öngörüldüğü gibi `log_format` ayarı eklendi: `auto` (varsayılan), `text`, `json`.
+`auto`, çıktı bir terminal ise text, değilse JSON seçer — systemd altında otomatik yapılandırılmış log.
+
+### D-018 — İstemci IP'si için proxy başlıkları yok sayılır
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** Rate limit ve brute-force koruması (M2) IP'ye göre çalışacak.
+**Karar:** `middleware.ClientIP` yalnız `RemoteAddr` kullanır; `X-Forwarded-For` / `X-Real-IP`
+**yok sayılır**, çünkü saldırgan kontrolündedir ve limitleri atlatmak için kullanılabilir.
+**Sonuç:** Reverse proxy arkasında doğru istemci IP'si isteniyorsa, ileride yalnız güvenilen proxy
+adresleri için açılan açık bir ayar eklenecek (v0.2). README'de belirtilecek.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+)

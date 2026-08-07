@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-07 · **Aktif faz:** M0 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-07 · **Aktif faz:** M1 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -13,7 +13,7 @@
 | Faz | Ad | Durum | İlerleme | Not |
 |---|---|---|---|---|
 | — | Planlama | ✅ Bitti | 4/4 | PLAN/PROGRESS/DECISIONS/ACCEPTANCE üretildi |
-| M0 | İskelet | ⬜ Bekliyor | 0/14 | Başlama komutu bekleniyor |
+| M0 | İskelet | ✅ Bitti | 14/14 | Servis ayakta, CI kuruldu, kapsam %84.3 |
 | M1 | Docker katmanı + temel API | ⬜ Bekliyor | 0/13 | |
 | M2 | Auth + DB | ⬜ Bekliyor | 0/16 | |
 | M3 | Frontend iskeleti | ⬜ Bekliyor | 0/14 | |
@@ -26,17 +26,18 @@
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma)
+### Build sağlığı (son çalıştırma: 2026-08-07, M0 sonu)
 
-| Kontrol | Durum | Zaman |
+| Kontrol | Durum | Not |
 |---|---|---|
-| `go build ./...` | — | — |
-| `go vet ./...` | — | — |
-| `go test ./...` | — | — |
-| `golangci-lint run` | — | — |
-| `npm run lint` | — | — |
-| `npm run build` | — | — |
-| Backend coverage | — | hedef ≥ %60 |
+| `go build ./...` | ✅ | — |
+| `gofmt -l` | ✅ | temiz |
+| `go vet ./...` | ✅ | — |
+| `go test -race ./...` | ✅ | 8 paket, hepsi yeşil |
+| `golangci-lint run` | ✅ | 0 issue (v2.5.0) |
+| `npm run lint` | — | M3'te devreye girer |
+| `npm run build` | — | M3'te devreye girer |
+| Backend coverage | ✅ **%84.3** | hedef ≥ %60 |
 
 ---
 
@@ -50,27 +51,29 @@
 
 ---
 
-## M0 — İskelet  ⬜
+## M0 — İskelet  ✅
 
 **Hedef:** derlenen, çalışan, CI'sı yeşil boş bir servis.
 
-- [ ] `go mod init github.com/ibrahimhates/iskele` + temel bağımlılıklar
-- [ ] Dizin ağacı (`cmd/`, `internal/`, `web/`, `deploy/`, `docs/`, `.github/`)
-- [ ] `internal/version` — ldflags ile Version/Commit/BuildDate
-- [ ] `internal/config` — struct, varsayılanlar, YAML yükleme
-- [ ] `internal/config` — flag > env > yaml öncelik zinciri
-- [ ] `internal/config/validate.go` — listen/path/tls doğrulama + anlamlı hatalar
-- [ ] `internal/logging` — slog kurulumu (level, json/text), request logger
-- [ ] `internal/server` — http.Server, TLS opsiyonu, graceful shutdown (30 sn)
-- [ ] `internal/server/router.go` + recover/requestid/logger/securityheaders middleware
-- [ ] `GET /api/v1/health` ve `GET /api/v1/version` (auth'suz)
-- [ ] `cmd/iskeled/main.go` — wiring, SIGINT/SIGTERM
-- [ ] `Makefile` (build/run/test/lint/fmt/clean) + `.gitignore` + `.editorconfig` + `.golangci.yml`
-- [ ] `LICENSE` (Apache-2.0) + README taslağı + `deploy/config.example.yaml`
-- [ ] `.github/workflows/ci.yml` — build + test + lint, ilk yeşil koşu
+- [x] `go mod init github.com/ibrahimhates/iskele` + temel bağımlılıklar (chi v5, yaml.v3)
+- [x] Dizin ağacı (`cmd/`, `internal/`, `web/`, `deploy/`, `docs/`, `.github/`)
+- [x] `internal/version` — ldflags ile Version/Commit/BuildDate + `debug.ReadBuildInfo` fallback
+- [x] `internal/config` — struct, varsayılanlar, YAML yükleme (bilinmeyen anahtar reddedilir)
+- [x] `internal/config` — flag > env > yaml öncelik zinciri (12 env değişkeni)
+- [x] `internal/config/validate.go` — listen/docker_host/path/tls/ttl doğrulama, tüm hatalar tek seferde
+- [x] `internal/logging` — slog kurulumu (level, auto/text/json), debug'da source
+- [x] `internal/server` — http.Server, TLS opsiyonu, graceful shutdown (30 sn) + force close
+- [x] `internal/server/router.go` + requestid/logger/recover/securityheaders middleware
+- [x] `GET /api/v1/health` ve `GET /api/v1/version` (auth'suz)
+- [x] `cmd/iskeled/main.go` — wiring, SIGINT/SIGTERM, public bind uyarısı
+- [x] `Makefile` (build/run/test/test-cover/lint/fmt/fmt-check/vuln/clean/check) + `.gitignore` + `.editorconfig` + `.golangci.yml` (v2)
+- [x] `LICENSE` (Apache-2.0) + README taslağı + `deploy/config.example.yaml`
+- [x] `.github/workflows/ci.yml` — go matrix (1.23/1.24) + lint + govulncheck + cross-compile (amd64/arm64/armv7)
 
-**Testler:** config önceliği · config doğrulama hataları · health/version handler
-**DoD:** `make build` binary üretir · `curl :8377/api/v1/health` → `{"status":"ok"}` · CI yeşil · commit + push
+**Ek olarak yapıldı:** `internal/httpx` paketi (standart hata gövdesi, hata kodları, `Handler` tipi) — handler↔server import döngüsünü kırmak için (D-014).
+
+**Testler:** 8 paket · config öncelik zinciri ve 18 doğrulama vakası · logging seviye/format · request ID hostile header vektörleri · panic recovery · security header'lar · router 404/405 · graceful shutdown (in-flight istek tamamlanıyor) · port çakışması · health/version
+**DoD:** ✅ `make build` binary üretir · ✅ `curl :8377/api/v1/health` → `{"status":"ok","uptime":"1s"}` · ✅ lint 0 issue · ✅ coverage %84.3 · ✅ commit + push
 
 ---
 
@@ -285,6 +288,7 @@
 | Tarih | Faz | Not |
 |---|---|---|
 | 2026-08-07 | Planlama | PLAN/PROGRESS/DECISIONS/ACCEPTANCE oluşturuldu. Kodlamaya başlama komutu bekleniyor. |
+| 2026-08-07 | M0 ✅ | İskelet tamam: config zinciri, slog, chi router + 4 middleware, health/version, graceful shutdown, Makefile, CI (4 job). Uçtan uca doğrulandı: binary ayağa kalkıyor, `/api/v1/health` 200 dönüyor, SIGTERM ile temiz kapanıyor. Lint 0 issue, coverage %84.3. |
 
 ---
 

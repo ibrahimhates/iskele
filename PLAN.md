@@ -40,7 +40,7 @@ yönetimini web arayüzünden yapar.
 
 | Katman | Seçim | Not |
 |---|---|---|
-| Dil (backend) | Go 1.22+ | `CGO_ENABLED=0` |
+| Dil (backend) | Go 1.23+ | `CGO_ENABLED=0`; chi v5.3.1 go1.23 gerektiriyor (D-013) |
 | Modül yolu | `github.com/ibrahimhates/iskele` | bkz. D-001 |
 | Docker | `github.com/docker/docker/client` | resmi SDK, API negotiation açık |
 | Router | `github.com/go-chi/chi/v5` | + chi middleware |
@@ -61,7 +61,7 @@ yönetimini web arayüzünden yapar.
 | Editör | monaco-editor (@monaco-editor/react) | Compose YAML |
 | Grafik | Recharts | stats |
 | i18n | react-i18next | TR/EN |
-| Test (be) | stdlib `testing` + `testify/require` | |
+| Test (be) | stdlib `testing`, tablo testleri | testify eklenmedi (D-015) |
 | Test (fe) | Vitest + @testing-library/react | |
 | Lint | golangci-lint (errcheck, govet, staticcheck, gosec) + eslint + prettier | |
 | Build | Makefile + GoReleaser | |
@@ -87,12 +87,13 @@ iskele/
 │   │   └── version.go                  # ldflags: Version, Commit, BuildDate
 │   ├── logging/
 │   │   └── logging.go                  # slog kurulumu, request logger
+│   ├── httpx/                          # ortak HTTP sözlüğü (D-014)
+│   │   ├── errors.go                   # APIError, kod sabitleri
+│   │   └── response.go                 # JSON yaz, hata gövdesi standardı, Handler tipi
 │   ├── server/
 │   │   ├── server.go                   # http.Server, TLS, shutdown
 │   │   ├── router.go                   # tüm route tanımları
 │   │   ├── spa.go                      # embed.FS + SPA fallback
-│   │   ├── response.go                 # JSON yaz, hata gövdesi standardı
-│   │   ├── errors.go                   # APIError, kod sabitleri
 │   │   ├── middleware/
 │   │   │   ├── auth.go                 # JWT / API token doğrulama
 │   │   │   ├── rbac.go                 # rol matrisi
@@ -534,8 +535,7 @@ Docker gerektiren entegrasyon testleri `//go:build integration` etiketi arkasın
 
 **ldflags:** `-s -w -X .../internal/version.Version=... .Commit=... .BuildDate=...`
 
-**CI (`ci.yml`):** setup-go + cache → `go vet`, `golangci-lint`, `go test -race -coverprofile`,
-`govulncheck` → setup-node → `npm ci`, `npm run lint`, `npm run test`, `npm run build` → `make build`.
+**CI (`ci.yml`):** `go` job (matrix 1.23/1.24: tidy kontrolü, gofmt, vet, build, `go test -race -coverprofile`, coverage özeti) · `lint` job (golangci-lint v2.5.0) · `vuln` job (govulncheck) · `cross-compile` job (amd64/arm64/armv7). M3'ten sonra `web` job eklenir: `npm ci`, `npm run lint`, `npm run test`, `npm run build`.
 
 **Release (`release.yml`):** `v*` tag → GoReleaser → 3 mimari arşiv + `.deb`/`.rpm` + `checksums.txt`
 + CHANGELOG'dan release notu.

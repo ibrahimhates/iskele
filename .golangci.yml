@@ -1,0 +1,53 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - noctx
+    - revive
+    - staticcheck
+    - unused
+    # Docker socket access is root-equivalent, so security findings are not
+    # optional noise here.
+    - gosec
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        - (net/http.ResponseWriter).Write
+    govet:
+      enable:
+        - shadow
+    gosec:
+      excludes:
+        # G104 (unhandled errors) duplicates errcheck.
+        - G104
+    misspell:
+      locale: US
+    revive:
+      rules:
+        # Doc comments on every exported symbol are enforced by review, not
+        # by the linter; internal packages would drown in noise otherwise.
+        - name: exported
+          disabled: true
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - noctx
+
+formatters:
+  enable:
+    - gofmt
