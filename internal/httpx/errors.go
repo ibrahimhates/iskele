@@ -51,6 +51,10 @@ const (
 	CodeNetworkNotFound   Code = "NETWORK_NOT_FOUND"
 	CodeDockerUnavailable Code = "DOCKER_UNAVAILABLE"
 	CodeDockerError       Code = "DOCKER_ERROR"
+	// CodePathNotAllowed marks a bind mount or build context outside the
+	// configured allowed_paths. The details carry the path and the whitelist,
+	// so the UI can show the operator what it may use instead.
+	CodePathNotAllowed Code = "PATH_NOT_ALLOWED"
 )
 
 // APIError is the error type every handler returns. It carries both the HTTP

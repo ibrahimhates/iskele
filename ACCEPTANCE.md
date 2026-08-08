@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 42 · **Kısmi (🟡):** 5 (M4 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 58 · **Kısmi (🟡):** 10 (M5 sonu)
 
 > 🟡 = kod yazıldı ve testleri geçiyor, ama son kanıt bu ortamda üretilemiyor (gerçek bir Docker
 > daemon'ı gerektiriyor) ya da madde birden çok milestone'a yayılıyor. Bunlar **işaretli sayılmaz.**
@@ -92,30 +92,30 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| E1 | Image + tag + pull policy, ad, restart policy alanları | gözle | M5 | [ ] |
-| E2 | Komut/entrypoint override, working dir, user | gözle | M5 | [ ] |
-| E3 | Port mapping (host:container/proto, çoklu satır) | test | M5 | [ ] |
-| E4 | Volume: bind (path picker ile), named volume, tmpfs, read-only | test | M5 | [ ] |
-| E5 | Env: satır satır giriş + `.env` yapıştırma/import | test | M5 | [ ] |
-| E6 | Network seçimi, alias, statik IP, extra hosts | test | M5 | [ ] |
-| E7 | Labels | test | M5 | [ ] |
-| E8 | Kaynak limitleri: CPU, memory limit/reservation, pids limit | test | M5 | [ ] |
-| E9 | Healthcheck: test komutu, interval, timeout, retries | test | M5 | [ ] |
-| E10 | Devices, capabilities (add/drop), privileged, security-opt | test | M5 | [ ] |
-| E11 | Log driver + opsiyonları | test | M5 | [ ] |
-| E12 | Preview paneli canlı `docker run ...` komutu ve API payload'ını gösterir | gözle | M5 | [ ] |
-| E13 | Sihirbazla oluşturulan container gerçekten ayağa kalkar | manuel | M5 | [ ] |
+| E1 | Image + tag + pull policy, ad, restart policy alanları | gözle | M5 | [x] |
+| E2 | Komut/entrypoint override, working dir, user | gözle | M5 | [x] |
+| E3 | Port mapping (host:container/proto, çoklu satır) | test | M5 | [x] |
+| E4 | Volume: bind (path picker ile), named volume, tmpfs, read-only | test | M5 | [x] |
+| E5 | Env: satır satır giriş + `.env` yapıştırma/import | test | M5 | [x] |
+| E6 | Network seçimi, alias, statik IP, extra hosts | test | M5 | [x] |
+| E7 | Labels | test | M5 | [x] |
+| E8 | Kaynak limitleri: CPU, memory limit/reservation, pids limit | test | M5 | [x] |
+| E9 | Healthcheck: test komutu, interval, timeout, retries | test | M5 | [x] |
+| E10 | Devices, capabilities (add/drop), privileged, security-opt | test | M5 | [x] |
+| E11 | Log driver + opsiyonları | test | M5 | [x] |
+| E12 | Preview paneli canlı `docker run ...` komutu ve API payload'ını gösterir | gözle | M5 | [x] |
+| E13 | Sihirbazla oluşturulan container gerçekten ayağa kalkar | manuel | M5 | 🟡 |
 
 ## F. Image / Volume / Network / Registry
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| F1 | Image listesi: repo, tag, boyut, tarih, kullanan container sayısı | gözle | M5 | [ ] |
-| F2 | Image pull ilerleme çubuğuyla akar; registry auth desteklenir | manuel | M5 | [ ] |
-| F3 | Image remove/force, prune, tag, history, inspect çalışır | manuel | M5 | [ ] |
-| F4 | Volume: liste, oluştur (driver+opts), remove, prune, kullanan container | manuel | M5 | [ ] |
-| F5 | Network: liste, oluştur (bridge/macvlan/overlay, subnet/gateway), remove, prune, connect/disconnect, inspect | manuel | M5 | [ ] |
-| F6 | Özel registry ekleme/silme; kimlik bilgileri şifreli saklanır ve pull'da kullanılır | test | M5 | [ ] |
+| F1 | Image listesi: repo, tag, boyut, tarih, kullanan container sayısı | gözle | M5 | [x] |
+| F2 | Image pull ilerleme çubuğuyla akar; registry auth desteklenir | manuel | M5 | 🟡 |
+| F3 | Image remove/force, prune, tag, history, inspect çalışır | manuel | M5 | 🟡 |
+| F4 | Volume: liste, oluştur (driver+opts), remove, prune, kullanan container | manuel | M5 | 🟡 |
+| F5 | Network: liste, oluştur (bridge/macvlan/overlay, subnet/gateway), remove, prune, connect/disconnect, inspect | manuel | M5 | 🟡 |
+| F6 | Özel registry ekleme/silme; kimlik bilgileri şifreli saklanır ve pull'da kullanılır | test | M5 | [x] |
 
 ## G. Dockerfile Build
 
@@ -181,7 +181,7 @@
 | K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | [ ] |
 | K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [x] |
 | K5 | Yıkıcı işlemler (remove, prune, down) kaynak adı yazdırılarak onaylanır | gözle | M4 | [x] |
-| K6 | Uzun işler için global task drawer: ilerleme, iptal, log | gözle | M5 | [ ] |
+| K6 | Uzun işler için global task drawer: ilerleme, iptal, log | gözle | M5 | [x] |
 | K7 | Klavye kısayolları: `/` arama, `g c` containers, `g s` stacks | manuel | M4 | [x] |
 | K8 | Bağlantı kopunca "reconnecting" bandı çıkar; WS exponential backoff ile yeniden bağlanır | manuel | M4 | [x] |
 | K9 | Hata mesajları Docker'ın döndürdüğü metni gizlemeden gösterir | gözle | M4 | [x] |
@@ -195,7 +195,7 @@
 |---|---|---|---|:--:|
 | L1 | Docker katmanı interface arkasında; handler testleri fake kullanır | test | M1 | [x] |
 | L2 | Auth testleri: üretim, doğrulama, expiry, revoke, RBAC matrisi, brute-force | test | M2 | [ ] |
-| L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M6 | [ ] |
+| L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M5 | [x] |
 | L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [ ] |
 | L5 | Template render: her template için geçerli payload testi | test | M8 | [ ] |
 | L6 | Frontend Vitest: form validasyonu ve log viewer buffer testleri | test | M4 | [x] |

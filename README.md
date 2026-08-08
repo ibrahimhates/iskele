@@ -39,8 +39,8 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 | Area | What it does |
 |---|---|
 | Containers | List, inspect, start/stop/restart/pause/kill/rename, bulk actions, redeploy |
-| Live streams | Log streaming, `exec` console (xterm.js), live CPU/memory/IO stats |
 | Create wizard | Every `docker run` option, with a live command + API payload preview |
+| Live streams | Log streaming, `exec` console (xterm.js), live CPU/memory/IO stats |
 | Builds | Build from a Dockerfile on the host with streamed logs, cancel, history |
 | Compose | Parse and run Compose stacks natively, Monaco editor, diff before apply |
 | App catalog | One-click deploy templates (redis, postgres, traefik, gitea, …) |
@@ -97,8 +97,18 @@ exists today:
 - **Container detail** — eight tabs: overview, live logs, charts, an
   interactive console (xterm.js), the raw inspect payload, environment, mounts
   and networks.
-- **Images, volumes, networks** — read-only lists; management arrives in M5.
-- **Settings** — profile, theme, language.
+- **Create a container** — a ten-tab wizard covering every `docker run` option,
+  with a live preview of the command and the API payload it becomes. Bind
+  mounts outside `allowed_paths` and options needing the privileged permission
+  are flagged before you submit, not after the server refuses.
+- **Images** — pull with a per-layer progress bar, layer history, inspect, tag,
+  remove, prune.
+- **Volumes and networks** — create, remove, prune; attach and detach
+  containers.
+- **Tasks** — a drawer showing what is still running, with cancel. A pull keeps
+  going when you navigate away; it belongs to the daemon, not the page.
+- **Settings** — profile, theme, language, and private registry credentials
+  (admin only).
 
 Turkish and English, light and dark, both remembered across reloads.
 Destructive actions ask you to type the container's name.
@@ -172,6 +182,8 @@ listed as *open* below.
 | `POST` | `/containers/{id}/rename` | operate | Rename — `{"name": "..."}` |
 | `POST` | `/containers/{id}/redeploy` | operate | Pull the image and recreate, rolling back on failure |
 | `POST` | `/containers/batch` | operate | One action over many containers; `207` on partial failure |
+| `POST` | `/containers` | create | Create a container from a full definition |
+| `GET` | `/system/allowed-paths` | read | Host paths bind mounts may use |
 | `DELETE` | `/containers/{id}` | delete | Remove — `force`, `volumes` |
 | `POST` | `/auth/ws-ticket` | any | A single-use 60s ticket for the streaming endpoints |
 | `GET` | `/containers/{id}/logs` | ticket | **WebSocket** — live logs (`tail`, `follow`, `timestamps`) |
@@ -180,8 +192,30 @@ listed as *open* below.
 | `GET` | `/containers/stats` | ticket | **SSE** — every running container over one connection |
 | `GET` | `/system/events` | ticket | **SSE** — the Docker engine event stream |
 | `GET` | `/images` | read | List images — `all`, `dangling`, `label` |
+| `GET` | `/images/pull` | ticket | **SSE** — pull an image with per-layer progress |
+| `POST` | `/images/prune` | prune | Remove untagged images (`all=true` for every unused one) |
+| `POST` | `/images/{id}/tag` | operate | Add a reference to an image |
+| `GET` | `/images/{id}/history` | read | The image's layers |
+| `GET` | `/images/{id}/inspect` | read | Raw engine payload |
+| `DELETE` | `/images/{id}` | delete | Remove — `force`, `noprune` |
 | `GET` | `/volumes` | read | List volumes |
+| `POST` | `/volumes` | create | Create a volume — driver and driver options |
+| `GET` | `/volumes/{name}` | read | One volume, with usage when the engine has it |
+| `POST` | `/volumes/prune` | prune | Remove every volume no container references |
+| `DELETE` | `/volumes/{name}` | delete | Remove — `force` |
 | `GET` | `/networks` | read | List networks |
+| `POST` | `/networks` | create | Create — driver, subnet, gateway, internal |
+| `GET` | `/networks/{id}` | read | One network, with its attached containers counted |
+| `POST` | `/networks/{id}/connect` | operate | Attach a container, with aliases and a static IP |
+| `POST` | `/networks/{id}/disconnect` | operate | Detach a container |
+| `POST` | `/networks/prune` | prune | Remove user-defined networks with nothing attached |
+| `DELETE` | `/networks/{id}` | delete | Remove |
+| `GET` | `/registries` | admin | Private registry credentials (never the password) |
+| `POST` | `/registries` | admin | Add one — the password is encrypted before storage |
+| `PUT` | `/registries/{id}` | admin | Update — a blank password keeps the stored one |
+| `DELETE` | `/registries/{id}` | admin | Remove |
+| `GET` | `/tasks` | read | Long-running operations |
+| `POST` | `/tasks/{id}/cancel` | operate | Stop one |
 
 Collection endpoints return `{"items": [...], "total": N}`; `items` is never
 `null`.
@@ -225,6 +259,22 @@ configured does not expose Docker to whoever reaches the port first.
 
 Routes require *permissions*, not roles, and an unrecognised role carries no
 permissions at all — the check fails closed.
+
+**Creating a container** is the one place where two policies stand between an
+operator and the host, and both answer `403`:
+
+- every **bind mount** source must be inside `allowed_paths`
+  (`PATH_NOT_ALLOWED`). Named volumes and tmpfs mounts touch no host path, so
+  the whitelist does not apply to them. The check resolves symlinks first,
+  because a link inside an allowed root can point anywhere, and compares path
+  components, so `/srv-other` does not pass a `/srv` root.
+- `privileged`, `cap_add`, `devices`, `security_opt`, `sysctls` and
+  `network: host` need the **privileged** permission. Each is, in some
+  configuration, a route from container to host root. Dropping capabilities is
+  not gated — it narrows the container.
+
+With no `allowed_paths` configured, every bind mount is refused. A
+misconfiguration fails closed.
 
 **When Docker is down**, iskeled still starts and serves: `/health` keeps
 answering and every engine-backed route returns `503 DOCKER_UNAVAILABLE` with

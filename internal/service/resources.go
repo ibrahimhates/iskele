@@ -3,16 +3,23 @@ package service
 import (
 	"context"
 
+	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/docker"
 )
 
-// Image serves the image listing.
+// Image serves image listing and management.
 type Image struct {
 	docker docker.Client
+	// registries supplies the credential for a pull from a private registry.
+	registries *Registry
+	recorder   *audit.Recorder
 }
 
-// NewImage builds the image service.
-func NewImage(client docker.Client) *Image { return &Image{docker: client} }
+// NewImage builds the image service. registries and recorder may be nil in
+// tests that only read.
+func NewImage(client docker.Client, registries *Registry, recorder *audit.Recorder) *Image {
+	return &Image{docker: client, registries: registries, recorder: recorder}
+}
 
 // ImageListOptions mirrors the query parameters of GET /images.
 type ImageListOptions struct {
@@ -30,26 +37,32 @@ func (s *Image) List(ctx context.Context, opts ImageListOptions) ([]docker.Image
 	})
 }
 
-// Volume serves the volume listing.
+// Volume serves volume listing and management.
 type Volume struct {
-	docker docker.Client
+	docker   docker.Client
+	recorder *audit.Recorder
 }
 
 // NewVolume builds the volume service.
-func NewVolume(client docker.Client) *Volume { return &Volume{docker: client} }
+func NewVolume(client docker.Client, recorder *audit.Recorder) *Volume {
+	return &Volume{docker: client, recorder: recorder}
+}
 
 // List returns every volume.
 func (s *Volume) List(ctx context.Context) ([]docker.Volume, error) {
 	return s.docker.ListVolumes(ctx)
 }
 
-// Network serves the network listing.
+// Network serves network listing and management.
 type Network struct {
-	docker docker.Client
+	docker   docker.Client
+	recorder *audit.Recorder
 }
 
 // NewNetwork builds the network service.
-func NewNetwork(client docker.Client) *Network { return &Network{docker: client} }
+func NewNetwork(client docker.Client, recorder *audit.Recorder) *Network {
+	return &Network{docker: client, recorder: recorder}
+}
 
 // List returns every network.
 func (s *Network) List(ctx context.Context) ([]docker.Network, error) {

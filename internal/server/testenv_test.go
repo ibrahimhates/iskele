@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/auth"
 	"github.com/ibrahimhates/iskele/internal/config"
+	"github.com/ibrahimhates/iskele/internal/crypto"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
@@ -48,14 +50,25 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 	authService := newAuthService(db, log)
 
 	cfg := config.Default()
+	// The whitelist has to be a real directory, because the guard resolves
+	// symlinks before deciding and a bind test needs a path that exists.
+	cfg.AllowedPaths = []string{allowedRoot(t)}
+
+	secretBox, err := crypto.NewSecretBox(testMasterKey())
+	if err != nil {
+		t.Fatalf("NewSecretBox() error = %v", err)
+	}
+
 	env := &testEnv{
 		db: db,
 		raw: NewRouter(Deps{
-			Config:   &cfg,
-			Logger:   log,
-			Docker:   dockerClient,
-			Auth:     authService,
-			Recorder: audit.New(db.Audit, log),
+			Config:     &cfg,
+			Logger:     log,
+			Docker:     dockerClient,
+			Auth:       authService,
+			Recorder:   audit.New(db.Audit, log),
+			Registries: db.Registries,
+			SecretBox:  secretBox,
 		}),
 		tokens: map[store.Role]string{},
 	}
@@ -181,4 +194,25 @@ func newAPITokenFor(t *testing.T) (token, prefix, hash string, err error) {
 func newTokenID(t *testing.T) (string, error) {
 	t.Helper()
 	return auth.NewID()
+}
+
+// allowedRoot is the one host directory the test server will bind-mount from.
+func allowedRoot(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "allowed")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir allowed root: %v", err)
+	}
+	return root
+}
+
+// testMasterKey is a fixed key, so a registry password encrypted in one test
+// is readable in the same one. It is not a secret: nothing outside the test
+// binary ever sees it.
+func testMasterKey() crypto.Key {
+	var key crypto.Key
+	for i := range key {
+		key[i] = byte(i)
+	}
+	return key
 }

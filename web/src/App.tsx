@@ -11,6 +11,7 @@ import { LoginPage } from './features/auth/LoginPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ContainerListPage } from './features/containers/ContainerListPage';
 import { ContainerDetailPage } from './features/containers/ContainerDetailPage';
+import { CreateContainerPage } from './features/create/CreateContainerPage';
 import { ImagesPage } from './features/resources/ImagesPage';
 import { VolumesPage } from './features/resources/VolumesPage';
 import { NetworksPage } from './features/resources/NetworksPage';
@@ -91,6 +92,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/containers" element={<ContainerListPage />} />
+        <Route path="/containers/new" element={<CreateContainerPage />} />
         <Route path="/containers/:id" element={<ContainerDetailPage />} />
         <Route path="/containers/:id/:tab" element={<ContainerDetailPage />} />
         <Route path="/images" element={<ImagesPage />} />

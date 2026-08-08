@@ -4,16 +4,26 @@ import type {
   Container,
   ContainerAction,
   ContainerDetail,
+  ContainerSpec,
+  CreateResult,
   DiskUsage,
   EngineStatus,
   Image,
+  ImageDeleted,
+  ImageHistoryEntry,
   ListResponse,
   NetworkResource,
+  NetworkSpec,
+  PruneReport,
   RedeployResult,
+  Registry,
+  RegistryInput,
   Session,
   SystemInfo,
+  Task,
   User,
   Volume,
+  VolumeSpec,
 } from './types';
 
 export interface ContainerFilters {
@@ -69,6 +79,7 @@ export const containers = {
     api.delete<void>(`/containers/${encodeURIComponent(id)}${query({ ...opts })}`),
   batch: (ids: string[], action: ContainerAction) =>
     api.post<BatchResponse>('/containers/batch', { ids, action }),
+  create: (spec: ContainerSpec) => api.post<CreateResult>('/containers', spec),
 };
 
 export const images = {
@@ -76,20 +87,63 @@ export const images = {
     api.get<ListResponse<Image>>(
       `/images${query({ all: opts.all, dangling: opts.dangling === undefined ? undefined : String(opts.dangling) })}`,
     ),
+  remove: (id: string, opts: { force?: boolean; noprune?: boolean } = {}) =>
+    api.delete<{ deleted: ImageDeleted[] }>(
+      `/images/${encodeURIComponent(id)}${query({ ...opts })}`,
+    ),
+  prune: (all = false) => api.post<PruneReport>(`/images/prune${query({ all })}`),
+  tag: (id: string, tag: string) =>
+    api.post<void>(`/images/${encodeURIComponent(id)}/tag`, { tag }),
+  history: (id: string) =>
+    api.get<ListResponse<ImageHistoryEntry>>(`/images/${encodeURIComponent(id)}/history`),
+  inspect: (id: string) =>
+    api.get<Record<string, unknown>>(`/images/${encodeURIComponent(id)}/inspect`),
 };
 
 export const volumes = {
   list: () => api.get<ListResponse<Volume>>('/volumes'),
+  get: (name: string) => api.get<Volume>(`/volumes/${encodeURIComponent(name)}`),
+  inspect: (name: string) =>
+    api.get<Record<string, unknown>>(`/volumes/${encodeURIComponent(name)}/inspect`),
+  create: (spec: VolumeSpec) => api.post<Volume>('/volumes', spec),
+  remove: (name: string, force = false) =>
+    api.delete<void>(`/volumes/${encodeURIComponent(name)}${query({ force })}`),
+  prune: () => api.post<PruneReport>('/volumes/prune'),
 };
 
 export const networks = {
   list: () => api.get<ListResponse<NetworkResource>>('/networks'),
+  get: (id: string) => api.get<NetworkResource>(`/networks/${encodeURIComponent(id)}`),
+  inspect: (id: string) =>
+    api.get<Record<string, unknown>>(`/networks/${encodeURIComponent(id)}/inspect`),
+  create: (spec: NetworkSpec) => api.post<NetworkResource>('/networks', spec),
+  remove: (id: string) => api.delete<void>(`/networks/${encodeURIComponent(id)}`),
+  prune: () => api.post<PruneReport>('/networks/prune'),
+  connect: (id: string, container: string, aliases: string[] = []) =>
+    api.post<void>(`/networks/${encodeURIComponent(id)}/connect`, { container, aliases }),
+  disconnect: (id: string, container: string, force = false) =>
+    api.post<void>(`/networks/${encodeURIComponent(id)}/disconnect`, { container, force }),
+};
+
+export const registries = {
+  list: () => api.get<ListResponse<Registry>>('/registries'),
+  create: (input: RegistryInput) => api.post<Registry>('/registries', input),
+  update: (id: string, input: RegistryInput) =>
+    api.put<Registry>(`/registries/${encodeURIComponent(id)}`, input),
+  remove: (id: string) => api.delete<void>(`/registries/${encodeURIComponent(id)}`),
+};
+
+export const tasks = {
+  list: () => api.get<ListResponse<Task>>('/tasks'),
+  get: (id: string) => api.get<Task>(`/tasks/${encodeURIComponent(id)}`),
+  cancel: (id: string) => api.post<Task>(`/tasks/${encodeURIComponent(id)}/cancel`),
 };
 
 export const system = {
   ping: () => api.get<EngineStatus>('/system/ping'),
   info: () => api.get<SystemInfo>('/system/info'),
   diskUsage: () => api.get<DiskUsage>('/system/df'),
+  allowedPaths: () => api.get<{ paths: string[] }>('/system/allowed-paths'),
   version: () =>
     api.get<{
       version: string;

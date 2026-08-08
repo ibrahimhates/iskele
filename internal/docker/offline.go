@@ -148,3 +148,82 @@ func (o *offline) Events(context.Context) (<-chan Event, <-chan error) {
 	close(errs)
 	return events, errs
 }
+
+// Image, volume and network mutations, all equally unavailable.
+
+func (o *offline) PullImageProgress(context.Context, PullOptions) (<-chan PullEvent, <-chan error) {
+	events := make(chan PullEvent)
+	errs := make(chan error, 1)
+	errs <- o.err("image.pull", "image")
+	close(events)
+	close(errs)
+	return events, errs
+}
+
+func (o *offline) RemoveImage(context.Context, string, RemoveImageOptions) ([]ImageDeleted, error) {
+	return nil, o.err("image.remove", "image")
+}
+
+func (o *offline) PruneImages(context.Context, bool) (PruneReport, error) {
+	return PruneReport{}, o.err("image.prune", "image")
+}
+
+func (o *offline) TagImage(context.Context, string, string) error {
+	return o.err("image.tag", "image")
+}
+
+func (o *offline) ImageHistory(context.Context, string) ([]ImageHistoryEntry, error) {
+	return nil, o.err("image.history", "image")
+}
+
+func (o *offline) InspectImageRaw(context.Context, string) (RawInspect, error) {
+	return nil, o.err("image.inspect", "image")
+}
+
+func (o *offline) CreateVolume(context.Context, CreateVolumeOptions) (Volume, error) {
+	return Volume{}, o.err("volume.create", "volume")
+}
+
+func (o *offline) InspectVolume(context.Context, string) (Volume, error) {
+	return Volume{}, o.err("volume.inspect", "volume")
+}
+
+func (o *offline) InspectVolumeRaw(context.Context, string) (RawInspect, error) {
+	return nil, o.err("volume.inspect", "volume")
+}
+
+func (o *offline) RemoveVolume(context.Context, string, bool) error {
+	return o.err("volume.remove", "volume")
+}
+
+func (o *offline) PruneVolumes(context.Context) (PruneReport, error) {
+	return PruneReport{}, o.err("volume.prune", "volume")
+}
+
+func (o *offline) CreateNetwork(context.Context, CreateNetworkOptions) (Network, error) {
+	return Network{}, o.err("network.create", "network")
+}
+
+func (o *offline) InspectNetwork(context.Context, string) (Network, error) {
+	return Network{}, o.err("network.inspect", "network")
+}
+
+func (o *offline) InspectNetworkRaw(context.Context, string) (RawInspect, error) {
+	return nil, o.err("network.inspect", "network")
+}
+
+func (o *offline) RemoveNetwork(context.Context, string) error {
+	return o.err("network.remove", "network")
+}
+
+func (o *offline) PruneNetworks(context.Context) (PruneReport, error) {
+	return PruneReport{}, o.err("network.prune", "network")
+}
+
+func (o *offline) ConnectNetwork(context.Context, string, string, ConnectOptions) error {
+	return o.err("network.connect", "network")
+}
+
+func (o *offline) DisconnectNetwork(context.Context, string, string, bool) error {
+	return o.err("network.disconnect", "network")
+}

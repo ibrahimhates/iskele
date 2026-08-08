@@ -10,7 +10,7 @@ import (
 
 func TestImageListForwardsFilters(t *testing.T) {
 	f := fake.New()
-	svc := NewImage(f)
+	svc := NewImage(f, nil, nil)
 	dangling := true
 
 	images, err := svc.List(context.Background(), ImageListOptions{
@@ -40,7 +40,7 @@ func TestImageListForwardsFilters(t *testing.T) {
 func TestVolumeAndNetworkList(t *testing.T) {
 	f := fake.New()
 
-	volumes, err := NewVolume(f).List(context.Background())
+	volumes, err := NewVolume(f, nil).List(context.Background())
 	if err != nil {
 		t.Fatalf("volume List() error = %v", err)
 	}
@@ -48,7 +48,7 @@ func TestVolumeAndNetworkList(t *testing.T) {
 		t.Errorf("volumes = %+v", volumes)
 	}
 
-	networks, err := NewNetwork(f).List(context.Background())
+	networks, err := NewNetwork(f, nil).List(context.Background())
 	if err != nil {
 		t.Fatalf("network List() error = %v", err)
 	}
@@ -97,9 +97,9 @@ func TestResourceServicesPropagateEngineFailures(t *testing.T) {
 
 	ctx := context.Background()
 	checks := map[string]func() error{
-		"images":   func() error { _, err := NewImage(f).List(ctx, ImageListOptions{}); return err },
-		"volumes":  func() error { _, err := NewVolume(f).List(ctx); return err },
-		"networks": func() error { _, err := NewNetwork(f).List(ctx); return err },
+		"images":   func() error { _, err := NewImage(f, nil, nil).List(ctx, ImageListOptions{}); return err },
+		"volumes":  func() error { _, err := NewVolume(f, nil).List(ctx); return err },
+		"networks": func() error { _, err := NewNetwork(f, nil).List(ctx); return err },
 		"info":     func() error { _, err := NewSystem(f).Info(ctx); return err },
 		"df":       func() error { _, err := NewSystem(f).DiskUsage(ctx); return err },
 		"ping":     func() error { _, err := NewSystem(f).Ping(ctx); return err },

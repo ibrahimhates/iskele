@@ -271,3 +271,206 @@ export interface DockerEvent {
 /** The lifecycle actions the API accepts, individually and in bulk. */
 export type ContainerAction =
   'start' | 'stop' | 'restart' | 'pause' | 'unpause' | 'kill' | 'remove';
+
+// --- M5: container creation, resource management, registries, tasks ---
+
+/** One environment entry. Key and value stay apart so a value with "=" survives. */
+export interface EnvVar {
+  key: string;
+  value: string;
+}
+
+export interface PortMapping {
+  host_ip?: string;
+  host_port?: string;
+  container_port: number;
+  protocol?: 'tcp' | 'udp' | 'sctp';
+}
+
+export type MountType = 'bind' | 'volume' | 'tmpfs';
+
+export interface MountSpec {
+  type: MountType;
+  source?: string;
+  destination: string;
+  read_only?: boolean;
+  tmpfs_size?: number;
+  bind_propagation?: string;
+  create_host_path?: boolean;
+}
+
+export type RestartPolicyName = 'no' | 'always' | 'unless-stopped' | 'on-failure';
+
+export interface RestartPolicySpec {
+  name?: RestartPolicyName;
+  max_retries?: number;
+}
+
+export interface ResourceSpec {
+  cpus?: number;
+  cpu_shares?: number;
+  cpuset_cpus?: string;
+  memory?: number;
+  memory_reservation?: number;
+  memory_swap?: number;
+  pids_limit?: number;
+  shm_size?: number;
+}
+
+export interface ContainerNetworkSpec {
+  name?: string;
+  aliases?: string[];
+  ipv4_address?: string;
+  ipv6_address?: string;
+  extra_hosts?: string[];
+  dns?: string[];
+  dns_search?: string[];
+  dns_options?: string[];
+  mac_address?: string;
+}
+
+export interface HealthSpec {
+  test?: string[];
+  interval?: string;
+  timeout?: string;
+  start_period?: string;
+  retries?: number;
+  disable?: boolean;
+}
+
+export interface LoggingSpec {
+  driver?: string;
+  options?: Record<string, string>;
+}
+
+/** Every field here needs the `privileged` permission. */
+export interface SecuritySpec {
+  privileged?: boolean;
+  cap_add?: string[];
+  cap_drop?: string[];
+  security_opt?: string[];
+  devices?: string[];
+  read_only_root_fs?: boolean;
+  sysctls?: Record<string, string>;
+}
+
+export type PullPolicy = 'missing' | 'always' | 'never';
+
+/** What the create wizard submits. */
+export interface ContainerSpec {
+  name?: string;
+  image: string;
+  pull_policy?: PullPolicy;
+  command?: string[];
+  entrypoint?: string[];
+  working_dir?: string;
+  user?: string;
+  hostname?: string;
+  domain_name?: string;
+  tty?: boolean;
+  open_stdin?: boolean;
+  env?: EnvVar[];
+  labels?: Record<string, string>;
+  ports?: PortMapping[];
+  mounts?: MountSpec[];
+  restart_policy?: RestartPolicySpec;
+  resources?: ResourceSpec;
+  network?: ContainerNetworkSpec;
+  health_check?: HealthSpec;
+  logging?: LoggingSpec;
+  security?: SecuritySpec;
+  auto_remove?: boolean;
+  init?: boolean;
+  start?: boolean;
+}
+
+export interface CreateResult {
+  id: string;
+  name: string;
+  image: string;
+  started: boolean;
+}
+
+export interface PruneReport {
+  deleted: string[];
+  space_reclaimed: number;
+}
+
+export interface ImageDeleted {
+  deleted?: string;
+  untagged?: string;
+}
+
+export interface ImageHistoryEntry {
+  id: string;
+  created: string;
+  created_by: string;
+  size: number;
+  comment?: string;
+  tags: string[];
+}
+
+export interface VolumeSpec {
+  name?: string;
+  driver?: string;
+  driver_opts?: Record<string, string>;
+  labels?: Record<string, string>;
+}
+
+export interface NetworkSpec {
+  name: string;
+  driver?: string;
+  internal?: boolean;
+  attachable?: boolean;
+  enable_ipv6?: boolean;
+  ipam?: { subnet?: string; gateway?: string; ip_range?: string }[];
+  options?: Record<string, string>;
+  labels?: Record<string, string>;
+}
+
+export interface Registry {
+  id: string;
+  name: string;
+  server: string;
+  username: string;
+  email?: string;
+  has_password: boolean;
+  created_at: string;
+  updated_at: string;
+  last_used_at?: string;
+}
+
+export interface RegistryInput {
+  name: string;
+  server: string;
+  username?: string;
+  password?: string;
+  email?: string;
+}
+
+export type TaskState = 'running' | 'succeeded' | 'failed' | 'canceled';
+
+export interface Task {
+  id: string;
+  kind: string;
+  target: string;
+  state: TaskState;
+  /** 0..100, or -1 while nothing can be measured. */
+  progress: number;
+  message?: string;
+  error?: string;
+  username?: string;
+  started_at: string;
+  finished_at?: string;
+  cancelable: boolean;
+}
+
+/** One line of an image pull, with the overall percentage the server computes. */
+export interface PullProgress {
+  id?: string;
+  status: string;
+  current?: number;
+  total?: number;
+  error?: string;
+  percent: number;
+}

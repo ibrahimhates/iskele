@@ -56,6 +56,9 @@ type Client struct {
 	Usage      docker.DiskUsage
 	Pong       docker.Pong
 
+	// pullEvents overrides the replayed pull progress when non-nil.
+	pullEvents []docker.PullEvent
+
 	// errs maps an operation name to the error it should return.
 	errs map[string]error
 	// calls records every invocation in order.
@@ -703,4 +706,450 @@ func (c *Client) Events(ctx context.Context) (<-chan docker.Event, <-chan error)
 	}()
 
 	return out, errs
+}
+
+// Image, volume and network mutation names accepted by Client.Fail.
+const (
+	OpPullImageProgress = "PullImageProgress"
+	OpRemoveImage       = "RemoveImage"
+	OpPruneImages       = "PruneImages"
+	OpTagImage          = "TagImage"
+	OpImageHistory      = "ImageHistory"
+	OpInspectImageRaw   = "InspectImageRaw"
+
+	OpCreateVolume     = "CreateVolume"
+	OpInspectVolume    = "InspectVolume"
+	OpInspectVolumeRaw = "InspectVolumeRaw"
+	OpRemoveVolume     = "RemoveVolume"
+	OpPruneVolumes     = "PruneVolumes"
+
+	OpCreateNetwork     = "CreateNetwork"
+	OpInspectNetwork    = "InspectNetwork"
+	OpInspectNetworkRaw = "InspectNetworkRaw"
+	OpRemoveNetwork     = "RemoveNetwork"
+	OpPruneNetworks     = "PruneNetworks"
+	OpConnectNetwork    = "ConnectNetwork"
+	OpDisconnectNetwork = "DisconnectNetwork"
+)
+
+// PullEvents is what PullImageProgress replays. Tests set it to drive a
+// progress bar; the default is one small layer that completes.
+var defaultPullEvents = []docker.PullEvent{
+	{Status: "Pulling from library/nginx"},
+	{ID: "layer1", Status: "Downloading", Current: 512, Total: 1024},
+	{ID: "layer1", Status: "Download complete", Current: 1024, Total: 1024},
+	{Status: "Status: Downloaded newer image"},
+}
+
+// PullEvents overrides the replayed pull progress when non-nil.
+func (c *Client) SetPullEvents(events []docker.PullEvent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pullEvents = events
+}
+
+func (c *Client) PullImageProgress(ctx context.Context, opts docker.PullOptions) (<-chan docker.PullEvent, <-chan error) {
+	events := make(chan docker.PullEvent, 8)
+	errs := make(chan error, 1)
+
+	if err := c.record(OpPullImageProgress, opts.Ref, opts); err != nil {
+		errs <- err
+		close(events)
+		close(errs)
+		return events, errs
+	}
+
+	c.mu.Lock()
+	replay := c.pullEvents
+	if replay == nil {
+		replay = defaultPullEvents
+	}
+	c.mu.Unlock()
+
+	go func() {
+		defer close(events)
+		defer close(errs)
+		for _, e := range replay {
+			select {
+			case events <- e:
+			case <-ctx.Done():
+				return
+			}
+			if e.Error != "" {
+				errs <- docker.NewError(docker.KindUnknown, "image.pull", "image", e.ID, e.Error)
+				return
+			}
+		}
+	}()
+
+	return events, errs
+}
+
+func (c *Client) RemoveImage(_ context.Context, id string, opts docker.RemoveImageOptions) ([]docker.ImageDeleted, error) {
+	if err := c.record(OpRemoveImage, id, opts); err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i, img := range c.Images {
+		if img.ID != id && !containsString(img.RepoTags, id) {
+			continue
+		}
+		if img.Containers > 0 && !opts.Force {
+			return nil, docker.NewError(docker.KindConflict, "image.remove", "image", id,
+				"image is in use by a container")
+		}
+		c.Images = append(c.Images[:i], c.Images[i+1:]...)
+		return []docker.ImageDeleted{{Deleted: img.ID}}, nil
+	}
+	return nil, docker.NewError(docker.KindNotFound, "image.remove", "image", id, "no such image: "+id)
+}
+
+func (c *Client) PruneImages(_ context.Context, all bool) (docker.PruneReport, error) {
+	if err := c.record(OpPruneImages, "", all); err != nil {
+		return docker.PruneReport{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	report := docker.PruneReport{Deleted: []string{}}
+	kept := c.Images[:0]
+	for _, img := range c.Images {
+		removable := img.Dangling || (all && img.Containers <= 0)
+		if removable {
+			report.Deleted = append(report.Deleted, img.ID)
+			report.SpaceReclaimed += img.Size
+			continue
+		}
+		kept = append(kept, img)
+	}
+	c.Images = kept
+	return report, nil
+}
+
+func (c *Client) TagImage(_ context.Context, id, ref string) error {
+	if err := c.record(OpTagImage, id, ref); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for i, img := range c.Images {
+		if img.ID == id || containsString(img.RepoTags, id) {
+			c.Images[i].RepoTags = append(c.Images[i].RepoTags, ref)
+			c.Images[i].Dangling = false
+			return nil
+		}
+	}
+	return docker.NewError(docker.KindNotFound, "image.tag", "image", id, "no such image: "+id)
+}
+
+func (c *Client) ImageHistory(_ context.Context, id string) ([]docker.ImageHistoryEntry, error) {
+	if err := c.record(OpImageHistory, id, nil); err != nil {
+		return nil, err
+	}
+	if !c.imageExists(id) {
+		return nil, docker.NewError(docker.KindNotFound, "image.history", "image", id, "no such image: "+id)
+	}
+	return []docker.ImageHistoryEntry{
+		{ID: id, CreatedBy: "CMD [\"nginx\"]", Size: 0, Tags: []string{}},
+		{ID: "<missing>", CreatedBy: "ADD file:… in /", Size: 1 << 20, Tags: []string{}},
+	}, nil
+}
+
+func (c *Client) InspectImageRaw(_ context.Context, id string) (docker.RawInspect, error) {
+	if err := c.record(OpInspectImageRaw, id, nil); err != nil {
+		return nil, err
+	}
+	if !c.imageExists(id) {
+		return nil, docker.NewError(docker.KindNotFound, "image.inspect", "image", id, "no such image: "+id)
+	}
+	return json.RawMessage(`{"Id":"` + id + `"}`), nil
+}
+
+// imageExists reports whether id names a known image, by ID or by tag.
+func (c *Client) imageExists(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, img := range c.Images {
+		if img.ID == id || containsString(img.RepoTags, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Client) CreateVolume(_ context.Context, opts docker.CreateVolumeOptions) (docker.Volume, error) {
+	if err := c.record(OpCreateVolume, opts.Name, opts); err != nil {
+		return docker.Volume{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, v := range c.Volumes {
+		if v.Name == opts.Name {
+			// The real engine is idempotent here: creating an existing volume
+			// returns it rather than failing.
+			return v, nil
+		}
+	}
+
+	created := docker.Volume{
+		Name:       opts.Name,
+		Driver:     orDefault(opts.Driver, "local"),
+		Mountpoint: "/var/lib/docker/volumes/" + opts.Name + "/_data",
+		Scope:      "local",
+		CreatedAt:  time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		Labels:     orEmptyMap(opts.Labels),
+		Options:    orEmptyMap(opts.DriverOpts),
+		Size:       -1,
+		RefCount:   -1,
+	}
+	c.Volumes = append(c.Volumes, created)
+	return created, nil
+}
+
+func (c *Client) InspectVolume(_ context.Context, name string) (docker.Volume, error) {
+	if err := c.record(OpInspectVolume, name, nil); err != nil {
+		return docker.Volume{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, v := range c.Volumes {
+		if v.Name == name {
+			return v, nil
+		}
+	}
+	return docker.Volume{}, docker.NewError(docker.KindNotFound, "volume.inspect", "volume", name,
+		"no such volume: "+name)
+}
+
+func (c *Client) InspectVolumeRaw(ctx context.Context, name string) (docker.RawInspect, error) {
+	if err := c.record(OpInspectVolumeRaw, name, nil); err != nil {
+		return nil, err
+	}
+	if _, err := c.InspectVolume(ctx, name); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(`{"Name":"` + name + `"}`), nil
+}
+
+func (c *Client) RemoveVolume(_ context.Context, name string, force bool) error {
+	if err := c.record(OpRemoveVolume, name, force); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, v := range c.Volumes {
+		if v.Name != name {
+			continue
+		}
+		if v.RefCount > 0 && !force {
+			return docker.NewError(docker.KindConflict, "volume.remove", "volume", name,
+				"volume is in use")
+		}
+		c.Volumes = append(c.Volumes[:i], c.Volumes[i+1:]...)
+		return nil
+	}
+	return docker.NewError(docker.KindNotFound, "volume.remove", "volume", name,
+		"no such volume: "+name)
+}
+
+func (c *Client) PruneVolumes(_ context.Context) (docker.PruneReport, error) {
+	if err := c.record(OpPruneVolumes, "", nil); err != nil {
+		return docker.PruneReport{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	report := docker.PruneReport{Deleted: []string{}}
+	kept := c.Volumes[:0]
+	for _, v := range c.Volumes {
+		if v.RefCount <= 0 {
+			report.Deleted = append(report.Deleted, v.Name)
+			continue
+		}
+		kept = append(kept, v)
+	}
+	c.Volumes = kept
+	return report, nil
+}
+
+func (c *Client) CreateNetwork(_ context.Context, opts docker.CreateNetworkOptions) (docker.Network, error) {
+	if err := c.record(OpCreateNetwork, opts.Name, opts); err != nil {
+		return docker.Network{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, n := range c.Networks {
+		if n.Name == opts.Name {
+			return docker.Network{}, docker.NewError(docker.KindConflict, "network.create", "network",
+				opts.Name, "network with name "+opts.Name+" already exists")
+		}
+	}
+
+	ipam := opts.IPAM
+	if ipam == nil {
+		ipam = []docker.IPAMConfig{}
+	}
+	created := docker.Network{
+		ID:         "net-" + opts.Name,
+		Name:       opts.Name,
+		Driver:     orDefault(opts.Driver, "bridge"),
+		Scope:      "local",
+		Created:    time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		Internal:   opts.Internal,
+		Attachable: opts.Attachable,
+		EnableIPv6: opts.EnableIPv6,
+		IPAM:       ipam,
+		Labels:     orEmptyMap(opts.Labels),
+	}
+	c.Networks = append(c.Networks, created)
+	return created, nil
+}
+
+func (c *Client) InspectNetwork(_ context.Context, id string) (docker.Network, error) {
+	if err := c.record(OpInspectNetwork, id, nil); err != nil {
+		return docker.Network{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, n := range c.Networks {
+		if n.ID == id || n.Name == id {
+			return n, nil
+		}
+	}
+	return docker.Network{}, docker.NewError(docker.KindNotFound, "network.inspect", "network", id,
+		"no such network: "+id)
+}
+
+func (c *Client) InspectNetworkRaw(ctx context.Context, id string) (docker.RawInspect, error) {
+	if err := c.record(OpInspectNetworkRaw, id, nil); err != nil {
+		return nil, err
+	}
+	if _, err := c.InspectNetwork(ctx, id); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(`{"Id":"` + id + `"}`), nil
+}
+
+func (c *Client) RemoveNetwork(_ context.Context, id string) error {
+	if err := c.record(OpRemoveNetwork, id, nil); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, n := range c.Networks {
+		if n.ID != id && n.Name != id {
+			continue
+		}
+		if n.ContainerCount > 0 {
+			return docker.NewError(docker.KindConflict, "network.remove", "network", id,
+				"network has active endpoints")
+		}
+		c.Networks = append(c.Networks[:i], c.Networks[i+1:]...)
+		return nil
+	}
+	return docker.NewError(docker.KindNotFound, "network.remove", "network", id,
+		"no such network: "+id)
+}
+
+func (c *Client) PruneNetworks(_ context.Context) (docker.PruneReport, error) {
+	if err := c.record(OpPruneNetworks, "", nil); err != nil {
+		return docker.PruneReport{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	report := docker.PruneReport{Deleted: []string{}}
+	kept := c.Networks[:0]
+	for _, n := range c.Networks {
+		// The engine never prunes its own predefined networks.
+		predefined := n.Name == "bridge" || n.Name == "host" || n.Name == "none"
+		if !predefined && n.ContainerCount == 0 {
+			report.Deleted = append(report.Deleted, n.Name)
+			continue
+		}
+		kept = append(kept, n)
+	}
+	c.Networks = kept
+	return report, nil
+}
+
+func (c *Client) ConnectNetwork(ctx context.Context, networkID, containerID string, opts docker.ConnectOptions) error {
+	if err := c.record(OpConnectNetwork, networkID, opts); err != nil {
+		return err
+	}
+	if _, err := c.InspectNetwork(ctx, networkID); err != nil {
+		return err
+	}
+	if !c.containerExists(containerID) {
+		return notFound("network.connect", containerID)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, n := range c.Networks {
+		if n.ID == networkID || n.Name == networkID {
+			c.Networks[i].ContainerCount++
+		}
+	}
+	return nil
+}
+
+func (c *Client) DisconnectNetwork(ctx context.Context, networkID, containerID string, _ bool) error {
+	if err := c.record(OpDisconnectNetwork, networkID, containerID); err != nil {
+		return err
+	}
+	if _, err := c.InspectNetwork(ctx, networkID); err != nil {
+		return err
+	}
+	if !c.containerExists(containerID) {
+		return notFound("network.disconnect", containerID)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, n := range c.Networks {
+		if (n.ID == networkID || n.Name == networkID) && c.Networks[i].ContainerCount > 0 {
+			c.Networks[i].ContainerCount--
+		}
+	}
+	return nil
+}
+
+func orDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func orEmptyMap(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
 }

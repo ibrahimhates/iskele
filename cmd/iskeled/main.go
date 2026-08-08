@@ -102,6 +102,11 @@ func run(args []string) error {
 		}
 	}()
 
+	secretBox, err := crypto.NewSecretBox(masterKey)
+	if err != nil {
+		return err
+	}
+
 	recorder := audit.New(db.Audit, log)
 	limiter := auth.NewLimiter(db.Logins, auth.LimiterOptions{})
 	issuer := auth.NewTokenIssuer(masterKey.Derive(auth.JWTPurpose), cfg.Session.AccessTTL.Duration())
@@ -159,6 +164,9 @@ func run(args []string) error {
 		Auth:     authService,
 		Recorder: recorder,
 		Tickets:  auth.NewTicketStore(auth.TicketTTL),
+
+		Registries: db.Registries,
+		SecretBox:  secretBox,
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)

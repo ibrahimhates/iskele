@@ -420,6 +420,96 @@ başlayan container'lar" olarak, tek seferlik ve isteğe bağlı bir sorguyla ge
 
 ---
 
+## M5 Sırasında Alınan Kararlar
+
+### D-050 — İki ayrı container tanımı: `CreateSpec` (motor) ve `ContainerSpec` (operatör)
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `docker.CreateSpec` SDK yapılarını taşımaya devam ediyor (redeploy bir container'ı byte byte
+yeniden üretebilsin diye). Sihirbazın gönderdiği ise `docker.ContainerSpec`: düz, JSON dostu, operatörün
+tanıdığı terimlerle. Çeviri `BuildCreateSpec` içinde, yani `internal/docker` sınırının içinde.
+**Gerekçe:** Servis katmanı doğrulamayı (whitelist, privileged) SDK tiplerine bakarak yapamaz — o zaman
+SDK dışarı sızardı. Tek bir tip kullanmak ise ya redeploy'u bozar ya da formu SDK'nın şekline bağlardı.
+**Sonuç:** SDK hâlâ tek pakette. `BuildCreateSpec` alan alan doğruluyor, bu yüzden bozuk bir port
+"400 Bad Request" yerine "ports: container port 70000 is outside 1-65535" olarak dönüyor.
+
+### D-051 — Bind mount doğrulaması: symlink çöz, bileşen karşılaştır, boşsa reddet
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `PathGuard.Check` yolu temizliyor, `EvalSymlinks` ile çözüyor, sonra `filepath.Rel` ile
+bileşen bazlı karşılaştırıyor. Henüz var olmayan bir yol (engine oluşturacaksa) kabul ediliyor.
+`allowed_paths` boşsa **her** bind mount reddediliyor.
+**Gerekçe:** Bind mount, container'dan host root'una en kısa yol. Üç saldırı da gerçek: `..` ile çıkış
+(Clean çözer), `/srv-other` gibi önek çakışması (string karşılaştırma yakalamaz), ve izinli kök içine
+konmuş bir symlink (yalnız çözerek yakalanır). Boş liste "her şey serbest" demek olsaydı, bir
+yapılandırma hatası hostu verirdi.
+**Sonuç:** `paths_test.go` üç saldırıyı da pinliyor. Named volume ve tmpfs host yoluna dokunmadığı için
+kontrol dışında — aksi halde sihirbaz kullanılamaz olurdu.
+
+### D-052 — Privileged seçenekler tek bir kapı arkasında, hata hangisini söylüyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `privileged`, `cap_add`, `devices`, `security_opt`, `sysctls` ve `network=host`
+`privileged` iznini gerektiriyor. `cap_drop` gerektirmiyor. Reddedilen istek 403 ile birlikte
+`details.options` içinde takılan seçeneklerin tamamını döndürüyor.
+**Gerekçe:** Her biri bir yapılandırmada container'dan host root'una çıkış yolu. `cap_drop` ise tam
+tersi — container'ı daraltıyor, kapıya koymak yalnızca güvenli yapılandırmayı zorlaştırırdı.
+Hangi seçeneğin takıldığını söylememek operatörü tek tek denemeye zorlar.
+**Sonuç:** Sihirbaz aynı listeyi istemci tarafında da hesaplıyor, böylece uyarı gönderim öncesi çıkıyor;
+otorite yine sunucuda.
+
+### D-053 — Registry parolaları şifreli saklanıyor, hiçbir yanıtta dönmüyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** Parola `SecretBox` (AES-256-GCM, master anahtardan türetilmiş) ile şifrelenip saklanıyor.
+`store.Registry.Password` `json:"-"` etiketli; API yalnız `has_password` söylüyor. Güncellemede boş
+parola "saklı olanı koru" anlamına geliyor. Audit kaydına parola hiç yazılmıyor.
+**Gerekçe:** Anahtar dosyası olmadan sızan bir veritabanı özel registry'ye erişim vermemeli.
+UI parolayı hiç görmediği için geri gönderemez; boş alanı "sil" saymak her düzenlemede kimliği silerdi.
+**Sonuç:** İki test bunu pinliyor: biri API yanıtlarının parolayı taşımadığını, diğeri veritabanı
+satırının düz metin içermediğini doğruluyor.
+
+### D-054 — Görevler bellekte, veritabanında değil
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `TaskRegistry` bellek içi. Biten görevler 10 dakika, en fazla 200 görev saklanıyor.
+**Gerekçe:** Bir görev, onu çalıştıran daemon yaşadığı sürece anlamlı. iskeled yeniden başladığında
+her pull zaten iptal oluyor; kalıcı kayıt yalnızca asla bitemeyecek satırlar üretirdi.
+**Sonuç:** M6'da build'ler aynı kayda girecek. Kalıcı bir geçmiş gerekirse audit log zaten var.
+
+### D-055 — Pull ilerlemesi sunucuda toplanıyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** Engine katman katman rapor veriyor ve hiçbir zaman toplam vermiyor. Sunucu her katmanın son
+figürünü tutup topluyor ve tek bir yüzde yayınlıyor; hiçbir katman boyut bildirmemişken `-1`.
+**Gerekçe:** Tek bir ilerleme çubuğu ancak böyle var olabilir. Boyut bildirmeyen katmanı sıfır saymak
+çubuğu geri götürürdü; toplamak yerine biriktirmek ilk katmanda 100'ü aşardı.
+**Sonuç:** `pullprogress_test.go` bu üç durumu da pinliyor.
+
+### D-056 — Pull akışı `done` demeden önce iki kanalı da boşaltıyor
+**Durum:** Kabul (hata düzeltmesi) · **Faz:** M5
+**Karar:** SSE döngüsü `events` kapandığında hemen başarı ilan etmiyor; `events` ve `errs` **ikisi de**
+kapanana kadar sürüyor.
+**Gerekçe:** Engine başarısız bir pull'u 200 yanıtın *içinde* raporluyor, yani hata son ilerleme
+satırıyla aynı anda geliyor. `select` kapanan `events`'i önce seçtiğinde başarısız bir pull "done"
+olarak bildiriliyordu. Test yazılırken yakalandı.
+**Sonuç:** Katman düzeyindeki hata olayı da ayrıca kontrol ediliyor, böylece hata iki yoldan da yakalanıyor.
+
+### D-057 — Sıfır zaman damgası yayınlanmıyor
+**Durum:** Kabul (hata düzeltmesi) · **Faz:** M5
+**Karar:** `store.Registry` kendi `MarshalJSON`'ını uyguluyor ve hiç kullanılmamış `last_used_at`
+alanını çıkarıyor. `Create` ve `Update` yazdıkları zaman damgalarını çağıranın kopyasına basıyor.
+**Gerekçe:** `omitempty` bir struct'a uygulanmıyor, bu yüzden sıfır `time.Time` `"0001-01-01T00:00:00Z"`
+olarak gidiyordu — arayüz bunu "2000 yıl önce" diye gösterir. `Create` değer alıyordu, dolayısıyla
+oluşturma yanıtı da sıfır zaman taşıyordu. İkisi de uçtan uca doğrulamada görüldü.
+**Sonuç:** `APIToken.LastUsedAt` aynı desende ama bugün hiçbir yanıtta görünmüyor; M8'de token listesi
+gelince aynı düzeltme oraya da gerekecek.
+
+### D-058 — Wizard önizlemesi gönderilen nesneden üretiliyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** Hem `docker run` komutu hem API payload'ı, POST edilen `ContainerSpec`'ten render ediliyor.
+Komut, kabuğun dokunacağı argümanları POSIX tek tırnak (`'\''` kaçışıyla) ile alıntılıyor.
+**Gerekçe:** Önizleme ayrı bir açıklama olsaydı formdan sapabilir ve operatöre yalan söyleyebilirdi.
+Aynı nesneden üretilince sapması imkânsız. Alıntılama doğru olmazsa terminale yapıştırılan komut
+gösterilenden başka bir container yaratır.
+**Sonuç:** `preview.test.ts` 14 vaka ile pinliyor; boşluk, kesme işareti ve `?` içeren değerler dahil.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**

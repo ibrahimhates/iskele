@@ -34,8 +34,47 @@ func engineError(err error) error {
 		return nil
 	}
 
-	if errors.Is(err, service.ErrEmptyID) {
+	if errors.Is(err, service.ErrEmptyID) || errors.Is(err, service.ErrEmptyName) {
 		return httpx.ErrBadRequest("%s", err.Error())
+	}
+
+	// A malformed container definition is caught before the engine sees it, so
+	// the response can name the field that was wrong.
+	var specErr *docker.SpecError
+	if errors.As(err, &specErr) {
+		return httpx.NewError(http.StatusUnprocessableEntity, httpx.CodeValidationFailed,
+			"%s", specErr.Message).WithDetails(map[string]any{"field": specErr.Field}).WithCause(err)
+	}
+
+	// A bind mount outside the whitelist is a policy refusal, not a bad
+	// request: the definition is well-formed, this installation just will not
+	// mount it.
+	var pathErr *service.PathError
+	if errors.As(err, &pathErr) {
+		return httpx.NewError(http.StatusForbidden, httpx.CodePathNotAllowed,
+			"%s", pathErr.Error()).WithDetails(map[string]any{
+			"path":          pathErr.Path,
+			"allowed_paths": pathErr.Allowed,
+		}).WithCause(err)
+	}
+
+	var privErr *service.PrivilegedError
+	if errors.As(err, &privErr) {
+		return httpx.NewError(http.StatusForbidden, httpx.CodeForbidden,
+			"%s", privErr.Error()).WithDetails(map[string]any{
+			"options":             privErr.Options,
+			"required_permission": "privileged",
+		}).WithCause(err)
+	}
+
+	switch {
+	case errors.Is(err, service.ErrRegistryNotFound):
+		return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "%s", err.Error()).WithCause(err)
+	case errors.Is(err, service.ErrRegistryExists):
+		return httpx.NewError(http.StatusConflict, httpx.CodeConflict, "%s", err.Error()).WithCause(err)
+	case errors.Is(err, service.ErrRegistryInvalid):
+		return httpx.NewError(http.StatusUnprocessableEntity, httpx.CodeValidationFailed,
+			"%s", err.Error()).WithCause(err)
 	}
 
 	var engErr *docker.Error

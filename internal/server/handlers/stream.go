@@ -33,12 +33,22 @@ const (
 type Stream struct {
 	containers *service.Container
 	system     *service.System
+	images     *service.Image
 	tickets    *auth.TicketStore
+	tasks      *service.TaskRegistry
 }
 
 // NewStream builds the streaming handler set.
-func NewStream(containers *service.Container, system *service.System, tickets *auth.TicketStore) *Stream {
-	return &Stream{containers: containers, system: system, tickets: tickets}
+func NewStream(containers *service.Container, system *service.System, images *service.Image,
+	tickets *auth.TicketStore, tasks *service.TaskRegistry,
+) *Stream {
+	return &Stream{
+		containers: containers,
+		system:     system,
+		images:     images,
+		tickets:    tickets,
+		tasks:      tasks,
+	}
 }
 
 // Ticket handles POST /auth/ws-ticket.

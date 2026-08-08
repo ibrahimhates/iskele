@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-08 · **Aktif faz:** M5 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-08 · **Aktif faz:** M6 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -18,7 +18,7 @@
 | M2 | Auth + DB | ✅ Bitti | 16/16 | RBAC matrisi tam test edildi, kapsam %79.8 |
 | M3 | Frontend iskeleti | ✅ Bitti | 14/14 | Tek binary UI'ı sunuyor, 35 frontend testi |
 | M4 | Container yönetimi (tam) | ✅ Bitti | 16/16 | Log/stats/console/inspect + toplu işlem + redeploy |
-| M5 | Oluşturma sihirbazı + Image/Volume/Network | ⬜ Bekliyor | 0/18 | |
+| M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
 | M6 | Dockerfile build | ⬜ Bekliyor | 0/12 | |
 | M7 | Compose stack | ⬜ Bekliyor | 0/15 | |
 | M8 | App Catalog + Dashboard + Ayarlar | ⬜ Bekliyor | 0/18 | |
@@ -26,7 +26,7 @@
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-08, M3+M4 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-08, M5 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
@@ -40,9 +40,9 @@
 | `npm run lint` | ✅ | 0 uyarı (`--max-warnings 0`) |
 | `npm run format:check` | ✅ | prettier temiz |
 | `npm run build` | ✅ | tsc + vite, uyarısız |
-| `npm run test` | ✅ | 6 dosya / 35 test |
-| Frontend bundle | ✅ | index 63 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk |
-| Backend coverage | ✅ **%71.9** | hedef ≥ %60. `make test-cover` bu ortamda koşmuyor: Go araç zinciri budanmış, `covdata` yok (D-042). Sayı `web` paketi hariç ölçüldü; CI tam listeyle koşar. |
+| `npm run test` | ✅ | 8 dosya / 70 test |
+| Frontend bundle | ✅ | index 82 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk |
+| Backend coverage | ✅ **%60.4** | hedef ≥ %60. M5 çok sayıda ince SDK sarmalayıcısı ekledi; bunlar yalnız canlı daemon'la ölçülebiliyor. Ayrıştırma ve eşleme mantığı (pull stream, registry host çözümü, layer ilerlemesi, whitelist) test altında. `make test-cover` bu ortamda koşmuyor (D-042); sayı `web` paketi hariç ölçüldü. |
 
 ---
 
@@ -205,29 +205,52 @@ gerçek container üzerinde log/stats/console doğrulaması Docker'lı bir makin
 
 ---
 
-## M5 — Oluşturma sihirbazı + Image/Volume/Network  ⬜
+## M5 — Oluşturma sihirbazı + Image/Volume/Network  ✅
 
-- [ ] `POST /containers` — tam create spec (host config dahil)
-- [ ] Sihirbaz sekme 1: Image + tag + pull policy + ad + restart policy
-- [ ] Sihirbaz sekme 2: Komut/entrypoint/workdir/user
-- [ ] Sihirbaz sekme 3: Port mapping (çoklu satır, proto)
-- [ ] Sihirbaz sekme 4: Volumes (bind + path picker, named, tmpfs, read-only)
-- [ ] Sihirbaz sekme 5: Env (satır satır + `.env` yapıştır/import)
-- [ ] Sihirbaz sekme 6: Network (seçim, alias, statik IP, extra hosts)
-- [ ] Sihirbaz sekme 7: Labels
-- [ ] Sihirbaz sekme 8: Kaynaklar (CPU, memory limit/reservation, pids)
-- [ ] Sihirbaz sekme 9: Healthcheck (test, interval, timeout, retries, start period)
-- [ ] Sihirbaz sekme 10: Gelişmiş (devices, cap add/drop, privileged, security-opt, log driver) — **admin-only alanlar işaretli**
-- [ ] Canlı **Preview** paneli: `docker run ...` komutu + API payload
-- [ ] `POST /images/pull` SSE + ilerleme çubuğu + katman bazlı durum
-- [ ] Registry CRUD + AES-GCM şifreli kimlik + pull'da auth kullanımı
-- [ ] Image ekranı: liste, remove/force, prune, tag, history, inspect, kullanan container sayısı
-- [ ] Volume ekranı: liste, oluştur (driver+opts), remove, prune, kullanım bilgisi
-- [ ] Network ekranı: liste, oluştur (bridge/macvlan/overlay, subnet/gateway), remove, prune, connect/disconnect, inspect
-- [ ] Global `TaskDrawer` + `GET /tasks` + iptal
+**M5-A — Docker katmanı**
+- [x] `docker.ContainerSpec` — operatör diliyle tam container tanımı + `BuildCreateSpec` çevirisi
+- [x] `PullImageProgress` (NDJSON ilerleme), `RemoveImage`, `PruneImages`, `TagImage`, `ImageHistory`, `InspectImageRaw`
+- [x] `CreateVolume` / `InspectVolume` / `RemoveVolume` / `PruneVolumes`
+- [x] `CreateNetwork` / `InspectNetwork` / `RemoveNetwork` / `PruneNetworks` / `Connect` / `Disconnect`
+- [x] Fake ve offline istemciler yeni yüzeyin tamamını kapsıyor
 
-**Testler:** form→payload dönüşümü · zod şemaları · whitelist ihlali reddi · registry şifreleme round-trip
-**DoD:** UI'dan sıfırdan çalışan container yaratılabiliyor · commit + push
+**M5-B — Güvenlik ve kalıcılık**
+- [x] `PathGuard` — bind mount'ları `allowed_paths`'e karşı doğruluyor; symlink çözüyor, bileşen bazlı karşılaştırıyor, boş liste = hepsini reddet
+- [x] Privileged kapısı: `privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`
+- [x] `registries` tablosu + AES-GCM şifreli parola + `NormalizeRegistryServer` / `RegistryServerForImage`
+- [x] Servisler: `Creator`, `Registry`, ve Image/Volume/Network mutasyonları (hepsi audit kayıtlı)
+
+**M5-C — Uzun işler**
+- [x] `TaskRegistry` — bellek içi, iptal edilebilir, 10 dk saklama, 200 görev tavanı
+- [x] `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/cancel`
+- [x] Image pull bir task olarak kaydediliyor; katman bazlı ilerlemeden tek yüzde hesaplanıyor
+
+**M5-D — API**
+- [x] `POST /containers` (tam spec), `GET /system/allowed-paths`
+- [x] `/images` pull(SSE)/remove/prune/tag/history/inspect
+- [x] `/volumes` ve `/networks` tam CRUD + prune + connect/disconnect
+- [x] `/registries` CRUD (admin-only), `/tasks`
+- [x] `PATH_NOT_ALLOWED` hata kodu + `field` taşıyan 422; OpenAPI 60 endpoint'i kapsıyor
+
+**M5-E — Oluşturma sihirbazı**
+- [x] 10 sekme: Genel, Komut, Portlar, Volume'ler, Ortam, Ağ, Etiketler, Kaynaklar, Sağlık, Gelişmiş
+- [x] `.env` yapıştırma (yorum, `export` öneki, tırnaklı değer, ilk `=`'de bölme)
+- [x] Canlı **`docker run` komutu + API payload** önizlemesi — ikisi de gönderilen nesneden üretiliyor
+- [x] Whitelist ihlali ve privileged seçenekler sunucuya gitmeden formda uyarılıyor
+
+**M5-F — Kaynak ekranları**
+- [x] Image: pull ilerleme çubuğu, katman geçmişi, inspect, tag, remove, prune
+- [x] Volume: oluştur (driver), sil, prune, kullanım bilgisi
+- [x] Network: oluştur (driver + subnet + internal), container bağla/çöz, sil, prune
+- [x] Ayarlar altında registry CRUD (yalnız admin), parola asla geri dönmüyor
+- [x] Global `TaskDrawer` — çalışan iş sayacı, ilerleme, iptal
+
+**Testler:** `spec_test.go` (form→payload çevirisi, 20 vaka) · `paths_test.go` (whitelist, symlink kaçışı, traversal) ·
+`create_test.go` servis + handler (privileged matrisi, whitelist reddi, audit) · `registries_test.go` (şifreleme
+round-trip, parolanın sızmaması) · `tasks_test.go` · `preview.test.ts` + `state.test.ts` (35 frontend testi)
+
+**DoD:** ✅ UI'dan sıfırdan container tanımlanıp gönderilebiliyor; whitelist dışı bind 403, bozuk alan 422,
+privileged seçenek operator'a 403 dönüyor. Docker'lı bir makinede canlı oluşturma doğrulaması bekliyor · commit + push
 
 ---
 
@@ -327,6 +350,7 @@ gerçek container üzerinde log/stats/console doğrulaması Docker'lı bir makin
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-08 | M5 ✅ | Container oluşturma sihirbazı (10 sekme) ve tüm kaynak yönetimi. En kritik parça `PathGuard`: bind mount kaynakları `allowed_paths`'e karşı, symlink çözülerek ve bileşen bazlı karşılaştırılarak doğrulanıyor; boş whitelist hepsini reddediyor. Privileged seçenekler (`privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`) ayrı bir izin kapısının arkasında ve hata mesajı hangisinin takıldığını söylüyor. Registry parolaları AES-GCM ile şifreli saklanıyor ve hiçbir yanıtta geri dönmüyor. Image pull SSE ile akıyor, bir task olarak kaydediliyor ve drawer'dan iptal edilebiliyor. Sihirbazın canlı `docker run` önizlemesi API'ye gidenle aynı nesneden üretiliyor, bu yüzden ayrışamıyor. Yol boyunca üç hata düzeltildi: pull akışında `done` olayı hata kanalıyla yarışıyordu, registry yanıtları sıfır zaman damgası (`0001-01-01`) yayıyordu, `Create` yazdığı zaman damgalarını çağırana bildirmiyordu. Lint 0 issue, coverage %60.4, 70 frontend testi. |
 | 2026-08-08 | M3 + M4 ✅ | Frontend tek binary'ye gömüldü (`web/embed.go` + `internal/server/spa.go`): derin bağlantılar SPA kabuğunu, `/api` altındaki bilinmeyen yollar JSON 404'ü döndürüyor. Container yönetimi tam: liste + toplu işlem + 8 sekmeli detay, WS log/exec, SSE stats/events, redeploy. `make gen-api` OpenAPI'den TS tipi üretiyor, `conformance.ts` elle yazılan tiplerle spec'i derleme zamanında karşılaştırıyor. CI'ya `web` ve `bundle` job'ları eklendi. Üç gerçek hata yakalandı: `web/node_modules` altındaki üçüncü parti Go dosyası `./...`'a sızıyordu (D-042), `make test`/`make test-cover` `-race` ile CGO_ENABLED=0 yüzünden hiç koşamıyordu (D-043), `go.mod` tidy değildi. Lint 0 issue, coverage %71.9, 35 frontend testi. |
 | 2026-08-08 | M2 ✅ | SQLite + migration'lar, argon2id, JWT + refresh rotasyonu, API token, brute-force limiti, 8 izinli RBAC matrisi, CSRF, rate limit, audit + maskeleme. M1'in tüm endpoint'leri koruma altında. Uçtan uca bootstrap→login→refresh zinciri doğrulandı. Lint 0 issue, coverage %79.8. |
 | 2026-08-07 | Planlama | PLAN/PROGRESS/DECISIONS/ACCEPTANCE oluşturuldu. Kodlamaya başlama komutu bekleniyor. |

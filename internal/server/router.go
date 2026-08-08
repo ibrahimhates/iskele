@@ -14,11 +14,13 @@ import (
 	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/auth"
 	"github.com/ibrahimhates/iskele/internal/config"
+	"github.com/ibrahimhates/iskele/internal/crypto"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/httpx"
 	"github.com/ibrahimhates/iskele/internal/server/handlers"
 	"github.com/ibrahimhates/iskele/internal/server/middleware"
 	"github.com/ibrahimhates/iskele/internal/service"
+	"github.com/ibrahimhates/iskele/internal/store"
 )
 
 // APIPrefix is the version prefix every API route lives under.
@@ -43,6 +45,14 @@ type Deps struct {
 	// SPA serves the frontend. Nil means the copy embedded in this binary,
 	// which is what the daemon always wants; tests substitute their own.
 	SPA http.Handler
+	// Tasks tracks long-running operations. The router creates one when this
+	// is nil.
+	Tasks *service.TaskRegistry
+	// Registries stores private registry credentials. Nil leaves every pull
+	// anonymous and the registry endpoints unmounted.
+	Registries *store.RegistryRepo
+	// SecretBox encrypts those credentials. Required when Registries is set.
+	SecretBox *crypto.SecretBox
 }
 
 // isAPIPath reports whether a request belongs to the JSON API rather than the
@@ -66,9 +76,20 @@ func NewRouter(deps Deps) http.Handler {
 
 	system := handlers.NewSystem()
 
-	images := handlers.NewImages(service.NewImage(dockerClient))
-	volumes := handlers.NewVolumes(service.NewVolume(dockerClient))
-	networks := handlers.NewNetworks(service.NewNetwork(dockerClient))
+	// A nil repository leaves every pull anonymous, which is what a test that
+	// only exercises the engine wants; the service tolerates it.
+	var registryService *service.Registry
+	if deps.Registries != nil && deps.SecretBox != nil {
+		registryService = service.NewRegistry(deps.Registries, deps.SecretBox, deps.Recorder)
+	}
+
+	imageService := service.NewImage(dockerClient, registryService, deps.Recorder)
+	volumeService := service.NewVolume(dockerClient, deps.Recorder)
+	networkService := service.NewNetwork(dockerClient, deps.Recorder)
+
+	images := handlers.NewImages(imageService)
+	volumes := handlers.NewVolumes(volumeService)
+	networks := handlers.NewNetworks(networkService)
 	systemService := service.NewSystem(dockerClient)
 	engine := handlers.NewEngine(systemService)
 
@@ -76,9 +97,25 @@ func NewRouter(deps Deps) http.Handler {
 	if tickets == nil {
 		tickets = auth.NewTicketStore(auth.TicketTTL)
 	}
+	taskRegistry := deps.Tasks
+	if taskRegistry == nil {
+		taskRegistry = service.NewTaskRegistry()
+	}
+	tasks := handlers.NewTasks(taskRegistry)
 	containerService := service.NewContainer(dockerClient, deps.Recorder)
 	containers := handlers.NewContainers(containerService)
-	streams := handlers.NewStream(containerService, systemService, tickets)
+	streams := handlers.NewStream(containerService, systemService, imageService, tickets, taskRegistry)
+
+	// Bind mounts are checked against this before any of them reach the
+	// engine; an unset whitelist refuses them all.
+	var allowedPaths []string
+	if deps.Config != nil {
+		allowedPaths = deps.Config.AllowedPaths
+	}
+	creator := service.NewCreator(dockerClient, registryService,
+		service.NewPathGuard(allowedPaths), deps.Recorder)
+	create := handlers.NewCreate(creator, service.NewPathGuard(allowedPaths))
+	registries := handlers.NewRegistries(registryService)
 
 	generalLimiter := middleware.NewRateLimiter(middleware.GeneralRate, middleware.GeneralBurst)
 	loginLimiter := middleware.NewRateLimiter(middleware.LoginRate, middleware.LoginBurst)
@@ -158,6 +195,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Use(requireInitialized(deps.Auth))
 
 			r.Method(http.MethodGet, "/containers/stats", httpx.Handler(streams.StatsAll))
+			r.Method(http.MethodGet, "/images/pull", httpx.Handler(streams.Pull))
 			r.Method(http.MethodGet, "/containers/{id}/logs", httpx.Handler(streams.Logs))
 			r.Method(http.MethodGet, "/containers/{id}/exec", httpx.Handler(streams.Exec))
 			r.Method(http.MethodGet, "/containers/{id}/stats", httpx.Handler(streams.Stats))
@@ -180,6 +218,8 @@ func NewRouter(deps Deps) http.Handler {
 				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(containers.List))
 				r.With(operate()).Method(http.MethodPost, "/batch", httpx.Handler(containers.Batch))
 
+				r.With(create_()).Method(http.MethodPost, "/", httpx.Handler(create.Container))
+
 				r.Route("/{id}", func(r chi.Router) {
 					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(containers.Get))
 					r.With(read()).Method(http.MethodGet, "/inspect", httpx.Handler(containers.Inspect))
@@ -197,14 +237,68 @@ func NewRouter(deps Deps) http.Handler {
 				})
 			})
 
-			r.With(read()).Method(http.MethodGet, "/images", httpx.Handler(images.List))
-			r.With(read()).Method(http.MethodGet, "/volumes", httpx.Handler(volumes.List))
-			r.With(read()).Method(http.MethodGet, "/networks", httpx.Handler(networks.List))
+			r.Route("/images", func(r chi.Router) {
+				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(images.List))
+				r.With(prune()).Method(http.MethodPost, "/prune", httpx.Handler(images.Prune))
+
+				r.Route("/{id}", func(r chi.Router) {
+					r.With(read()).Method(http.MethodGet, "/history", httpx.Handler(images.History))
+					r.With(read()).Method(http.MethodGet, "/inspect", httpx.Handler(images.Inspect))
+					r.With(operate()).Method(http.MethodPost, "/tag", httpx.Handler(images.Tag))
+					r.With(remove()).Method(http.MethodDelete, "/", httpx.Handler(images.Remove))
+				})
+			})
+
+			r.Route("/volumes", func(r chi.Router) {
+				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(volumes.List))
+				r.With(create_()).Method(http.MethodPost, "/", httpx.Handler(volumes.Create))
+				r.With(prune()).Method(http.MethodPost, "/prune", httpx.Handler(volumes.Prune))
+
+				r.Route("/{name}", func(r chi.Router) {
+					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(volumes.Get))
+					r.With(read()).Method(http.MethodGet, "/inspect", httpx.Handler(volumes.Inspect))
+					r.With(remove()).Method(http.MethodDelete, "/", httpx.Handler(volumes.Remove))
+				})
+			})
+
+			r.Route("/networks", func(r chi.Router) {
+				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(networks.List))
+				r.With(create_()).Method(http.MethodPost, "/", httpx.Handler(networks.Create))
+				r.With(prune()).Method(http.MethodPost, "/prune", httpx.Handler(networks.Prune))
+
+				r.Route("/{id}", func(r chi.Router) {
+					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(networks.Get))
+					r.With(read()).Method(http.MethodGet, "/inspect", httpx.Handler(networks.Inspect))
+					r.With(operate()).Method(http.MethodPost, "/connect", httpx.Handler(networks.Connect))
+					r.With(operate()).Method(http.MethodPost, "/disconnect", httpx.Handler(networks.Disconnect))
+					r.With(remove()).Method(http.MethodDelete, "/", httpx.Handler(networks.Remove))
+				})
+			})
+
+			// Registry credentials are admin-only: they are the one thing here
+			// that grants access to something outside this host.
+			if registryService != nil {
+				r.Route("/registries", func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermAdmin, denyAuth))
+
+					r.Method(http.MethodGet, "/", httpx.Handler(registries.List))
+					r.Method(http.MethodPost, "/", httpx.Handler(registries.Create))
+					r.Method(http.MethodPut, "/{id}", httpx.Handler(registries.Update))
+					r.Method(http.MethodDelete, "/{id}", httpx.Handler(registries.Delete))
+				})
+			}
+
+			r.Route("/tasks", func(r chi.Router) {
+				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(tasks.List))
+				r.With(read()).Method(http.MethodGet, "/{id}", httpx.Handler(tasks.Get))
+				r.With(operate()).Method(http.MethodPost, "/{id}/cancel", httpx.Handler(tasks.Cancel))
+			})
 
 			r.Route("/system", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/ping", httpx.Handler(engine.Ping))
 				r.With(read()).Method(http.MethodGet, "/info", httpx.Handler(engine.Info))
 				r.With(read()).Method(http.MethodGet, "/df", httpx.Handler(engine.DiskUsage))
+				r.With(read()).Method(http.MethodGet, "/allowed-paths", httpx.Handler(create.AllowedPaths))
 			})
 		})
 	})
@@ -223,6 +317,16 @@ func operate() func(http.Handler) http.Handler {
 
 func remove() func(http.Handler) http.Handler {
 	return middleware.RequirePermission(middleware.PermDelete, denyAuth)
+}
+
+// create_ is spelled with a trailing underscore because "create" is the local
+// variable holding the handler set.
+func create_() func(http.Handler) http.Handler { //nolint:revive // see above
+	return middleware.RequirePermission(middleware.PermCreate, denyAuth)
+}
+
+func prune() func(http.Handler) http.Handler {
+	return middleware.RequirePermission(middleware.PermPrune, denyAuth)
 }
 
 // resolveIdentity adapts the auth service to the middleware's expectation.

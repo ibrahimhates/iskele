@@ -584,7 +584,66 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /**
+         * Create a container
+         * @description Takes the whole definition in one request, in operator-facing terms
+         *     rather than the engine's own structures.
+         *
+         *     Two checks run before the engine sees any of it, and both refuse with
+         *     `403`:
+         *
+         *     * every **bind mount** source must be inside the configured
+         *       `allowed_paths` (`PATH_NOT_ALLOWED`). Named volumes and tmpfs mounts
+         *       touch no host path, so the whitelist does not apply to them. The
+         *       check resolves symlinks first, because a link inside an allowed root
+         *       can point anywhere.
+         *     * the options under `security`, and `network.name: host`, need the
+         *       **privileged** permission. Each is, in some configuration, a route
+         *       from container to host root.
+         *
+         *     A definition the engine would reject is caught here where possible, so
+         *     the error names the field rather than arriving as an opaque daemon
+         *     message.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ContainerSpec"];
+                };
+            };
+            responses: {
+                /**
+                 * @description The container was created. `started` reports whether it is running:
+                 *     a container that was created but failed to start is left in place
+                 *     rather than removed, so the operator can inspect why.
+                 */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            name: string;
+                            image: string;
+                            started: boolean;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["CreateRefused"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["ValidationFailed"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1712,7 +1771,37 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /** Create a volume */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VolumeSpec"];
+                };
+            };
+            responses: {
+                /**
+                 * @description The volume. Creating one that already exists returns it rather than
+                 *     failing, which is the engine's own behavior.
+                 */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Volume"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1752,6 +1841,1206 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 409: components["responses"]["NotInitialized"];
                 503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        /** Create a network */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NetworkSpec"];
+                };
+            };
+            responses: {
+                /** @description The network, read back from the engine */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Network"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/pull": {
+        parameters: {
+            query: {
+                /**
+                 * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                 *     arrival whether or not the permission check that follows passes, so a
+                 *     rejected ticket cannot be retried against another endpoint.
+                 */
+                ticket: components["parameters"]["StreamTicket"];
+                /** @description The image to pull, e.g. `nginx:1.27` or `ghcr.io/org/app@sha256:…`. */
+                ref: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pull an image (SSE)
+         * @description A `text/event-stream` of the engine's own progress. Event names:
+         *
+         *     * `task` — first, carrying `{id}`: the task this pull registered as, so
+         *       it can be canceled from the task drawer after the page that started
+         *       it has gone away.
+         *     * `progress` — one engine line plus `percent`, summed across every
+         *       layer. The engine reports each layer separately and never a total, so
+         *       `percent` is `-1` until at least one layer has announced its size.
+         *     * `error` — the pull failed. The engine reports a failed pull *inside*
+         *       a 200 response, so this is the only place the failure appears.
+         *     * `done` — every layer finished.
+         *
+         *     The credential for the image's registry is applied automatically when
+         *     one is configured; nothing about it appears in the stream.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /**
+                     * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                     *     arrival whether or not the permission check that follows passes, so a
+                     *     rejected ticket cannot be retried against another endpoint.
+                     */
+                    ticket: components["parameters"]["StreamTicket"];
+                    /** @description The image to pull, e.g. `nginx:1.27` or `ghcr.io/org/app@sha256:…`. */
+                    ref: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The event stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": string;
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["TicketRejected"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove unused images
+         * @description Requires the **prune** permission (admin). `all=false`, the default,
+         *     removes only untagged images; `all=true` removes every image no
+         *     container uses, which on a build host is most of them.
+         */
+        post: {
+            parameters: {
+                query?: {
+                    all?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was reclaimed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PruneReport"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Image ID or a reference such as `nginx:1.27`. */
+                id: components["parameters"]["ImageID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an image */
+        delete: {
+            parameters: {
+                query?: {
+                    /** @description Remove even when a stopped container or another tag references it. */
+                    force?: boolean;
+                    /** @description Keep untagged parent layers. */
+                    noprune?: boolean;
+                };
+                header?: never;
+                path: {
+                    /** @description Image ID or a reference such as `nginx:1.27`. */
+                    id: components["parameters"]["ImageID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What the engine removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            deleted: {
+                                deleted?: string;
+                                untagged?: string;
+                            }[];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["ImageNotFound"];
+                409: components["responses"]["Conflict"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{id}/tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Image ID or a reference such as `nginx:1.27`. */
+                id: components["parameters"]["ImageID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a reference to an image */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Image ID or a reference such as `nginx:1.27`. */
+                    id: components["parameters"]["ImageID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @example registry.example.com/app:v2 */
+                        tag: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The tag was added */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id?: string;
+                            tag?: string;
+                            /** @enum {string} */
+                            status?: "ok";
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["ImageNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Image ID or a reference such as `nginx:1.27`. */
+                id: components["parameters"]["ImageID"];
+            };
+            cookie?: never;
+        };
+        /** Image layers, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Image ID or a reference such as `nginx:1.27`. */
+                    id: components["parameters"]["ImageID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The build history */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["ImageHistoryEntry"][];
+                            total: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["ImageNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/images/{id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Image ID or a reference such as `nginx:1.27`. */
+                id: components["parameters"]["ImageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Raw engine image payload
+         * @description The engine's response, unmodified.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Image ID or a reference such as `nginx:1.27`. */
+                    id: components["parameters"]["ImageID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The engine's own payload */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["ImageNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/volumes/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove every volume no container references
+         * @description Requires the **prune** permission (admin). This is the most destructive
+         *     operation Iskele offers: an unused volume may still be the only copy of
+         *     a database, and nothing here can tell the difference.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was reclaimed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PruneReport"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/volumes/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume name. */
+                name: components["parameters"]["VolumeName"];
+            };
+            cookie?: never;
+        };
+        /** One volume */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Volume name. */
+                    name: components["parameters"]["VolumeName"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The volume */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Volume"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["VolumeNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Remove a volume, with the data in it */
+        delete: {
+            parameters: {
+                query?: {
+                    /** @description Remove one the engine still considers in use. */
+                    force?: boolean;
+                };
+                header?: never;
+                path: {
+                    /** @description Volume name. */
+                    name: components["parameters"]["VolumeName"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["VolumeNotFound"];
+                409: components["responses"]["Conflict"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/volumes/{name}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Volume name. */
+                name: components["parameters"]["VolumeName"];
+            };
+            cookie?: never;
+        };
+        /** Raw engine volume payload */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Volume name. */
+                    name: components["parameters"]["VolumeName"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The engine's own payload */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["VolumeNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/networks/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove user-defined networks with nothing attached
+         * @description Requires the **prune** permission (admin). The engine's own predefined
+         *     networks (bridge, host, none) are never removed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was removed. Networks occupy no disk, so `space_reclaimed` is always 0. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PruneReport"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/networks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network ID or name. */
+                id: components["parameters"]["NetworkID"];
+            };
+            cookie?: never;
+        };
+        /** One network, with its attached containers counted */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Network ID or name. */
+                    id: components["parameters"]["NetworkID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The network */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Network"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NetworkNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /**
+         * Remove a network
+         * @description The engine refuses while containers are still attached.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Network ID or name. */
+                    id: components["parameters"]["NetworkID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NetworkNotFound"];
+                409: components["responses"]["Conflict"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/networks/{id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network ID or name. */
+                id: components["parameters"]["NetworkID"];
+            };
+            cookie?: never;
+        };
+        /** Raw engine network payload */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Network ID or name. */
+                    id: components["parameters"]["NetworkID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The engine's own payload */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NetworkNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/networks/{id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network ID or name. */
+                id: components["parameters"]["NetworkID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a container to a network */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Network ID or name. */
+                    id: components["parameters"]["NetworkID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        container: string;
+                        /** @description Extra DNS names for this container on this network. */
+                        aliases?: string[];
+                        /**
+                         * @description A static address. Only works on a network with a
+                         *     user-defined subnet.
+                         */
+                        ipv4_address?: string;
+                        ipv6_address?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Attached */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            network?: string;
+                            container?: string;
+                            /** @enum {string} */
+                            status?: "connected";
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NetworkNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/networks/{id}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Network ID or name. */
+                id: components["parameters"]["NetworkID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Detach a container from a network */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Network ID or name. */
+                    id: components["parameters"]["NetworkID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        container: string;
+                        /** @default false */
+                        force?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Detached */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            network?: string;
+                            container?: string;
+                            /** @enum {string} */
+                            status?: "disconnected";
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NetworkNotFound"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/registries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List configured registries
+         * @description Admin-only. Passwords are never returned by any endpoint —
+         *     `has_password` is the only thing said about them.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The registries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["Registry"][];
+                            total: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Add a registry credential
+         * @description The password is encrypted with the master key from `secret_key_file`
+         *     before it reaches the database, and is decrypted only to authenticate a
+         *     pull. The server address is normalized, so `https://index.docker.io/`
+         *     and `docker.io` are the same entry.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegistryInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Registry"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description A registry for this server already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/registries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update a registry
+         * @description An omitted or empty `password` keeps the stored one. The UI is never
+         *     given the value, so a blank field on an edit form must not erase it.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegistryInput"];
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Registry"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such registry */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        post?: never;
+        /** Remove a registry */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such registry */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Long-running operations
+         * @description What the UI's task drawer shows. Tasks live in memory: restarting
+         *     iskeled cancels everything in flight, so a persisted task could only
+         *     ever be one that can never finish. Finished tasks are kept for ten
+         *     minutes.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Tasks, newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["Task"][];
+                            total: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One task */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The task */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such task; finished tasks are kept for ten minutes */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop a running task */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The task, now canceled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Task"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such task */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The task has already finished */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/allowed-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Host paths that may be bind-mounted
+         * @description The configured `allowed_paths`. The create wizard's path picker needs
+         *     them; without this the operator learns what is allowed only by being
+         *     refused. An empty list means bind mounts are refused entirely.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The whitelist */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            paths: string[];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
             };
         };
         put?: never;
@@ -2151,6 +3440,323 @@ export interface components {
         IdentifiedStats: {
             id: string;
         } & components["schemas"]["Stats"];
+        /**
+         * @description A container definition in operator-facing terms. Everything the create
+         *     wizard collects, in one object.
+         */
+        ContainerSpec: {
+            /**
+             * @description Container name. The engine requires `[a-zA-Z0-9][a-zA-Z0-9_.-]+`
+             *     and rejects one already in use. Omitted asks for a random name.
+             */
+            name?: string;
+            /** @example nginx:1.27 */
+            image: string;
+            /**
+             * @description `missing` leaves the engine to pull an image it does not have,
+             *     which is its own default. `always` pulls before creating, so a
+             *     moving tag picks up the new build. `never` fails rather than
+             *     reaching the network.
+             * @default missing
+             * @enum {string}
+             */
+            pull_policy: "missing" | "always" | "never";
+            /** @description Overrides the image's CMD. */
+            command?: string[];
+            entrypoint?: string[];
+            working_dir?: string;
+            /** @description `name`, `uid`, or `uid:gid`. */
+            user?: string;
+            hostname?: string;
+            domain_name?: string;
+            tty?: boolean;
+            open_stdin?: boolean;
+            /**
+             * @description Key and value are kept apart so a value containing `=` — every
+             *     connection string — survives the round trip.
+             */
+            env?: {
+                key: string;
+                value: string;
+            }[];
+            labels?: {
+                [key: string]: string;
+            };
+            ports?: components["schemas"]["PortMapping"][];
+            mounts?: components["schemas"]["MountSpec"][];
+            restart_policy?: {
+                /**
+                 * @default no
+                 * @enum {string}
+                 */
+                name: "no" | "always" | "unless-stopped" | "on-failure";
+                /** @description Only valid with `on-failure`. */
+                max_retries?: number;
+            };
+            resources?: {
+                /**
+                 * Format: double
+                 * @description Core count, as `docker run --cpus` takes it: 1.5 is one and a half.
+                 */
+                cpus?: number;
+                /** Format: int64 */
+                cpu_shares?: number;
+                /** @example 0-3 */
+                cpuset_cpus?: string;
+                /**
+                 * Format: int64
+                 * @description Bytes.
+                 */
+                memory?: number;
+                /** Format: int64 */
+                memory_reservation?: number;
+                /**
+                 * Format: int64
+                 * @description Combined memory+swap limit; -1 allows unlimited swap.
+                 */
+                memory_swap?: number;
+                /** Format: int64 */
+                pids_limit?: number;
+                /** Format: int64 */
+                shm_size?: number;
+            };
+            network?: {
+                /**
+                 * @description A network name, or `bridge`/`host`/`none`. `host` needs the
+                 *     privileged permission: it shares the host's whole stack,
+                 *     including the loopback an unprotected service listens on.
+                 */
+                name?: string;
+                aliases?: string[];
+                /** @description Only works on a network with a user-defined subnet. */
+                ipv4_address?: string;
+                ipv6_address?: string;
+                /** @description `hostname:ip` entries added to /etc/hosts. */
+                extra_hosts?: string[];
+                dns?: string[];
+                dns_search?: string[];
+                dns_options?: string[];
+                mac_address?: string;
+            };
+            health_check?: components["schemas"]["HealthSpec"];
+            logging?: {
+                /** @example json-file */
+                driver?: string;
+                options?: {
+                    [key: string]: string;
+                };
+            };
+            security?: components["schemas"]["SecuritySpec"];
+            /** @description Remove the container when it exits. */
+            auto_remove?: boolean;
+            /** @description Run an init process as PID 1 to reap zombies. */
+            init?: boolean;
+            /**
+             * @description Start the container as soon as it is created. A container that is
+             *     created but fails to start is left in place, so the operator can
+             *     see why.
+             */
+            start?: boolean;
+        };
+        PortMapping: {
+            /**
+             * @description Empty publishes on every interface, which is worth noticing on a
+             *     machine reachable from outside.
+             */
+            host_ip?: string;
+            /**
+             * @description A port or a `start-end` range. Empty lets the engine pick one; with
+             *     no host side at all the port is exposed to other containers but not
+             *     published.
+             */
+            host_port?: string;
+            container_port: number;
+            /**
+             * @default tcp
+             * @enum {string}
+             */
+            protocol: "tcp" | "udp" | "sctp";
+        };
+        MountSpec: {
+            /**
+             * @default volume
+             * @enum {string}
+             */
+            type: "bind" | "volume" | "tmpfs";
+            /**
+             * @description A host path for `bind` — checked against `allowed_paths` — a volume
+             *     name for `volume`, and unused for `tmpfs`. An empty source on a
+             *     volume mount asks for an anonymous one.
+             */
+            source?: string;
+            /** @description An absolute path inside the container. */
+            destination: string;
+            read_only?: boolean;
+            /**
+             * Format: int64
+             * @description Bytes.
+             */
+            tmpfs_size?: number;
+            /** @enum {string} */
+            bind_propagation?: "rprivate" | "private" | "rshared" | "shared" | "rslave" | "slave";
+            /** @description Create a missing bind source rather than failing. */
+            create_host_path?: boolean;
+        };
+        HealthSpec: {
+            /**
+             * @description One element is run through a shell, which is what an operator
+             *     typing `curl -f localhost/health` expects. Several are exec'd
+             *     directly.
+             */
+            test?: string[];
+            /** @example 30s */
+            interval?: string;
+            /** @example 5s */
+            timeout?: string;
+            /** @example 10s */
+            start_period?: string;
+            retries?: number;
+            /** @description Turn off a health check inherited from the image. */
+            disable?: boolean;
+        };
+        /**
+         * @description Every field here needs the **privileged** permission. Each one is, in
+         *     some configuration, a route from container to host root.
+         */
+        SecuritySpec: {
+            privileged?: boolean;
+            cap_add?: string[];
+            /** @description Dropping capabilities narrows the container, so it is not gated. */
+            cap_drop?: string[];
+            security_opt?: string[];
+            /** @description `host[:container[:permissions]]`, permissions from r, w, m. */
+            devices?: string[];
+            read_only_root_fs?: boolean;
+            sysctls?: {
+                [key: string]: string;
+            };
+        };
+        VolumeSpec: {
+            /** @description Empty asks the engine for an anonymous volume. */
+            name?: string;
+            /** @default local */
+            driver: string;
+            /**
+             * @description Driver-specific, e.g. `type`/`device`/`o` for the local driver
+             *     mounting an NFS share.
+             */
+            driver_opts?: {
+                [key: string]: string;
+            };
+            labels?: {
+                [key: string]: string;
+            };
+        };
+        NetworkSpec: {
+            name: string;
+            /**
+             * @description bridge, macvlan, ipvlan, overlay, or a plugin's name.
+             * @default bridge
+             */
+            driver: string;
+            /** @description Cut the network off from the outside world. */
+            internal?: boolean;
+            /** @description Let standalone containers join a swarm-scoped network. */
+            attachable?: boolean;
+            enable_ipv6?: boolean;
+            /** @description Subnets. Empty leaves the engine to pick one. */
+            ipam?: {
+                /** @example 172.30.0.0/16 */
+                subnet?: string;
+                gateway?: string;
+                ip_range?: string;
+            }[];
+            /** @description Driver-specific, e.g. `parent=eth0` for macvlan. */
+            options?: {
+                [key: string]: string;
+            };
+            labels?: {
+                [key: string]: string;
+            };
+        };
+        PruneReport: {
+            /** @description Image IDs, volume names or network names. */
+            deleted: string[];
+            /**
+             * Format: int64
+             * @description Bytes. Always 0 for networks, which occupy no disk.
+             */
+            space_reclaimed: number;
+        };
+        ImageHistoryEntry: {
+            id?: string;
+            /** Format: date-time */
+            created?: string;
+            created_by?: string;
+            /** Format: int64 */
+            size?: number;
+            comment?: string;
+            tags?: string[];
+        };
+        /**
+         * @description A private registry credential. The password is never part of this
+         *     object in any response.
+         */
+        Registry: {
+            id: string;
+            name: string;
+            /** @description Normalized host, e.g. `ghcr.io` or `docker.io`. */
+            server: string;
+            username: string;
+            email?: string;
+            /** @description Whether a credential is stored, without revealing it. */
+            has_password: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description The last pull that authenticated with this credential.
+             */
+            last_used_at?: string;
+        };
+        RegistryInput: {
+            name: string;
+            /**
+             * @description A host, optionally with a port. A scheme and trailing slash are
+             *     stripped; every Docker Hub spelling normalizes to `docker.io`.
+             * @example ghcr.io
+             */
+            server: string;
+            username?: string;
+            /**
+             * @description Encrypted before storage. On an update, an empty value keeps the
+             *     stored one.
+             */
+            password?: string;
+            email?: string;
+        };
+        Task: {
+            id: string;
+            /** @example image.pull */
+            kind: string;
+            /** @description What the task acts on — an image reference, a container. */
+            target: string;
+            /** @enum {string} */
+            state: "running" | "succeeded" | "failed" | "canceled";
+            /** @description 0..100, or -1 when the operation cannot report a fraction. */
+            progress: number;
+            message?: string;
+            error?: string;
+            /** @description Who started it, so a shared installation's drawer is not a mystery. */
+            username?: string;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+            cancelable: boolean;
+        };
     };
     responses: {
         /** @description The lifecycle action was applied */
@@ -2166,6 +3772,66 @@ export interface components {
                     /** @enum {string} */
                     status: "ok";
                 };
+            };
+        };
+        /**
+         * @description This installation will not create that container. Two distinct policies
+         *     produce it, told apart by `code`:
+         *
+         *     * `PATH_NOT_ALLOWED` — a bind mount source outside `allowed_paths`.
+         *       `details` carries the refused `path` and the configured
+         *       `allowed_paths`.
+         *     * `FORBIDDEN` — an option needing the `privileged` permission.
+         *       `details.options` names every one that was used.
+         */
+        CreateRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "PATH_NOT_ALLOWED",
+                 *         "message": "\"/etc\" is outside the allowed paths (/opt/stacks, /srv)",
+                 *         "details": {
+                 *           "path": "/etc",
+                 *           "allowed_paths": [
+                 *             "/opt/stacks",
+                 *             "/srv"
+                 *           ]
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No such image */
+        ImageNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No such volume */
+        VolumeNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No such network */
+        NetworkNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
             };
         };
         /**
@@ -2327,6 +3993,12 @@ export interface components {
          *     engine's own default (10s).
          */
         StopTimeout: number;
+        /** @description Image ID or a reference such as `nginx:1.27`. */
+        ImageID: string;
+        /** @description Volume name. */
+        VolumeName: string;
+        /** @description Network ID or name. */
+        NetworkID: string;
         /**
          * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
          *     arrival whether or not the permission check that follows passes, so a

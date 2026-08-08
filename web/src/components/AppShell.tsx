@@ -18,6 +18,7 @@ import { useUI } from '../stores/ui';
 import { cn } from '../lib/cn';
 import { ConnectionBanner } from './ConnectionBanner';
 import { ThemeToggle } from './ThemeToggle';
+import { TaskDrawer } from '../features/tasks/TaskDrawer';
 import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts';
 
 const NAV = [
@@ -107,7 +108,7 @@ export function AppShell() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center gap-3 border-b border-border bg-surface px-4">
+        <header className="relative flex h-14 items-center gap-3 border-b border-border bg-surface px-4">
           <button
             type="button"
             className="btn-ghost md:hidden"
@@ -119,6 +120,7 @@ export function AppShell() {
 
           <div className="flex-1" />
 
+          <TaskDrawer />
           <ThemeToggle />
 
           <div className="flex items-center gap-2 border-l border-border pl-3">

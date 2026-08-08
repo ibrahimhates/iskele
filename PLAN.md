@@ -281,7 +281,7 @@ Prefix `/api/v1`. Tüm hatalar:
 | GET | `/auth/me` | any | M2 |
 | POST | `/auth/totp/setup` `/auth/totp/verify` `/auth/totp/disable` | self | M8 |
 | GET | `/containers?all=&filter=` | viewer | M1 |
-| POST | `/containers` | operator* | M5 |
+| POST | `/containers` | operator (bind ve privileged için ek kontrol) | M5 |
 | GET | `/containers/{id}` `/containers/{id}/inspect` | viewer | M1 |
 | DELETE | `/containers/{id}?force=&volumes=` | operator | M1 |
 | POST | `/containers/{id}/{start\|stop\|restart\|pause\|unpause\|kill\|rename}` | operator | M1/M4 |
@@ -294,9 +294,13 @@ Prefix `/api/v1`. Tüm hatalar:
 | WS | `/containers/{id}/logs` | viewer (ticket) | M4 |
 | WS | `/containers/{id}/exec` | operator (ticket) | M4 |
 | GET | `/images` | viewer | M1 |
-| POST | `/images/pull` (SSE) | operator | M5 |
-| DELETE | `/images/{id}?force=` | operator | M5 |
-| POST | `/images/prune` `/images/{id}/tag` | admin | M5 |
+| GET | `/images/pull` (SSE, ticket) | operator | M5 |
+| DELETE | `/images/{id}?force=&noprune=` | delete | M5 |
+| POST | `/images/prune` | prune (admin) | M5 |
+| POST | `/images/{id}/tag` | operator | M5 |
+| GET | `/system/allowed-paths` | viewer | M5 |
+| GET/POST/PUT/DELETE | `/registries` `/registries/{id}` | admin | M5 |
+| GET | `/tasks` `/tasks/{id}` · POST `/tasks/{id}/cancel` | viewer / operator | M5 |
 | GET | `/images/{id}/history` `/images/{id}/inspect` | viewer | M5 |
 | WS | `/build` | admin | M6 |
 | GET | `/builds` `/builds/{id}` `/builds/{id}/log` | viewer | M6 |
@@ -484,10 +488,14 @@ restart sayısı listede yok, gerekçesi D-049); toplu seçim + batch aksiyon; d
 
 ---
 
-### M5 — Oluşturma sihirbazı + Image/Volume/Network
+### M5 — Oluşturma sihirbazı + Image/Volume/Network  ✅
 **Kapsam:** Container create sihirbazı — PROMPT §4.3'teki **tüm** alanlar (image/tag/pull policy, ad, restart policy, cmd/entrypoint, workdir, user, port map, bind/named/tmpfs volume + read-only, env satır satır + `.env` yapıştırma, network/alias/statik IP/extra hosts, labels, CPU/mem/pids limitleri, healthcheck, devices, cap add/drop, privileged, security-opt, log driver); canlı **`docker run` preview + API payload** paneli; image pull SSE ilerleme; registry CRUD + şifreli kimlik; image remove/prune/tag/history/inspect; volume ve network CRUD + prune + connect/disconnect; global TaskDrawer + iptal.
 **Testler:** form→API payload dönüşümü (birim), whitelist ihlali reddi, registry şifreleme round-trip, zod şema testleri.
-**Risk:** form karmaşıklığı → alanlar sekmeli gruplanır, zod ile tek şema, preview canlı doğrulama sağlar.
+**Not (gerçekleşen):** zod eklenmedi. Doğrulama iki yerde: formu API'nin aldığı nesneye çeviren saf bir fonksiyon
+(`buildSpec`, birim testli) ve sunucudaki `BuildCreateSpec` — ki otorite odur. Araya üçüncü bir şema koymak,
+üçünün ayrışabileceği bir yüzey daha yaratırdı (D-050).
+**Risk (gerçekleşti, çözüldü):** form karmaşıklığı → alanlar 10 sekmeye ayrıldı, canlı `docker run` önizlemesi
+gönderilecek nesneden üretiliyor (D-058), whitelist ve privileged uyarıları gönderim öncesi çıkıyor.
 **Tahmini commit:** 10–14.
 
 ---

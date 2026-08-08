@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Boxes, Pause, Play, RotateCw, Search, Square, Trash2, X } from 'lucide-react';
+import { Boxes, Pause, Play, Plus, RotateCw, Search, Square, Trash2, X } from 'lucide-react';
 
 import { containers as containersApi } from '../../api/endpoints';
 import type { Container, ContainerAction, Stats } from '../../api/types';
@@ -27,6 +27,7 @@ export function ContainerListPage() {
   const { t } = useTranslation();
   const canOperate = useAuth((s) => s.can('operate'));
   const canDelete = useAuth((s) => s.can('delete'));
+  const canCreate = useAuth((s) => s.can('create'));
 
   const [showAll, setShowAll] = useState(true);
   const [search, setSearch] = useState('');
@@ -120,15 +121,23 @@ export function ContainerListPage() {
         title={t('containers.title')}
         description={`${rows.length} / ${total}`}
         actions={
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={showAll}
-              onChange={(e) => setShowAll(e.target.checked)}
-              className="accent-accent"
-            />
-            {t('containers.showAll')}
-          </label>
+          <>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => setShowAll(e.target.checked)}
+                className="accent-accent"
+              />
+              {t('containers.showAll')}
+            </label>
+            {canCreate && (
+              <Link to="/containers/new" className="btn-primary">
+                <Plus size={14} aria-hidden />
+                {t('containers.create')}
+              </Link>
+            )}
+          </>
         }
       />
 

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { system } from '../../api/endpoints';
 import { PageHeader } from '../../components/PageHeader';
+import { RegistriesPanel } from './RegistriesPanel';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { setLanguage } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
@@ -10,13 +11,14 @@ import { useAuth } from '../../stores/auth';
 export function SettingsPage() {
   const { t, i18n } = useTranslation();
   const user = useAuth((s) => s.user);
+  const isAdmin = useAuth((s) => s.can('admin'));
   const version = useQuery({ queryKey: ['version'], queryFn: system.version });
 
   return (
     <>
       <PageHeader title={t('settings.title')} />
 
-      <div className="grid max-w-2xl gap-4">
+      <div className="grid max-w-3xl gap-4">
         <section className="card p-4">
           <h2 className="mb-3 text-sm font-medium">{t('settings.appearance')}</h2>
 
@@ -40,6 +42,14 @@ export function SettingsPage() {
             </select>
           </div>
         </section>
+
+        {/* Registry credentials reach outside this host, so only an admin
+            sees them at all. */}
+        {isAdmin && (
+          <div className="card p-4">
+            <RegistriesPanel />
+          </div>
+        )}
 
         <section className="card p-4">
           <h2 className="mb-3 text-sm font-medium">{t('settings.about')}</h2>
