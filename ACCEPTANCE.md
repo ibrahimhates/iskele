@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 0
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 26 (M2 sonu)
 
 ---
 
@@ -13,18 +13,18 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| A1 | `make build` tek statik binary üretir (`CGO_ENABLED=0`) | CI | M0 | [ ] |
+| A1 | `make build` tek statik binary üretir (`CGO_ENABLED=0`) | CI | M0 | [x] |
 | A2 | `go build ./...` ve `go vet ./...` temiz | CI | tüm | [ ] |
 | A3 | `go test ./...` yeşil, `-race` ile de geçer | CI | tüm | [ ] |
 | A4 | `golangci-lint run` (errcheck, govet, staticcheck, gosec) temiz | CI | tüm | [ ] |
 | A5 | `npm run lint` ve `npm run build` yeşil | CI | M3+ | [ ] |
 | A6 | Binary `linux/amd64`, `linux/arm64`, `linux/armv7` için cross-compile edilir | CI | M9 | [ ] |
 | A7 | Frontend `embed.FS` ile binary'ye gömülüdür; harici dosya gerekmez | manuel | M3 | [ ] |
-| A8 | `iskeled --help` tüm flag'leri açıklar; `--version` sürüm/commit/tarih basar | manuel | M0 | [ ] |
-| A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [ ] |
-| A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [ ] |
-| A11 | `SIGTERM` ile graceful shutdown: aktif istekler tamamlanır, WS'ler kapanır, DB kapanır | manuel | M0 | [ ] |
-| A12 | Docker erişilemezken servis açılır, UI `DOCKER_UNAVAILABLE` uyarısı gösterir | manuel | M1 | [ ] |
+| A8 | `iskeled --help` tüm flag'leri açıklar; `--version` sürüm/commit/tarih basar | manuel | M0 | [x] |
+| A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [x] |
+| A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [x] |
+| A11 | `SIGTERM` ile graceful shutdown: aktif istekler tamamlanır, WS'ler kapanır, DB kapanır | manuel | M0 | [x] |
+| A12 | Docker erişilemezken servis açılır, UI `DOCKER_UNAVAILABLE` uyarısı gösterir | manuel | M1 | [x] |
 | A13 | `install.sh` temiz bir Linux VM'de kurulumu uçtan uca tamamlar (idempotent) | manuel | M9 | [ ] |
 | A14 | `uninstall.sh` servisi ve dosyaları temizler; `--purge` veriyi de siler | manuel | M9 | [ ] |
 | A15 | `systemctl status iskeled` aktif; reboot sonrası otomatik başlar | manuel | M9 | [ ] |
@@ -34,20 +34,20 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| B1 | Kurulmamış sistemde yalnız `/auth/bootstrap` çalışır, diğerleri `NOT_INITIALIZED` döner | test | M2 | [ ] |
-| B2 | Bootstrap yalnız bir kez çalışır; ikinci deneme `ALREADY_INITIALIZED` | test | M2 | [ ] |
-| B3 | Parola argon2id ile hash'lenir; 12 karakterden kısa parola reddedilir | test | M2 | [ ] |
-| B4 | Access token 15 dk, refresh token 7 gün; süresi dolan token reddedilir | test | M2 | [ ] |
-| B5 | Refresh token rotasyonlu; kullanılan token tekrar kullanılamaz | test | M2 | [ ] |
-| B6 | Logout refresh token'ı revoke eder; sonraki refresh `UNAUTHORIZED` | test | M2 | [ ] |
-| B7 | `admin`/`operator`/`viewer` rol matrisinin tamamı test edilir | test | M2 | [ ] |
-| B8 | `viewer` hiçbir state-changing endpoint'i çağıramaz (403) | test | M2 | [ ] |
-| B9 | `operator` build, prune, users, settings çağıramaz (403) | test | M2 | [ ] |
-| B10 | API token `Authorization: Bearer` ile çalışır; scope ve expiry uygulanır | test | M2 | [ ] |
-| B11 | Başarısız girişte IP bazlı limit devreye girer, kilit süresi uygulanır | test | M2 | [ ] |
+| B1 | Kurulmamış sistemde yalnız `/auth/bootstrap` çalışır, diğerleri `NOT_INITIALIZED` döner | test | M2 | [x] |
+| B2 | Bootstrap yalnız bir kez çalışır; ikinci deneme `ALREADY_INITIALIZED` | test | M2 | [x] |
+| B3 | Parola argon2id ile hash'lenir; 12 karakterden kısa parola reddedilir | test | M2 | [x] |
+| B4 | Access token 15 dk, refresh token 7 gün; süresi dolan token reddedilir | test | M2 | [x] |
+| B5 | Refresh token rotasyonlu; kullanılan token tekrar kullanılamaz | test | M2 | [x] |
+| B6 | Logout refresh token'ı revoke eder; sonraki refresh `UNAUTHORIZED` | test | M2 | [x] |
+| B7 | `admin`/`operator`/`viewer` rol matrisinin tamamı test edilir | test | M2 | [x] |
+| B8 | `viewer` hiçbir state-changing endpoint'i çağıramaz (403) | test | M2 | [x] |
+| B9 | `operator` build, prune, users, settings çağıramaz (403) | test | M2 | [x] |
+| B10 | API token `Authorization: Bearer` ile çalışır; scope ve expiry uygulanır | test | M2 | [x] |
+| B11 | Başarısız girişte IP bazlı limit devreye girer, kilit süresi uygulanır | test | M2 | [x] |
 | B12 | TOTP 2FA kurulabilir, doğrulanır, devre dışı bırakılabilir; login akışına girer | test | M8 | [ ] |
 | B13 | Kullanıcı CRUD, rol atama, parola sıfırlama, devre dışı bırakma çalışır | manuel | M8 | [ ] |
-| B14 | Devre dışı kullanıcının mevcut oturumları geçersiz olur | test | M8 | [ ] |
+| B14 | Devre dışı kullanıcının mevcut oturumları geçersiz olur | test | M8 | [x] |
 
 ## C. Güvenlik
 
@@ -57,17 +57,17 @@
 | C2 | Bind mount ve build path'i `allowed_paths` dışına çıkamaz | test | M6 | [ ] |
 | C3 | Path traversal (`../`), symlink ve absolute bypass vektörleri reddedilir | test | M6 | [ ] |
 | C4 | `privileged`, cap add, devices, security-opt, host-bind yalnız `admin`; UI'da uyarı | test+gözle | M5 | [ ] |
-| C5 | State-changing endpoint'lerde CSRF koruması (cookie akışı) veya yalnız Bearer kabulü | test | M2 | [ ] |
-| C6 | Login endpoint'i sıkı, genel API gevşek rate limit uygular | test | M2 | [ ] |
+| C5 | State-changing endpoint'lerde CSRF koruması (cookie akışı) veya yalnız Bearer kabulü | test | M2 | [x] |
+| C6 | Login endpoint'i sıkı, genel API gevşek rate limit uygular | test | M2 | [x] |
 | C7 | Registry parolaları ve tunnel token'ları DB'de AES-GCM ile şifreli | test | M5 | [ ] |
-| C8 | `/etc/iskele/secret.key` 0600 izinle üretilir; yoksa oluşturulur | test | M2 | [ ] |
-| C9 | Audit log ve uygulama loglarında secret değerler maskelenir | test | M2 | [ ] |
+| C8 | `/etc/iskele/secret.key` 0600 izinle üretilir; yoksa oluşturulur | test | M2 | [x] |
+| C9 | Audit log ve uygulama loglarında secret değerler maskelenir | test | M2 | [x] |
 | C10 | WebSocket bağlantılarında `Origin` doğrulaması ve ticket kontrolü yapılır | test | M4 | [ ] |
 | C11 | systemd unit hardening direktiflerinin tamamı mevcut (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths`, `RestrictAddressFamilies`, `MemoryDenyWriteExecute`, boş `CapabilityBoundingSet`) | gözle | M9 | [ ] |
 | C12 | Servis `iskele` sistem kullanıcısıyla çalışır (root varsayılan değil), `docker` grubunda | manuel | M9 | [ ] |
 | C13 | `README.md` ve `SECURITY.md` "docker socket = root eşdeğeri" uyarısını açıkça içerir | gözle | M9 | [ ] |
 | C14 | CI'da `govulncheck` ve `npm audit` çalışır | CI | M9 | [ ] |
-| C15 | Güvenlik başlıkları (CSP, X-Frame-Options, nosniff, Referrer-Policy) yanıtlarda mevcut | test | M0 | [ ] |
+| C15 | Güvenlik başlıkları (CSP, X-Frame-Options, nosniff, Referrer-Policy) yanıtlarda mevcut | test | M0 | [x] |
 | C16 | Opsiyonel yerleşik TLS (cert/key) çalışır | manuel | M9 | [ ] |
 
 ## D. Container Yönetimi
@@ -165,7 +165,7 @@
 | J3 | Host CPU/RAM/disk (gopsutil), Docker Engine sürümü, uptime gösterilir | gözle | M8 | [ ] |
 | J4 | `docker events` akışı UI'ya canlı bildirim (toast + activity feed) olarak düşer | manuel | M8 | [ ] |
 | J5 | Prune araçları (dangling image, stopped container, unused volume/network) onay diyaloğuyla çalışır | manuel | M8 | [ ] |
-| J6 | Audit log kim/ne zaman/hangi kaynak/hangi işlem bilgisini kaydeder | test | M2 | [ ] |
+| J6 | Audit log kim/ne zaman/hangi kaynak/hangi işlem bilgisini kaydeder | test | M2 | [x] |
 | J7 | Audit log filtrelenebilir ve dışa aktarılabilir (CSV/JSON) | manuel | M8 | [ ] |
 | J8 | Log ve event retention ayarları uygulanır (budama çalışır) | test | M8 | [ ] |
 
@@ -190,7 +190,7 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| L1 | Docker katmanı interface arkasında; handler testleri fake kullanır | test | M1 | [ ] |
+| L1 | Docker katmanı interface arkasında; handler testleri fake kullanır | test | M1 | [x] |
 | L2 | Auth testleri: üretim, doğrulama, expiry, revoke, RBAC matrisi, brute-force | test | M2 | [ ] |
 | L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M6 | [ ] |
 | L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [ ] |
@@ -208,7 +208,7 @@
 | M3 | `SECURITY.md`: tehdit modeli, socket=root uyarısı, zafiyet bildirim süreci | gözle | M9 | [ ] |
 | M4 | `CONTRIBUTING.md`: geliştirme kurulumu, commit kuralları, PR süreci | gözle | M9 | [ ] |
 | M5 | `CHANGELOG.md`: v0.1.0 girdisi | gözle | M9 | [ ] |
-| M6 | `LICENSE`: Apache-2.0 | gözle | M0 | [ ] |
+| M6 | `LICENSE`: Apache-2.0 | gözle | M0 | [x] |
 | M7 | `docs/openapi.yaml` tüm endpoint'lerle senkron ve doğrulanabilir (lint'ten geçer) | CI | M9 | [ ] |
 | M8 | `docs/architecture.md`, `docs/template-schema.md`, `docs/configuration.md`, `docs/security-model.md` mevcut | gözle | M9 | [ ] |
 | M9 | `PLAN.md`, `PROGRESS.md`, `DECISIONS.md` son duruma göre güncel | gözle | M9 | [ ] |

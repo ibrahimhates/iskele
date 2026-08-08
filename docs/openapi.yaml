@@ -1,0 +1,1042 @@
+openapi: 3.1.0
+
+info:
+  title: Iskele API
+  version: 0.1.0-M2
+  description: |
+    HTTP API of the Iskele daemon (`iskeled`).
+
+    This document is kept in sync with the implementation milestone by
+    milestone; only the endpoints listed here exist today. The full planned
+    surface is in `PLAN.md` §6.
+
+    **Authentication.** Every endpoint requires a `Bearer` credential — either
+    a JWT access token from `/auth/login`, or an API token (`isk_<prefix>_<secret>`)
+    — except `/health`, `/version`, `/auth/status`, `/auth/bootstrap`,
+    `/auth/login` and `/auth/refresh`.
+
+    Until the first admin account exists, every route except the four auth
+    endpoints answers `409 NOT_INITIALIZED`.
+
+    **CSRF.** State-changing requests must carry the `Authorization` header,
+    which a cross-site form cannot set, and a present `Origin` must match the
+    server. There is no cookie-based session.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://127.0.0.1:8377/api/v1
+    description: Default local installation
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+    description: Bootstrap, sign-in, token refresh and the current identity
+  - name: system
+    description: Daemon health, version and Docker engine status
+  - name: containers
+    description: Container listing, inspection and lifecycle
+  - name: images
+  - name: volumes
+  - name: networks
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness probe
+      description: |
+        Reports that iskeled is up. Deliberately exposes no internal state:
+        it is reachable without authentication so a load balancer or systemd
+        watchdog can poll it.
+      responses:
+        "200":
+          description: The daemon is serving
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, uptime]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  uptime:
+                    type: string
+                    example: 1h2m3s
+
+  /version:
+    get:
+      tags: [system]
+      summary: Build metadata of the running binary
+      responses:
+        "200":
+          description: Build metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionInfo"
+
+
+  /auth/status:
+    get:
+      tags: [auth]
+      summary: Has this installation been set up?
+      security: []
+      description: |
+        The only call a client can make before signing in. It reveals nothing
+        but whether an admin account exists, so the UI knows whether to show
+        the bootstrap screen or the login form.
+      responses:
+        "200":
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [initialized]
+                properties:
+                  initialized: { type: boolean }
+
+  /auth/bootstrap:
+    post:
+      tags: [auth]
+      summary: Create the first admin account
+      security: []
+      description: |
+        Works exactly once, while no account exists. Afterwards it answers
+        `409 ALREADY_INITIALIZED` so a passer-by cannot claim the installation.
+        Strictly rate limited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "201":
+          description: The admin account was created and signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: An account already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in
+      security: []
+      description: |
+        Strictly rate limited, and backed by a per-IP lockout after repeated
+        failures. A wrong password and an unknown username produce the same
+        response, and take the same time, so the endpoint cannot be used to
+        enumerate accounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Invalid username or password
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: invalid username or password
+        "403":
+          description: The account is disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The installation has not been set up yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a new pair
+      security: []
+      description: |
+        The refresh token is rotated: the presented one is revoked before the
+        new pair is issued, so a stolen copy stops working as soon as the real
+        user refreshes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: A new token pair
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401":
+          description: The refresh token is unknown, expired or already used
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: The account is disabled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session
+      description: |
+        Revoking an unknown token is not an error: the caller wanted to be
+        signed out, and they are.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "204":
+          description: The session was revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: The current identity and its permissions
+      description: |
+        `permissions` is what the caller's role may do; the UI uses it to hide
+        controls rather than showing actions that will be refused.
+      responses:
+        "200":
+          description: The authenticated caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurrentUser" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /system/ping:
+    get:
+      tags: [system]
+      summary: Is the Docker daemon reachable?
+      description: |
+        Always answers 200: an unreachable daemon is the answer, not a failed
+        request. The UI polls this to drive its connection banner.
+      responses:
+        "200":
+          description: Current engine reachability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineStatus"
+
+  /system/info:
+    get:
+      tags: [system]
+      summary: Docker engine and host summary
+      responses:
+        "200":
+          description: Engine information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /system/df:
+    get:
+      tags: [system]
+      summary: Disk usage (`docker system df`)
+      responses:
+        "200":
+          description: Disk usage report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiskUsage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers:
+    get:
+      tags: [containers]
+      summary: List containers
+      parameters:
+        - name: all
+          in: query
+          description: Include stopped containers. A bare `?all` counts as true.
+          schema: { type: boolean, default: false }
+        - name: size
+          in: query
+          description: Compute `size_rw` / `size_root_fs`. Expensive on large hosts.
+          schema: { type: boolean, default: false }
+        - name: label
+          in: query
+          description: Repeatable, or comma-separated. Exact `key=value` match.
+          schema: { type: array, items: { type: string } }
+        - name: status
+          in: query
+          description: Repeatable. Engine container states (running, exited, ...).
+          schema: { type: array, items: { type: string } }
+        - name: name
+          in: query
+          description: Substring match on the container name.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching containers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Container" }
+                  total: { type: integer }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    get:
+      tags: [containers]
+      summary: Inspect a container (projected)
+      responses:
+        "200":
+          description: Container detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContainerDetail" }
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+    delete:
+      tags: [containers]
+      summary: Remove a container
+      parameters:
+        - name: force
+          in: query
+          description: Remove even while running.
+          schema: { type: boolean, default: false }
+        - name: volumes
+          in: query
+          description: Also remove anonymous volumes attached to the container.
+          schema: { type: boolean, default: false }
+      responses:
+        "204":
+          description: Removed
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "409":
+          description: |
+            The engine refused, e.g. the container is running and `force` was
+            not set. The engine's own guidance is passed through in `message`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/inspect:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    get:
+      tags: [containers]
+      summary: Raw engine inspect payload
+      description: |
+        The Docker Engine's own `/containers/{id}/json` response, untouched.
+        The UI shows this in its Inspect tab, so nothing the engine reports is
+        hidden from the operator.
+      responses:
+        "200":
+          description: Engine inspect JSON, verbatim
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Start a container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "409":
+          description: The engine refused given the container's current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StopTimeout"
+    post:
+      tags: [containers]
+      summary: Stop a container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/restart:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StopTimeout"
+    post:
+      tags: [containers]
+      summary: Restart a container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /images:
+    get:
+      tags: [images]
+      summary: List images
+      parameters:
+        - name: all
+          in: query
+          description: Include intermediate layers.
+          schema: { type: boolean, default: false }
+        - name: dangling
+          in: query
+          description: |
+            Tri-state. Absent means no filter; `true` restricts to untagged
+            images, `false` to tagged ones.
+          schema: { type: boolean }
+        - name: label
+          in: query
+          schema: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Matching images, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Image" }
+                  total: { type: integer }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /volumes:
+    get:
+      tags: [volumes]
+      summary: List volumes
+      responses:
+        "200":
+          description: Volumes, sorted by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Volume" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /networks:
+    get:
+      tags: [networks]
+      summary: List networks
+      responses:
+        "200":
+          description: Networks, sorted by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Network" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        A JWT access token from `/auth/login`, or an API token of the form
+        `isk_<prefix>_<secret>`. API tokens carry their owner's role.
+
+  parameters:
+    ContainerID:
+      name: id
+      in: path
+      required: true
+      description: Container ID or name.
+      schema: { type: string }
+
+    StopTimeout:
+      name: timeout
+      in: query
+      description: |
+        Seconds to wait before the engine sends SIGKILL. Omitted means the
+        engine's own default (10s).
+      schema: { type: integer, minimum: 0 }
+
+  responses:
+    ActionResult:
+      description: The lifecycle action was applied
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [id, action, status]
+            properties:
+              id: { type: string }
+              action:
+                type: string
+                enum: [start, stop, restart]
+              status:
+                type: string
+                enum: [ok]
+
+    Unauthorized:
+      description: No valid credential was presented
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: authentication required
+
+    Forbidden:
+      description: |
+        The caller's role lacks the permission this route requires. `details`
+        names the role and the missing permission.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: FORBIDDEN
+              message: role "viewer" may not operate
+              details:
+                role: viewer
+                required_permission: operate
+
+    NotInitialized:
+      description: The installation has no admin account yet
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    ValidationFailed:
+      description: The request body failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    RateLimited:
+      description: Too many requests; `Retry-After` says when to try again
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    BadRequest:
+      description: A query parameter was malformed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    ContainerNotFound:
+      description: No such container
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: CONTAINER_NOT_FOUND
+              message: "no such container: abc"
+
+    DockerUnavailable:
+      description: |
+        The Docker daemon could not be reached. iskeled keeps serving so the
+        operator can see the problem; the message names the endpoint and the
+        most likely fix.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: DOCKER_UNAVAILABLE
+              message: >-
+                cannot reach the Docker daemon at unix:///var/run/docker.sock
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable, machine-readable identifier.
+              enum:
+                - BAD_REQUEST
+                - VALIDATION_FAILED
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - METHOD_NOT_ALLOWED
+                - CONFLICT
+                - RATE_LIMITED
+                - PAYLOAD_TOO_LARGE
+                - INTERNAL
+                - SERVICE_UNAVAILABLE
+                - REQUEST_CANCELED
+                - NOT_INITIALIZED
+                - ALREADY_INITIALIZED
+                - INVALID_CREDENTIALS
+                - TOKEN_EXPIRED
+                - ACCOUNT_DISABLED
+                - CSRF_INVALID
+                - CONTAINER_NOT_FOUND
+                - IMAGE_NOT_FOUND
+                - VOLUME_NOT_FOUND
+                - NETWORK_NOT_FOUND
+                - DOCKER_UNAVAILABLE
+                - DOCKER_ERROR
+            message:
+              type: string
+              description: |
+                Human-readable explanation, shown to the operator verbatim.
+                For engine failures this is the Docker daemon's own text.
+            details:
+              type: object
+              additionalProperties: true
+
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          description: Case-insensitive; the casing given is preserved for display.
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 1024
+          description: |
+            At least 12 characters and at least two character classes
+            (lowercase, uppercase, digit, symbol).
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    Session:
+      type: object
+      required: [access_token, token_type, expires_at, refresh_token, refresh_expires_at, user]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_at: { type: string, format: date-time }
+        refresh_token:
+          type: string
+          description: Shown once; only its hash is stored.
+        refresh_expires_at: { type: string, format: date-time }
+        user: { $ref: "#/components/schemas/User" }
+
+    Permission:
+      type: string
+      enum: [read, operate, create, delete, build, prune, privileged, admin]
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        totp_enabled: { type: boolean }
+        disabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time }
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/Permission" }
+
+    CurrentUser:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            token_id:
+              type: string
+              description: Set when the caller authenticated with an API token.
+            scopes:
+              type: array
+              items: { type: string }
+
+    VersionInfo:
+      type: object
+      properties:
+        version: { type: string }
+        commit: { type: string }
+        build_date: { type: string }
+        go_version: { type: string }
+        platform: { type: string, example: linux/amd64 }
+
+    EngineStatus:
+      type: object
+      required: [reachable]
+      properties:
+        reachable: { type: boolean }
+        api_version: { type: string }
+        os_type: { type: string }
+        error:
+          type: string
+          description: Why the daemon could not be reached, when unreachable.
+
+    Port:
+      type: object
+      properties:
+        ip: { type: string }
+        private_port: { type: integer }
+        public_port: { type: integer }
+        type: { type: string, example: tcp }
+
+    Container:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        names: { type: array, items: { type: string } }
+        image: { type: string }
+        image_id: { type: string }
+        command: { type: string }
+        created: { type: string, format: date-time }
+        state: { type: string, example: running }
+        status: { type: string, example: Up 2 hours (healthy) }
+        health:
+          type: string
+          description: Parsed out of the status line; empty when no healthcheck.
+          enum: ["", healthy, unhealthy, starting]
+        ports: { type: array, items: { $ref: "#/components/schemas/Port" } }
+        labels: { type: object, additionalProperties: { type: string } }
+        networks: { type: array, items: { type: string } }
+        mounts: { type: array, items: { type: string } }
+        size_rw:
+          type: integer
+          description: -1 unless `size=true` was requested.
+        size_root_fs:
+          type: integer
+          description: -1 unless `size=true` was requested.
+
+    ContainerDetail:
+      allOf:
+        - $ref: "#/components/schemas/Container"
+        - type: object
+          properties:
+            restart_count: { type: integer }
+            platform: { type: string }
+            driver: { type: string }
+            log_path: { type: string }
+            path: { type: string }
+            args: { type: array, items: { type: string } }
+            entrypoint: { type: array, items: { type: string } }
+            cmd: { type: array, items: { type: string } }
+            env: { type: array, items: { type: string } }
+            working_dir: { type: string }
+            user: { type: string }
+            hostname: { type: string }
+            restart_policy: { type: string }
+            privileged: { type: boolean }
+            started_at: { type: string, format: date-time }
+            finished_at: { type: string, format: date-time }
+            exit_code: { type: integer }
+            oom_killed: { type: boolean }
+            pid: { type: integer }
+            error: { type: string }
+            mount_points:
+              type: array
+              items: { $ref: "#/components/schemas/MountPoint" }
+            network_list:
+              type: array
+              items: { $ref: "#/components/schemas/NetworkAttachment" }
+            health_check:
+              type: object
+              properties:
+                status: { type: string }
+                failing_streak: { type: integer }
+                last_output: { type: string }
+            port_bindings:
+              type: object
+              additionalProperties:
+                type: array
+                items: { $ref: "#/components/schemas/Port" }
+
+    MountPoint:
+      type: object
+      properties:
+        type: { type: string, example: volume }
+        name: { type: string }
+        source: { type: string }
+        destination: { type: string }
+        driver: { type: string }
+        mode: { type: string }
+        rw: { type: boolean }
+        propagation: { type: string }
+
+    NetworkAttachment:
+      type: object
+      properties:
+        name: { type: string }
+        network_id: { type: string }
+        endpoint_id: { type: string }
+        ip_address: { type: string }
+        ip_prefix_len: { type: integer }
+        gateway: { type: string }
+        mac_address: { type: string }
+        aliases: { type: array, items: { type: string } }
+
+    Image:
+      type: object
+      properties:
+        id: { type: string }
+        parent_id: { type: string }
+        repo_tags: { type: array, items: { type: string } }
+        repo_digests: { type: array, items: { type: string } }
+        created: { type: string, format: date-time }
+        size: { type: integer }
+        shared_size: { type: integer }
+        labels: { type: object, additionalProperties: { type: string } }
+        containers:
+          type: integer
+          description: Containers using this image, or -1 when not computed.
+        dangling: { type: boolean }
+
+    Volume:
+      type: object
+      properties:
+        name: { type: string }
+        driver: { type: string }
+        mountpoint: { type: string }
+        scope: { type: string }
+        created_at: { type: string, format: date-time }
+        labels: { type: object, additionalProperties: { type: string } }
+        options: { type: object, additionalProperties: { type: string } }
+        size:
+          type: integer
+          description: -1 when the engine did not report usage data.
+        ref_count:
+          type: integer
+          description: -1 when the engine did not report usage data.
+
+    Network:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        driver: { type: string }
+        scope: { type: string }
+        created: { type: string, format: date-time }
+        internal: { type: boolean }
+        attachable: { type: boolean }
+        ingress: { type: boolean }
+        enable_ipv6: { type: boolean }
+        ipam:
+          type: array
+          items:
+            type: object
+            properties:
+              subnet: { type: string }
+              gateway: { type: string }
+              ip_range: { type: string }
+              aux_address: { type: string }
+        labels: { type: object, additionalProperties: { type: string } }
+        container_count: { type: integer }
+
+    SystemInfo:
+      type: object
+      properties:
+        server_version: { type: string }
+        api_version: { type: string }
+        name: { type: string }
+        os_type: { type: string }
+        operating_system: { type: string }
+        architecture: { type: string }
+        kernel_version: { type: string }
+        ncpu: { type: integer }
+        mem_total: { type: integer }
+        docker_root_dir: { type: string }
+        storage_driver: { type: string }
+        logging_driver: { type: string }
+        cgroup_driver: { type: string }
+        containers: { type: integer }
+        containers_running: { type: integer }
+        containers_paused: { type: integer }
+        containers_stopped: { type: integer }
+        images: { type: integer }
+        warnings: { type: array, items: { type: string } }
+
+    DiskUsageEntry:
+      type: object
+      properties:
+        count: { type: integer }
+        size: { type: integer }
+        reclaimable: { type: integer }
+
+    DiskUsage:
+      type: object
+      properties:
+        layers_size: { type: integer }
+        images: { $ref: "#/components/schemas/DiskUsageEntry" }
+        containers: { $ref: "#/components/schemas/DiskUsageEntry" }
+        volumes: { $ref: "#/components/schemas/DiskUsageEntry" }
+        build_cache: { $ref: "#/components/schemas/DiskUsageEntry" }

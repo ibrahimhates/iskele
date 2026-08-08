@@ -1,0 +1,35 @@
+# Build output
+/bin/
+/dist/
+# The binary when built into the repo root. Anchored so it cannot swallow
+# cmd/iskeled/.
+/iskeled
+
+# Frontend
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+/web/.vite/
+
+# Test & coverage
+*.out
+*.test
+coverage.html
+
+# Local runtime data
+/.data/
+*.db
+*.db-wal
+*.db-shm
+secret.key
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local config overrides
+config.local.yaml
+.env
+.env.local

@@ -96,10 +96,225 @@ kullanılarak `web/src/api/schema.d.ts` üretilir. Üretilen dosya repoya commit
 
 ---
 
+## M0 Sırasında Alınan Kararlar
+
+### D-013 — Minimum Go sürümü 1.23 (PLAN'daki 1.22 yerine)
+**Durum:** ~~Kabul~~ **Değişti** → D-019 (M1'de 1.25'e yükseltildi) · **Faz:** M0
+**Bağlam:** PLAN §2'de "Go 1.22+" yazıyordu. `github.com/go-chi/chi/v5 v5.3.1` `go 1.23` gerektiriyor.
+**Karar:** `go.mod` içinde `go 1.23`; CI matrisi `1.23` ve `1.24`. `toolchain` direktifi kaldırıldı ki
+1.23 kurulu bir runner ek indirme yapmasın.
+**Sonuç:** PLAN §2 ve README güncellendi. Bu, desteklenen dağıtımlarda sorun değil — binary statik
+derlendiği için son kullanıcıda Go gerekmiyor.
+
+### D-014 — Ortak HTTP sözlüğü için `internal/httpx` paketi
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** PLAN'da `errors.go` ve `response.go` `internal/server` altındaydı. Ancak `server` paketi
+`handlers`'ı import ediyor; handler'lar da hata gövdesini yazmak için aynı yardımcılara ihtiyaç duyuyor
+→ import döngüsü.
+**Karar:** Standart hata zarfı, hata kodları, `WriteJSON`/`WriteError` ve hata dönebilen `Handler` tipi
+`internal/httpx` paketine taşındı. Hem `server` hem `handlers` buradan import eder.
+**Sonuç:** Katman kuralı korunuyor; sonraki milestone'larda tüm handler'lar `httpx.Handler` imzasını
+kullanacak (`func(w, r) error`), böylece hata yazma boilerplate'i tekrarlanmıyor.
+
+### D-015 — Test kütüphanesi: stdlib `testing`, testify yok
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** PLAN §2'de `testify/require` yazıyordu.
+**Karar:** Yalnız stdlib `testing` + tablo testleri kullanılıyor; testify bağımlılığı `go mod tidy` ile düştü.
+**Gerekçe:** M0'da tüm testler assertion helper'ı olmadan okunaklı yazılabildi; bağımlılık yüzeyini
+küçük tutmak tek binary hedefiyle uyumlu.
+**Sonuç:** İleride gerçekten gerekirse eklenir; şimdilik `go.mod` yalnız chi ve yaml.v3 içeriyor.
+
+### D-016 — `listen` portu 0 kabul edilmez
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** Port 0 "boş port ata" demek; testlerde kullanışlı ama üretimde kullanıcı servisin hangi
+porta bağlandığını bulamaz.
+**Karar:** Config doğrulaması portu 1-65535 aralığına zorlar. Testler `server.New`'i doğrudan çağırarak
+0 portunu kullanmaya devam edebilir (doğrulamadan geçmez).
+
+### D-017 — Log formatı `auto` ve `log_format` ayarı
+**Durum:** Kabul · **Faz:** M0
+**Karar:** D-003'te öngörüldüğü gibi `log_format` ayarı eklendi: `auto` (varsayılan), `text`, `json`.
+`auto`, çıktı bir terminal ise text, değilse JSON seçer — systemd altında otomatik yapılandırılmış log.
+
+### D-018 — İstemci IP'si için proxy başlıkları yok sayılır
+**Durum:** Kabul · **Faz:** M0
+**Bağlam:** Rate limit ve brute-force koruması (M2) IP'ye göre çalışacak.
+**Karar:** `middleware.ClientIP` yalnız `RemoteAddr` kullanır; `X-Forwarded-For` / `X-Real-IP`
+**yok sayılır**, çünkü saldırgan kontrolündedir ve limitleri atlatmak için kullanılabilir.
+**Sonuç:** Reverse proxy arkasında doğru istemci IP'si isteniyorsa, ileride yalnız güvenilen proxy
+adresleri için açılan açık bir ayar eklenecek (v0.2). README'de belirtilecek.
+
+---
+
+## M1 Sırasında Alınan Kararlar
+
+### D-019 — Minimum Go 1.25 (D-013'ü değiştirir)
+**Durum:** Kabul · **Faz:** M1 · **Değiştirdiği karar:** D-013 (Go 1.23)
+**Bağlam:** `github.com/docker/docker v28.5.2` bağımlılık ağacı `go.opentelemetry.io/otel v1.45`,
+`otelhttp v0.70` ve `golang.org/x/sys v0.47` çekiyor; bunların hepsi `go >= 1.25` istiyor.
+**Değerlendirilen alternatif:** Bu paketleri eski sürümlere pinlemek (otel v1.37, x/sys v0.4x).
+Denendi ve çalıştı, ancak her `go mod tidy` sonrası tekrar kırılıyor ve bilerek eski —
+dolayısıyla potansiyel olarak zafiyetli — bağımlılıklarla yaşamak demek. CI'da `govulncheck`
+çalıştıran, Docker soketine erişen bir projede bu kabul edilemez.
+**Karar:** `go.mod` içinde `go 1.25.0`; CI matrisi `1.25` ve `stable`.
+**Sonuç:** PLAN §2, README ve CI güncellendi. Son kullanıcıyı etkilemez (statik binary).
+
+### D-020 — `docker/docker` modülü `v28.5.2+incompatible` olarak sabitlendi
+**Durum:** Kabul · **Faz:** M1
+**Bağlam:** `github.com/docker/docker/client@latest` artık `github.com/moby/moby/client` olarak
+yayınlanıyor; eski yol ile `go get` hata veriyor.
+**Karar:** `go get github.com/docker/docker@v28.5.2+incompatible` ile ana modül çekiliyor,
+import yolu `github.com/docker/docker/client` olarak kalıyor.
+**Sonuç:** Moby'nin yeni modül yoluna geçiş ayrı bir iş olarak v0.2'ye bırakıldı.
+
+### D-021 — Docker erişilemezken servis ayakta kalır (`Offline` istemci)
+**Durum:** Kabul · **Faz:** M1 · **Kabul kriteri:** A12
+**Bağlam:** Daemon çökmüşse, operatörün bunu öğrenmesi gereken yer tam da paneldir.
+**Karar:** `docker.Offline(reason)` — her çağrısı `KindUnavailable` dönen bir `Client`
+implementasyonu. Başlangıçta bağlantı kurulamazsa router bunu kullanır; `/health` ve `/version`
+çalışmaya devam eder, Docker'a dayanan her route `503 DOCKER_UNAVAILABLE` döner.
+**Sonuç:** Hata mesajı endpoint'i ve en olası çözümü (`docker` grubu üyeliği) içerir.
+
+### D-022 — Engine hata metni olduğu gibi geçirilir
+**Durum:** Kabul · **Faz:** M1 · **Gereksinim:** PROMPT §7
+**Karar:** `docker.Error.Message` Docker'ın kendi metnini taşır ve yanıt gövdesine birebir yazılır.
+Docker dışı hatalar (programlama hataları) ise opak `500 INTERNAL` olur — yalnız log'a düşer.
+**Gerekçe:** Daemon güvenilen yerel bir bileşen; "container is running: stop the container before
+removing or force remove" gibi mesajlar operatöre ne yapacağını söyleyen tek şey.
+
+### D-023 — Bilinmeyen değerler için `-1` sentinel'i
+**Durum:** Kabul · **Faz:** M1
+**Bağlam:** `size_rw`, `size_root_fs`, volume `size`/`ref_count` engine tarafından yalnız istendiğinde
+hesaplanır; hesaplanmadığında 0 dönmek "boş" ile "bilinmiyor"u karıştırır.
+**Karar:** Hesaplanmamış sayısal alanlar `-1` döner. `docs/openapi.yaml`'da belgelenmiştir.
+
+### D-024 — Liste endpoint'leri `{items, total}` zarfı kullanır
+**Durum:** Kabul · **Faz:** M1
+**Karar:** `GET /containers|images|volumes|networks` çıplak dizi yerine
+`{"items":[...],"total":N}` döner; `items` hiçbir zaman `null` olmaz.
+**Gerekçe:** İleride sayfalama metadata'sı eklemek için yer bırakır ve istemcide null kontrolü gerektirmez.
+
+### D-025 — `/system/ping` M1'de eklendi (planda M8'di) ve daima 200 döner
+**Durum:** Kabul · **Faz:** M1
+**Karar:** `GET /system/ping` → `{"reachable":bool,"api_version":"...","error":"..."}`.
+Daemon erişilemez olsa bile HTTP 200 döner.
+**Gerekçe:** UI'nın bağlantı bandı (K8) bunu yoklayacak; erişilemez daemon bir *cevap*, başarısız
+bir istek değil. `/system/info` ve `/system/df` ise normal 503 semantiğini korur.
+
+### D-026 — Coverage `-coverpkg=./...` ile ölçülür
+**Durum:** Kabul · **Faz:** M1
+**Bağlam:** Handler'lar router testlerinden (farklı paket) geçiyor; varsayılan ölçüm bunu %3 gösteriyordu.
+**Karar:** `make test-cover` ve CI `-coverpkg=./...` kullanır → paketler arası atıf doğru olur.
+
+---
+
+## M2 Sırasında Alınan Kararlar
+
+### D-027 — Rol/izin matrisi: roller doğrudan değil, **izinler** üzerinden kontrol edilir
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B7-B9
+**Bağlam:** Route'larda `if role == "admin"` kontrolü, endpoint sayısı arttıkça dağınıklaşır ve
+bir yerde unutulursa sessizce açık kalır.
+**Karar:** 8 izin tanımlandı (`read, operate, create, delete, build, prune, privileged, admin`);
+roller bu izinlerin kümesidir. Route'lar izin ister (`r.With(operate())`), rol değil.
+**Sonuç:** Matris tek yerde (`middleware/rbac.go`) ve testte satır satır doğrulanıyor.
+Bilinmeyen/bozuk bir rol **hiçbir izne sahip değildir** (fail-closed). `/auth/me` çağıranın izin
+listesini döner; UI kullanamayacağı kontrolleri buna göre gizleyecek.
+
+### D-028 — CSRF: çift-gönderim cookie yerine "yalnız Bearer" kabulü
+**Durum:** Kabul · **Faz:** M2 · **Gereksinim:** PROMPT §6.6 (iki seçenekten biri)
+**Bağlam:** Iskele'nin tarayıcı istemcisi access token'ı bellekte tutar ve `Authorization`
+başlığıyla gönderir. Siteler arası bir form veya `<img>` bu başlığı **ayarlayamaz**.
+**Karar:** Durum değiştiren her istek (a) `Bearer` token taşımak zorunda ve (b) `Origin` başlığı
+varsa aynı origin olmalı. Cookie tabanlı oturum yok, dolayısıyla çift-gönderim token'ına gerek yok.
+**Sonuç:** `Origin` göndermeyen istemciler (curl, CI) çalışır — CSRF onlar için geçerli bir tehdit
+değil — ama yine de token sunmak zorundalar. `OriginAllowed` M4'te WebSocket handshake'inde tekrar
+kullanılacak.
+
+### D-029 — Brute-force limiti IP bazlı, kullanıcı adı bazlı değil
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B11
+**Bağlam:** Kullanıcı adına göre kilitlemek, bilinen bir hesabı kasten yanlış parolayla deneyerek
+**kilitleme saldırısına** (account lockout DoS) açık hale getirir.
+**Karar:** Sayaç ve kilit kaynak IP'ye göre; 15 dk pencerede 10 başarısızlık → 15 dk kilit.
+**Başarılı giriş sayacı sıfırlar**, böylece iki kez yanlış yazıp sonra giren kullanıcı kilide
+bir adım uzakta kalmaz. Kayıtlar DB'de tutulur (yeniden başlatma kilidi sıfırlamaz).
+**Sonuç:** Ayrıca in-memory token bucket rate limit var: login/bootstrap 5/dk, genel API 120/dk.
+
+### D-030 — `/auth/refresh` ve `/auth/status` sıkı login limitine tabi değil
+**Durum:** Kabul · **Faz:** M2
+**Bağlam:** Uçtan uca testte, birkaç sekmeli bir tarayıcının normal token yenilemesinde 429 alacağı
+görüldü (login limiti 5/dk).
+**Karar:** Bu iki endpoint genel limite (120/dk) alındı. Gerekçe: refresh token 32 byte rastgeledir,
+kaba kuvvetle bulunamaz — tehdit modeli parola tahmini değil. `status` yalnız kurulumun yapılıp
+yapılmadığını söyler.
+**Sonuç:** `bootstrap` ve `login` sıkı limitte kalır.
+
+### D-031 — Parola politikası: uzunluk önce, karakter sınıfı hafif
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B3
+**Karar:** Minimum 12 karakter (PROMPT §4.1) + en az 2 karakter sınıfı. Maksimum 1024 karakter.
+**Gerekçe:** Uzun bir parola cümlesi, kısa ve karmaşık bir dizeden güçlüdür; sınıf kuralı yalnız
+`aaaaaaaaaaaa` gibi aşikâr girdileri eler. Üst sınır, tek bir login denemesinin bellek-yoğun
+argon2 hesabıyla DoS'a dönüşmesini engeller.
+**Ek:** argon2id `t=3, m=64MiB, p=2`; parametreler PHC formatında hash ile birlikte saklanır,
+`NeedsRehash` ile bir sonraki başarılı girişte otomatik yükseltilir.
+
+### D-032 — Kullanıcı adı büyük/küçük harf duyarsız, görünen biçim korunur
+**Durum:** Kabul · **Faz:** M2
+**Karar:** `users.username_lower` sütunu UNIQUE; arama bunun üzerinden. `username` operatörün
+yazdığı biçimi saklar.
+**Sonuç:** "Admin" ve "admin" aynı hesap; iki ayrı hesap açılamaz.
+
+### D-033 — Kimlik doğrulama hataları ayırt edilemez
+**Durum:** Kabul · **Faz:** M2
+**Karar:** "Kullanıcı yok" ve "parola yanlış" aynı `INVALID_CREDENTIALS` mesajını döner.
+Kullanıcı bulunamadığında bile sabit bir sahte hash'e karşı doğrulama yapılır, böylece
+**süre farkı** da hesap varlığını ele vermez.
+**Sonuç:** Login formu hesap numaralandırma aracına dönüşmez.
+
+### D-034 — Refresh token rotasyonu; iptal önce, üretim sonra
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B5
+**Karar:** Her `refresh` çağrısında eski oturum **önce** iptal edilir, sonra yeni çift üretilir.
+**Gerekçe:** Üretim başarısız olursa eski token zaten ölmüştür — güvenli yönde hata.
+Çalınan bir refresh token, gerçek kullanıcı bir kez yenilediği anda çalışmaz olur.
+**Sonuç:** Token'lar DB'de yalnız SHA-256 hash'i olarak durur; veritabanı sızıntısı canlı oturum vermez.
+
+### D-035 — Token iptali ve hesap durumu her istekte kontrol edilir
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B14
+**Bağlam:** JWT kendi başına geçmişe dair bir iddiadır; hesap o sırada devre dışı bırakılmış olabilir.
+**Karar:** Her istekte kullanıcı DB'den okunur; `disabled` ise `403 ACCOUNT_DISABLED`, silinmişse `401`.
+**Sonuç:** Devre dışı bırakma anında etkili olur, token süresinin dolmasını beklemez. Maliyeti tek
+indeksli SELECT — tek sunucu ölçeğinde ihmal edilebilir.
+
+### D-036 — Audit maskelemesi: önce maskele, sonra sunucu alanlarını ekle
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** C9
+**Bağlam:** Maskeleme regex'i `token` içeren anahtarları gizliyor; bu, izleme için gereken
+`api_token_id` alanını da (bir sır olmadığı halde) gizliyordu — test bunu yakaladı.
+**Karar:** Kullanıcıdan gelen `detail` maskelenir, **sonra** sunucunun ürettiği güvenilir alanlar
+(`api_token_id`) üstüne yazılır.
+**Sonuç:** Sızmış bir API token'ının hangi işlemleri yaptığı izlenebilir kalır.
+
+### D-037 — Master anahtar izinleri her açılışta doğrulanır
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** C8
+**Karar:** `/etc/iskele/secret.key` yoksa 0600 ile üretilir; **varsa izinleri kontrol edilir** ve
+grup/diğer okuyabiliyorsa servis başlamaz (`chmod 600 ...` ipucuyla).
+**Gerekçe:** Başka bir yerel hesabın okuyabildiği anahtar hiçbir şeyi korumuyordur; bu bir uyarı
+değil, başlatma hatasıdır. Anahtar `O_EXCL` ile yaratılır — eşzamanlı bir başlatma anahtarı ezmez.
+**Ek:** Amaç bazlı alt anahtarlar (`Derive("jwt-signing")`, `Derive("secretbox")`) — birinin ele
+geçmesi diğerini vermez.
+
+### D-038 — SQLite: tek yazar bağlantısı, WAL, RFC3339Nano zaman damgaları
+**Durum:** Kabul · **Faz:** M2
+**Karar:** `SetMaxOpenConns(1)` ile yazımlar seri hale getirilir (SQLITE_BUSY tamamen elenir),
+`journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`. Zaman damgaları RFC3339Nano UTC
+**metin** olarak saklanır; sözlüksel sıralama = kronolojik sıralama, indeksler beklendiği gibi çalışır.
+**Sonuç:** Tek sunucu ölçeğinde okuma performansı yeterli; basitlik kazanıyor.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
-### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+)
-Negotiation açık; daha düşük sürümde anlamlı hata verilir. M1'de doğrulanır.
+### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**
+`client.WithAPIVersionNegotiation()` açık; `docker.MinimumAPIVersion` sabiti 1.41.
+Daemon erişilemezse `KindUnavailable` + `docker` grubu ipucu ile anlamlı hata verilir.
 
 ### A-002 — Health/version endpoint'leri auth'suz kalır
 `/api/v1/health` yalnız `{"status":"ok"}` döner, iç durum sızdırmaz. `/api/v1/version` sürüm + commit döner.
@@ -120,7 +335,9 @@ PROMPT §4.7'de opsiyonel. Zaman kalırsa M5'te, kalmazsa v0.2.
 
 ## Değişen / İptal Edilen Kararlar
 
-_(Henüz yok.)_
+| Karar | Ne oldu | Yerine |
+|---|---|---|
+| D-013 (Go 1.23) | Docker SDK bağımlılık ağacı Go 1.25 gerektiriyor | D-019 |
 
 ---
 
