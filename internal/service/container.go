@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/docker"
 )
 
@@ -19,12 +20,16 @@ var ErrEmptyID = errors.New("container id is required")
 // From M2 onward this is where audit records and events are emitted, which is
 // why even the pass-through methods live here rather than in the handlers.
 type Container struct {
-	docker docker.Client
+	docker   docker.Client
+	recorder *audit.Recorder
 }
 
 // NewContainer builds the container service on top of an engine client.
-func NewContainer(client docker.Client) *Container {
-	return &Container{docker: client}
+//
+// recorder may be nil in tests that do not assert on the audit trail; the
+// recorder itself tolerates a nil receiver.
+func NewContainer(client docker.Client, recorder *audit.Recorder) *Container {
+	return &Container{docker: client, recorder: recorder}
 }
 
 // ListOptions mirrors the query parameters of GET /containers.

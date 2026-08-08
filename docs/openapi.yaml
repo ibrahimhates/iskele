@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Iskele API
-  version: 0.1.0-M2
+  version: 0.1.0-M4
   description: |
     HTTP API of the Iskele daemon (`iskeled`).
 
@@ -21,6 +21,12 @@ info:
     **CSRF.** State-changing requests must carry the `Authorization` header,
     which a cross-site form cannot set, and a present `Origin` must match the
     server. There is no cookie-based session.
+
+    **Streaming.** The WebSocket and SSE endpoints are the exception to the
+    Bearer rule: a browser cannot set a header on a WebSocket handshake or an
+    `EventSource` request, so they authenticate with a single-use 60-second
+    ticket from `POST /auth/ws-ticket`, passed as the `ticket` query parameter.
+    They enforce the same permissions as the rest of the API.
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -39,6 +45,12 @@ tags:
     description: Daemon health, version and Docker engine status
   - name: containers
     description: Container listing, inspection and lifecycle
+  - name: streaming
+    description: |
+      Long-lived channels: WebSocket for logs and exec, Server-Sent Events for
+      stats and engine events. They authenticate with a single-use ticket
+      rather than a Bearer header, which a browser cannot set on a WebSocket
+      handshake or an `EventSource` request.
   - name: images
   - name: volumes
   - name: networks
@@ -386,19 +398,12 @@ paths:
           description: Removed
         "404":
           $ref: "#/components/responses/ContainerNotFound"
-        "409":
-          description: |
-            The engine refused, e.g. the container is running and `force` was
-            not set. The engine's own guidance is passed through in `message`.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
-          $ref: "#/components/responses/NotInitialized"
+          $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
@@ -440,17 +445,12 @@ paths:
           $ref: "#/components/responses/ActionResult"
         "404":
           $ref: "#/components/responses/ContainerNotFound"
-        "409":
-          description: The engine refused given the container's current state
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
-          $ref: "#/components/responses/NotInitialized"
+          $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
@@ -499,6 +499,407 @@ paths:
           $ref: "#/components/responses/NotInitialized"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/pause:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Pause a container
+      description: |
+        Freezes every process in the container with the cgroup freezer. The
+        container keeps its memory and its network connections.
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/unpause:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Resume a paused container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/kill:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - name: signal
+        in: query
+        description: |
+          Signal to send. Omitted means `SIGKILL`, which is what makes this
+          different from `/stop`: no grace period, no chance to shut down
+          cleanly.
+        schema: { type: string, example: SIGTERM }
+    post:
+      tags: [containers]
+      summary: Send a signal to a container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/rename:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Rename a container
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: |
+                    The new name. The engine requires
+                    `[a-zA-Z0-9][a-zA-Z0-9_.-]+` and rejects a name already in
+                    use.
+                  example: web-blue
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/redeploy:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Recreate a container from a freshly pulled image
+      description: |
+        Pulls the container's image tag, then recreates the container from its
+        existing configuration. The original is renamed out of the way rather
+        than removed first, so a failure at any step can be rolled back: on
+        `rolled_back: true` the original container is running again under its
+        own name and no changes survive.
+
+        This is not atomic — there is a window in which neither container is
+        serving — and it only carries over what the engine reports about the
+        container. A container created outside iskele with options the inspect
+        payload does not express will not reproduce them.
+      responses:
+        "200":
+          description: |
+            The redeployment finished. Check `rolled_back` before reporting
+            success: a `200` with `rolled_back: true` means the new container
+            failed and the old one was restored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RedeployResult" }
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/batch:
+    post:
+      tags: [containers]
+      summary: Apply one lifecycle action to several containers
+      description: |
+        Every container is attempted, whatever happens to the others: a failure
+        halfway through a stop-everything must not leave the rest running
+        because the loop gave up. The per-container outcome is in `results`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BatchRequest" }
+      responses:
+        "200":
+          description: Every container succeeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResponse" }
+        "207":
+          description: |
+            At least one container failed. The status distinguishes "all done"
+            from "mostly done" without the client having to scan every result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /auth/ws-ticket:
+    post:
+      tags: [streaming]
+      summary: Issue a single-use ticket for a streaming channel
+      description: |
+        The ticket carries the caller's identity and permissions, is valid for
+        60 seconds, and dies on first use. It is passed as the `ticket` query
+        parameter to the WebSocket and SSE endpoints, which is the only place a
+        browser can put a credential on those connections.
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticket, expires_in]
+                properties:
+                  ticket: { type: string }
+                  expires_in:
+                    type: integer
+                    description: Seconds until the ticket expires.
+                    example: 60
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+
+  /containers/{id}/logs:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: follow
+        in: query
+        description: |
+          Keep the socket open and send new lines as they arrive. Following is
+          the point of a WebSocket log stream, so it defaults to true;
+          `follow=false` asks for the backlog only.
+        schema: { type: boolean, default: true }
+      - name: tail
+        in: query
+        description: |
+          Lines of history to replay before following. Defaults to 500:
+          replaying a multi-gigabyte log would hang the browser.
+        schema: { type: integer, minimum: 0, default: 500 }
+      - name: timestamps
+        in: query
+        description: Include the engine's per-line timestamp.
+        schema: { type: boolean, default: false }
+      - name: stdout
+        in: query
+        description: Include stdout. Selecting neither stream means both.
+        schema: { type: boolean }
+      - name: stderr
+        in: query
+        description: Include stderr. Selecting neither stream means both.
+        schema: { type: boolean }
+    get:
+      tags: [streaming]
+      summary: Stream container logs (WebSocket)
+      security: []
+      description: |
+        A WebSocket endpoint: send `Upgrade: websocket` and authenticate with a
+        `ticket`. The server writes JSON text frames shaped like `LogFrame` and
+        reads nothing; a client closing the socket stops the engine stream.
+
+        The handshake is rejected when `Origin` does not match `Host`, which is
+        the only defense available here — a WebSocket is not subject to the
+        same-origin policy the way `fetch` is.
+
+        Frame types: `log` for a line, `err` for a stream failure (the socket
+        closes after it), `eof` when the container's stream ends.
+      responses:
+        "101":
+          description: Switching protocols; the log stream follows
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /containers/{id}/exec:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: cmd
+        in: query
+        description: |
+          The command to run, one repeat per argument. Defaults to `/bin/sh`,
+          the one shell every image has.
+        schema: { type: array, items: { type: string } }
+      - name: tty
+        in: query
+        description: Allocate a pseudo-terminal.
+        schema: { type: boolean, default: true }
+      - name: user
+        in: query
+        description: Run as this user, e.g. `root` or `1000:1000`.
+        schema: { type: string }
+      - name: workdir
+        in: query
+        description: Working directory inside the container.
+        schema: { type: string }
+      - name: rows
+        in: query
+        description: Initial terminal height.
+        schema: { type: integer, minimum: 1 }
+      - name: cols
+        in: query
+        description: Initial terminal width.
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [streaming]
+      summary: Interactive exec session (WebSocket)
+      security: []
+      description: |
+        A WebSocket endpoint requiring the `operate` permission. The framing
+        carries the channel: **binary** frames are stdin and the command's raw
+        output, **text** frames are control messages.
+
+        The only control message is a resize: `{"t":"resize","rows":40,"cols":120}`.
+        When the command exits, the server sends a text `{"t":"exit","exit_code":0}`
+        frame and closes.
+
+        Every exec session is written to the audit log with the command, the
+        user and the container.
+      responses:
+        "101":
+          description: Switching protocols; the exec session follows
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /containers/stats:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [streaming]
+      summary: Stream resource usage for every running container (SSE)
+      security: []
+      description: |
+        One `text/event-stream` covering all running containers, each sample
+        tagged with its container ID. The list view needs a figure per row, and
+        a browser will not open more than six connections to one origin, so the
+        daemon fans the per-container engine streams into this one.
+
+        The set of containers is re-scanned every 10 seconds, so one that
+        starts appears within that window and one that stops drops out of it. A
+        single container failing does not end the stream — only an unreachable
+        daemon does.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /containers/{id}/stats:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [streaming]
+      summary: Stream resource usage (SSE)
+      security: []
+      description: |
+        A `text/event-stream` of one sample per second. Event names: `stats`
+        with a `Stats` payload, `error` with `{code, message}`, and `eof` when
+        the container stops. A comment line is sent every 25 seconds so an idle
+        stream is not closed by a proxy.
+
+        CPU percentage is computed the way `docker stats` computes it: the
+        container's CPU delta over the system delta, multiplied by the number
+        of cores. Memory usage excludes the page cache, so the number matches
+        what the kernel would reclaim under pressure rather than the raw
+        cgroup total.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /system/events:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [streaming]
+      summary: Stream Docker engine events (SSE)
+      security: []
+      description: |
+        A `text/event-stream` of engine events — containers starting and
+        dying, images being pulled, volumes and networks changing. The UI uses
+        it to refresh lists without polling. Event names: `event` with a
+        `DockerEvent` payload, `error` with `{code, message}`.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /images:
     get:
@@ -620,6 +1021,16 @@ components:
         engine's own default (10s).
       schema: { type: integer, minimum: 0 }
 
+    StreamTicket:
+      name: ticket
+      in: query
+      required: true
+      description: |
+        A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+        arrival whether or not the permission check that follows passes, so a
+        rejected ticket cannot be retried against another endpoint.
+      schema: { type: string }
+
   responses:
     ActionResult:
       description: The lifecycle action was applied
@@ -632,10 +1043,24 @@ components:
               id: { type: string }
               action:
                 type: string
-                enum: [start, stop, restart]
+                enum: [start, stop, restart, pause, unpause, kill, rename]
               status:
                 type: string
                 enum: [ok]
+
+    TicketRejected:
+      description: |
+        The ticket was missing, already used, or older than 60 seconds. Fetch a
+        fresh one and reconnect.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: >-
+                a valid streaming ticket is required; request one from POST
+                /api/v1/auth/ws-ticket
 
     Unauthorized:
       description: No valid credential was presented
@@ -664,6 +1089,17 @@ components:
 
     NotInitialized:
       description: The installation has no admin account yet
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    Conflict:
+      description: |
+        Two distinct situations share this status, told apart by `code`:
+        `NOT_INITIALIZED` means the installation has no admin account yet, and
+        `CONFLICT` means the engine refused the operation given the container's
+        current state (removing a running container without `force`, say). The
+        engine's own guidance is passed through in `message`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1040,3 +1476,170 @@ components:
         containers: { $ref: "#/components/schemas/DiskUsageEntry" }
         volumes: { $ref: "#/components/schemas/DiskUsageEntry" }
         build_cache: { $ref: "#/components/schemas/DiskUsageEntry" }
+
+    BatchRequest:
+      type: object
+      required: [ids, action]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+          description: Container IDs or names.
+        action:
+          type: string
+          enum: [start, stop, restart, pause, unpause, kill, remove]
+          description: |
+            The action to apply to each container. `remove` forces removal of
+            running containers, because a bulk remove that stopped at the first
+            running container would be worse than useless.
+
+    BatchResult:
+      type: object
+      required: [id, ok]
+      properties:
+        id: { type: string }
+        ok: { type: boolean }
+        error:
+          type: string
+          description: Present only when `ok` is false.
+        code:
+          type: string
+          description: The stable error code for this container's failure.
+          example: CONTAINER_NOT_FOUND
+
+    BatchResponse:
+      type: object
+      required: [action, total, succeeded, failed, results]
+      properties:
+        action: { type: string }
+        total: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/BatchResult" }
+
+    RedeployResult:
+      type: object
+      required: [old_id, new_id, image, rolled_back]
+      properties:
+        old_id:
+          type: string
+          description: The container that was replaced.
+        new_id:
+          type: string
+          description: |
+            The container now running. Equal to `old_id` when `rolled_back` is
+            true, because nothing replaced it.
+        image:
+          type: string
+          description: The image tag that was pulled and deployed.
+        rolled_back:
+          type: boolean
+          description: |
+            True when the new container could not be created or started and the
+            original was restored under its own name.
+
+    Stats:
+      type: object
+      description: One sample from the stats stream, taken once a second.
+      required:
+        [
+          timestamp,
+          cpu_percent,
+          memory_usage,
+          memory_limit,
+          memory_percent,
+          network_rx,
+          network_tx,
+          block_read,
+          block_write,
+          pids,
+        ]
+      properties:
+        timestamp: { type: string, format: date-time }
+        cpu_percent:
+          type: number
+          format: double
+          description: |
+            Percent of one host CPU, so a container using two cores fully reads
+            200 on a machine with two or more.
+        memory_usage:
+          type: integer
+          format: int64
+          description: Bytes in use, excluding the reclaimable page cache.
+        memory_limit: { type: integer, format: int64 }
+        memory_percent: { type: number, format: double }
+        network_rx:
+          type: integer
+          format: int64
+          description: Cumulative bytes received across every interface.
+        network_tx: { type: integer, format: int64 }
+        block_read:
+          type: integer
+          format: int64
+          description: Cumulative bytes read from block devices.
+        block_write: { type: integer, format: int64 }
+        pids: { type: integer }
+
+    LogFrame:
+      type: object
+      description: One JSON text frame on the log WebSocket.
+      required: [t]
+      properties:
+        t:
+          type: string
+          enum: [log, err, eof, exit]
+        s:
+          type: string
+          enum: [stdout, stderr]
+          description: Present on `log` frames.
+        ts:
+          type: string
+          format: date-time
+          description: Present when `timestamps=true` was requested.
+        m:
+          type: string
+          description: The line, or the failure message on an `err` frame.
+        code:
+          type: string
+          description: The stable error code, on an `err` frame.
+        exit_code:
+          type: integer
+          description: The command's status, on an `exit` frame from exec.
+
+    DockerEvent:
+      type: object
+      description: One engine event from the SSE event stream.
+      required: [type, action, actor, time]
+      properties:
+        type:
+          type: string
+          description: The object kind the event concerns.
+          example: container
+        action:
+          type: string
+          example: start
+        actor:
+          type: string
+          description: The object's ID.
+        name:
+          type: string
+          description: The object's name, when the engine reports one.
+        scope: { type: string }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        time: { type: string, format: date-time }
+
+    IdentifiedStats:
+      description: |
+        One sample from `/containers/stats`: the same fields as `Stats`, plus
+        the container the sample belongs to.
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string }
+        - $ref: "#/components/schemas/Stats"

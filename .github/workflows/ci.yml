@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CGO_ENABLED: "0"
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -41,13 +38,16 @@ jobs:
         run: make fmt-check
 
       - name: go vet
-        run: go vet ./...
+        run: make vet
 
+      # build-go, not build: this job has no Node, and go:embed is satisfied by
+      # the committed web/dist/.gitkeep. The bundle job below is what proves
+      # the two halves come together.
       - name: Build
-        run: make build
+        run: make build-go
 
       - name: Test
-        run: go test -race -coverpkg=./... -coverprofile=coverage.out -covermode=atomic ./...
+        run: make test-cover
 
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1 | tee -a "$GITHUB_STEP_SUMMARY"
@@ -87,7 +87,91 @@ jobs:
           go-version: "1.25"
           cache: true
       - name: Run govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: make vuln
+
+  web:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Type-check and build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+
+      # The generated types must still match the spec; a drifting API document
+      # is worse than none, because the UI is written against it.
+      - name: OpenAPI types are up to date
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api/schema.d.ts
+
+      # Advisory: a new advisory against a transitive dev dependency should not
+      # turn the whole pipeline red, but it must be visible.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high || true
+
+  bundle:
+    name: Single-binary bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the frontend into the binary
+        run: make build
+
+      # A binary that builds but serves a blank page passes every other job in
+      # this file, so the bundle is checked by running it.
+      - name: Serve the UI from the binary alone
+        run: |
+          set -euo pipefail
+          data=$(mktemp -d)
+          ./bin/iskeled --listen 127.0.0.1:8377 --data-dir "$data" \
+            --secret-key-file "$data/secret.key" --log-level warn &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 50); do
+            curl -fsS http://127.0.0.1:8377/api/v1/health >/dev/null && break
+            sleep 0.2
+          done
+
+          curl -fsS http://127.0.0.1:8377/api/v1/health | grep -q '"status":"ok"'
+
+          # A deep link must return the shell, not a 404: the client-side
+          # router is what resolves it.
+          curl -fsS http://127.0.0.1:8377/containers/abc | grep -q '<div id="root">'
+
+          # And an unknown API path must stay JSON.
+          curl -sS http://127.0.0.1:8377/api/v1/nope | grep -q '"code":"NOT_FOUND"'
 
   cross-compile:
     name: Cross-compile
@@ -110,6 +194,7 @@ jobs:
           cache: true
       - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.goarm }}
         env:
+          CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}

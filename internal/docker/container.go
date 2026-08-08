@@ -2,12 +2,15 @@ package docker
 
 import (
 	"context"
+	"io"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 )
 
 // ListContainers returns the containers matching opts.
@@ -318,4 +321,76 @@ func parseDockerTime(s string) time.Time {
 		return time.Time{}
 	}
 	return t.UTC()
+}
+
+// PauseContainer freezes a running container's processes.
+func (e *engine) PauseContainer(ctx context.Context, id string) error {
+	return classify("container.pause", "container", id, e.api.ContainerPause(ctx, id))
+}
+
+// UnpauseContainer resumes a paused container.
+func (e *engine) UnpauseContainer(ctx context.Context, id string) error {
+	return classify("container.unpause", "container", id, e.api.ContainerUnpause(ctx, id))
+}
+
+// KillContainer sends a signal to a container's main process. An empty signal
+// means SIGKILL, matching `docker kill`.
+func (e *engine) KillContainer(ctx context.Context, id, signal string) error {
+	return classify("container.kill", "container", id, e.api.ContainerKill(ctx, id, signal))
+}
+
+// RenameContainer changes a container's name.
+func (e *engine) RenameContainer(ctx context.Context, id, newName string) error {
+	return classify("container.rename", "container", id, e.api.ContainerRename(ctx, id, newName))
+}
+
+// CreateContainer creates a container from a spec and returns its ID.
+func (e *engine) CreateContainer(ctx context.Context, spec CreateSpec) (string, error) {
+	resp, err := e.api.ContainerCreate(ctx, spec.Config, spec.HostConfig, spec.NetworkingConfig, nil, spec.Name)
+	if err != nil {
+		return "", classify("container.create", "container", spec.Name, err)
+	}
+	return resp.ID, nil
+}
+
+// RawInspectConfig returns the SDK structures needed to recreate a container
+// exactly as it is. Redeploy is the only caller: deriving a new container from
+// an old one needs the engine's own view, not our projection.
+func (e *engine) RawInspectConfig(ctx context.Context, id string) (CreateSpec, error) {
+	resp, err := e.api.ContainerInspect(ctx, id)
+	if err != nil {
+		return CreateSpec{}, classify("container.inspect", "container", id, err)
+	}
+	if resp.ContainerJSONBase == nil || resp.Config == nil {
+		return CreateSpec{}, NewError(KindUnknown, "container.inspect", "container", id,
+			"the engine returned an incomplete inspect response")
+	}
+
+	spec := CreateSpec{
+		Name:       strings.TrimPrefix(resp.Name, "/"),
+		Config:     resp.Config,
+		HostConfig: resp.HostConfig,
+	}
+	if resp.NetworkSettings != nil && len(resp.NetworkSettings.Networks) > 0 {
+		spec.NetworkingConfig = &network.NetworkingConfig{
+			EndpointsConfig: resp.NetworkSettings.Networks,
+		}
+	}
+	return spec, nil
+}
+
+// PullImage pulls an image, draining the progress stream. Redeploy uses it to
+// fetch a newer image before recreating a container.
+func (e *engine) PullImage(ctx context.Context, ref string) error {
+	body, err := e.api.ImagePull(ctx, ref, image.PullOptions{})
+	if err != nil {
+		return classify("image.pull", "image", ref, err)
+	}
+	defer func() { _ = body.Close() }()
+
+	// The pull only completes once the response body is consumed.
+	if _, err := io.Copy(io.Discard, body); err != nil {
+		return classify("image.pull", "image", ref, err)
+	}
+	return nil
 }

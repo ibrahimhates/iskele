@@ -12,7 +12,7 @@ import (
 func newContainerService(t *testing.T) (*Container, *fake.Client) {
 	t.Helper()
 	f := fake.New()
-	return NewContainer(f), f
+	return NewContainer(f, nil), f
 }
 
 const runningID = "c1000000000000000000000000000000000000000000000000000000000000a"

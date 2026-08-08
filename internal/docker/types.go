@@ -8,6 +8,9 @@ package docker
 import (
 	"encoding/json"
 	"time"
+
+	dockercontainer "github.com/docker/docker/api/types/container"
+	dockernetwork "github.com/docker/docker/api/types/network"
 )
 
 // Container is the list-view projection of a container.
@@ -246,6 +249,19 @@ type RemoveContainerOptions struct {
 // leaves the engine's own default (10s) in place.
 type StopOptions struct {
 	Timeout *int
+}
+
+// CreateSpec carries the engine's own container definition.
+//
+// It holds SDK types on purpose: it exists so a container can be recreated
+// byte-for-byte from its inspect output (redeploy), and projecting those
+// structures through our own types would silently drop fields. Callers pass it
+// around opaquely rather than reading into it.
+type CreateSpec struct {
+	Name             string
+	Config           *dockercontainer.Config
+	HostConfig       *dockercontainer.HostConfig
+	NetworkingConfig *dockernetwork.NetworkingConfig
 }
 
 // RawInspect is the engine's unmodified inspect payload, surfaced by the UI's

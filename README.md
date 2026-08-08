@@ -52,13 +52,29 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 
 ## Building from source
 
-Requirements: Go 1.25+ (and Node 20+ once the frontend lands in M3).
+Requirements: Go 1.25+ and Node 20+.
 
 ```sh
-make build      # -> bin/iskeled
-make test       # go test -race ./...
+make build      # frontend + binary -> bin/iskeled
+make build-go   # binary only, no Node needed
+make test       # go test -race
+make web-test   # frontend test suite
 make check      # gofmt + vet + test
+make gen-api    # regenerate the TypeScript wire types from docs/openapi.yaml
 make help       # list every target
+```
+
+`make build` compiles the frontend into `web/dist` and embeds it, so the
+binary serves the UI with no external files. `make build-go` skips the
+frontend entirely — useful when working on the backend on a machine without
+Node. A binary built that way answers `/api/v1` normally and serves a short
+page in place of the UI saying how to build the full one.
+
+Working on the frontend with live reload:
+
+```sh
+make run        # terminal 1: the daemon on 127.0.0.1:8377
+make web-dev    # terminal 2: Vite on :5173, proxying /api to the daemon
 ```
 
 Run it locally against your own Docker socket:
@@ -67,6 +83,25 @@ Run it locally against your own Docker socket:
 make run        # binds 127.0.0.1:8377, data dir ./.data, debug logging
 curl -s http://127.0.0.1:8377/api/v1/health
 ```
+
+---
+
+## Web UI
+
+The panel is served from the binary at `/`, on the same port as the API. What
+exists today:
+
+- **Dashboard** — container counts, engine and host summary, disk usage.
+- **Containers** — search, sort, multi-select with bulk actions, and live CPU
+  and memory per row (one shared event stream, not one per container).
+- **Container detail** — eight tabs: overview, live logs, charts, an
+  interactive console (xterm.js), the raw inspect payload, environment, mounts
+  and networks.
+- **Images, volumes, networks** — read-only lists; management arrives in M5.
+- **Settings** — profile, theme, language.
+
+Turkish and English, light and dark, both remembered across reloads.
+Destructive actions ask you to type the container's name.
 
 ---
 
@@ -131,13 +166,32 @@ listed as *open* below.
 | `POST` | `/containers/{id}/start` | operate | Start |
 | `POST` | `/containers/{id}/stop` | operate | Stop — optional `timeout` |
 | `POST` | `/containers/{id}/restart` | operate | Restart — optional `timeout` |
+| `POST` | `/containers/{id}/pause` | operate | Freeze every process (cgroup freezer) |
+| `POST` | `/containers/{id}/unpause` | operate | Resume a paused container |
+| `POST` | `/containers/{id}/kill` | operate | Signal — `signal`, default `SIGKILL` |
+| `POST` | `/containers/{id}/rename` | operate | Rename — `{"name": "..."}` |
+| `POST` | `/containers/{id}/redeploy` | operate | Pull the image and recreate, rolling back on failure |
+| `POST` | `/containers/batch` | operate | One action over many containers; `207` on partial failure |
 | `DELETE` | `/containers/{id}` | delete | Remove — `force`, `volumes` |
+| `POST` | `/auth/ws-ticket` | any | A single-use 60s ticket for the streaming endpoints |
+| `GET` | `/containers/{id}/logs` | ticket | **WebSocket** — live logs (`tail`, `follow`, `timestamps`) |
+| `GET` | `/containers/{id}/exec` | ticket | **WebSocket** — interactive shell (binary stdin, text resize) |
+| `GET` | `/containers/{id}/stats` | ticket | **SSE** — one container's CPU/memory/IO, once a second |
+| `GET` | `/containers/stats` | ticket | **SSE** — every running container over one connection |
+| `GET` | `/system/events` | ticket | **SSE** — the Docker engine event stream |
 | `GET` | `/images` | read | List images — `all`, `dangling`, `label` |
 | `GET` | `/volumes` | read | List volumes |
 | `GET` | `/networks` | read | List networks |
 
 Collection endpoints return `{"items": [...], "total": N}`; `items` is never
-`null`. The full specification is [`docs/openapi.yaml`](docs/openapi.yaml), and
+`null`.
+
+The streaming endpoints are the one exception to the `Bearer` rule. A browser
+cannot set a header on a WebSocket handshake or an `EventSource` request, so
+they take a ticket from `POST /auth/ws-ticket` as the `ticket` query parameter:
+single-use, 60 seconds, consumed on arrival whether or not the permission check
+that follows passes. They enforce the same permissions as everything else, and
+the WebSocket handshake is rejected when `Origin` does not match `Host`. The full specification is [`docs/openapi.yaml`](docs/openapi.yaml), and
 the planned surface is in [`PLAN.md`](PLAN.md#6-api-yüzeyi).
 
 ### Getting started

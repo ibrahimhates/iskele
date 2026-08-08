@@ -51,10 +51,11 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 	env := &testEnv{
 		db: db,
 		raw: NewRouter(Deps{
-			Config: &cfg,
-			Logger: log,
-			Docker: dockerClient,
-			Auth:   authService,
+			Config:   &cfg,
+			Logger:   log,
+			Docker:   dockerClient,
+			Auth:     authService,
+			Recorder: audit.New(db.Audit, log),
 		}),
 		tokens: map[store.Role]string{},
 	}

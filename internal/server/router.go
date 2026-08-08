@@ -6,10 +6,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/auth"
 	"github.com/ibrahimhates/iskele/internal/config"
 	"github.com/ibrahimhates/iskele/internal/docker"
@@ -33,6 +35,21 @@ type Deps struct {
 	// Auth may be nil in tests that only exercise unauthenticated routes; the
 	// router then leaves the protected subtree unmounted.
 	Auth *service.Auth
+	// Recorder writes the audit trail. A nil recorder is tolerated.
+	Recorder *audit.Recorder
+	// Tickets issues the short-lived credentials WebSocket and SSE endpoints
+	// use. The router creates one when this is nil.
+	Tickets *auth.TicketStore
+	// SPA serves the frontend. Nil means the copy embedded in this binary,
+	// which is what the daemon always wants; tests substitute their own.
+	SPA http.Handler
+}
+
+// isAPIPath reports whether a request belongs to the JSON API rather than the
+// frontend. It matches the prefix as a path segment, so a client-side route
+// named /apixyz is still handed to the SPA.
+func isAPIPath(p string) bool {
+	return p == "/api" || strings.HasPrefix(p, "/api/")
 }
 
 // NewRouter builds the HTTP handler for the whole daemon.
@@ -48,11 +65,20 @@ func NewRouter(deps Deps) http.Handler {
 	}
 
 	system := handlers.NewSystem()
-	containers := handlers.NewContainers(service.NewContainer(dockerClient))
+
 	images := handlers.NewImages(service.NewImage(dockerClient))
 	volumes := handlers.NewVolumes(service.NewVolume(dockerClient))
 	networks := handlers.NewNetworks(service.NewNetwork(dockerClient))
-	engine := handlers.NewEngine(service.NewSystem(dockerClient))
+	systemService := service.NewSystem(dockerClient)
+	engine := handlers.NewEngine(systemService)
+
+	tickets := deps.Tickets
+	if tickets == nil {
+		tickets = auth.NewTicketStore(auth.TicketTTL)
+	}
+	containerService := service.NewContainer(dockerClient, deps.Recorder)
+	containers := handlers.NewContainers(containerService)
+	streams := handlers.NewStream(containerService, systemService, tickets)
 
 	generalLimiter := middleware.NewRateLimiter(middleware.GeneralRate, middleware.GeneralBurst)
 	loginLimiter := middleware.NewRateLimiter(middleware.LoginRate, middleware.LoginBurst)
@@ -66,9 +92,25 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(middleware.Recover)
 	r.Use(middleware.SecurityHeaders)
 
-	r.NotFound(httpx.Handler(func(_ http.ResponseWriter, r *http.Request) error {
+	// Anything the API does not claim belongs to the frontend: the SPA owns
+	// its own routes, and the browser asks the server for them after a reload.
+	// An unmatched /api path stays JSON so a client never has to parse HTML to
+	// learn it called the wrong endpoint.
+	spa := deps.SPA
+	if spa == nil {
+		spa = newSPAHandler()
+	}
+	apiNotFound := httpx.Handler(func(_ http.ResponseWriter, r *http.Request) error {
 		return httpx.ErrNotFound("no route matches %s %s", r.Method, r.URL.Path)
-	}).ServeHTTP)
+	})
+
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if isAPIPath(r.URL.Path) {
+			apiNotFound.ServeHTTP(w, r)
+			return
+		}
+		spa.ServeHTTP(w, r)
+	})
 
 	r.MethodNotAllowed(httpx.Handler(func(_ http.ResponseWriter, r *http.Request) error {
 		return httpx.NewError(http.StatusMethodNotAllowed, httpx.CodeMethodNotAllowed,
@@ -107,6 +149,21 @@ func NewRouter(deps Deps) http.Handler {
 			r.Method(http.MethodPost, "/auth/refresh", httpx.Handler(authHandlers.Refresh))
 		})
 
+		// Streaming endpoints authenticate with a single-use ticket rather than
+		// a Bearer header, which a browser cannot set on a WebSocket handshake
+		// or an EventSource request. They still enforce the same permissions,
+		// and the WebSocket library rejects a cross-origin handshake.
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RateLimit(generalLimiter, denyRateLimited))
+			r.Use(requireInitialized(deps.Auth))
+
+			r.Method(http.MethodGet, "/containers/stats", httpx.Handler(streams.StatsAll))
+			r.Method(http.MethodGet, "/containers/{id}/logs", httpx.Handler(streams.Logs))
+			r.Method(http.MethodGet, "/containers/{id}/exec", httpx.Handler(streams.Exec))
+			r.Method(http.MethodGet, "/containers/{id}/stats", httpx.Handler(streams.Stats))
+			r.Method(http.MethodGet, "/system/events", httpx.Handler(streams.Events))
+		})
+
 		// Everything else requires a valid credential.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RateLimit(generalLimiter, denyRateLimited))
@@ -117,9 +174,11 @@ func NewRouter(deps Deps) http.Handler {
 
 			r.Method(http.MethodGet, "/auth/me", httpx.Handler(authHandlers.Me))
 			r.Method(http.MethodPost, "/auth/logout", httpx.Handler(authHandlers.Logout))
+			r.Method(http.MethodPost, "/auth/ws-ticket", httpx.Handler(streams.Ticket))
 
 			r.Route("/containers", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(containers.List))
+				r.With(operate()).Method(http.MethodPost, "/batch", httpx.Handler(containers.Batch))
 
 				r.Route("/{id}", func(r chi.Router) {
 					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(containers.Get))
@@ -128,6 +187,11 @@ func NewRouter(deps Deps) http.Handler {
 					r.With(operate()).Method(http.MethodPost, "/start", httpx.Handler(containers.Start))
 					r.With(operate()).Method(http.MethodPost, "/stop", httpx.Handler(containers.Stop))
 					r.With(operate()).Method(http.MethodPost, "/restart", httpx.Handler(containers.Restart))
+					r.With(operate()).Method(http.MethodPost, "/pause", httpx.Handler(containers.Pause))
+					r.With(operate()).Method(http.MethodPost, "/unpause", httpx.Handler(containers.Unpause))
+					r.With(operate()).Method(http.MethodPost, "/kill", httpx.Handler(containers.Kill))
+					r.With(operate()).Method(http.MethodPost, "/rename", httpx.Handler(containers.Rename))
+					r.With(operate()).Method(http.MethodPost, "/redeploy", httpx.Handler(containers.Redeploy))
 
 					r.With(remove()).Method(http.MethodDelete, "/", httpx.Handler(containers.Remove))
 				})

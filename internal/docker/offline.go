@@ -81,3 +81,70 @@ func (o *offline) ListNetworks(context.Context) ([]Network, error) {
 
 // Close is a no-op: there is no connection to release.
 func (o *offline) Close() error { return nil }
+
+func (o *offline) PauseContainer(context.Context, string) error {
+	return o.err("container.pause", "container")
+}
+
+func (o *offline) UnpauseContainer(context.Context, string) error {
+	return o.err("container.unpause", "container")
+}
+
+func (o *offline) KillContainer(context.Context, string, string) error {
+	return o.err("container.kill", "container")
+}
+
+func (o *offline) RenameContainer(context.Context, string, string) error {
+	return o.err("container.rename", "container")
+}
+
+func (o *offline) CreateContainer(context.Context, CreateSpec) (string, error) {
+	return "", o.err("container.create", "container")
+}
+
+func (o *offline) RawInspectConfig(context.Context, string) (CreateSpec, error) {
+	return CreateSpec{}, o.err("container.inspect", "container")
+}
+
+func (o *offline) PullImage(context.Context, string) error {
+	return o.err("image.pull", "image")
+}
+
+func (o *offline) ContainerLogs(context.Context, string, LogOptions) (<-chan LogLine, <-chan error) {
+	lines := make(chan LogLine)
+	errs := make(chan error, 1)
+	errs <- o.err("container.logs", "container")
+	close(lines)
+	close(errs)
+	return lines, errs
+}
+
+func (o *offline) ContainerStats(context.Context, string) (<-chan Stats, <-chan error) {
+	stats := make(chan Stats)
+	errs := make(chan error, 1)
+	errs <- o.err("container.stats", "container")
+	close(stats)
+	close(errs)
+	return stats, errs
+}
+
+func (o *offline) Exec(context.Context, string, ExecOptions) (*ExecSession, error) {
+	return nil, o.err("container.exec", "container")
+}
+
+func (o *offline) ResizeExec(context.Context, string, uint, uint) error {
+	return o.err("container.exec_resize", "container")
+}
+
+func (o *offline) ExecExitCode(context.Context, string) (int, error) {
+	return 0, o.err("container.exec_inspect", "container")
+}
+
+func (o *offline) Events(context.Context) (<-chan Event, <-chan error) {
+	events := make(chan Event)
+	errs := make(chan error, 1)
+	errs <- o.err("system.events", "system")
+	close(events)
+	close(errs)
+	return events, errs
+}

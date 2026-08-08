@@ -153,10 +153,12 @@ func run(args []string) error {
 	go housekeeping(ctx, log, db, limiter)
 
 	router := server.NewRouter(server.Deps{
-		Config: cfg,
-		Logger: log,
-		Docker: dockerClient,
-		Auth:   authService,
+		Config:   cfg,
+		Logger:   log,
+		Docker:   dockerClient,
+		Auth:     authService,
+		Recorder: recorder,
+		Tickets:  auth.NewTicketStore(auth.TicketTTL),
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)

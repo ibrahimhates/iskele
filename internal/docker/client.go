@@ -27,10 +27,23 @@ type Client interface {
 	StopContainer(ctx context.Context, id string, opts StopOptions) error
 	RestartContainer(ctx context.Context, id string, opts StopOptions) error
 	RemoveContainer(ctx context.Context, id string, opts RemoveContainerOptions) error
+	PauseContainer(ctx context.Context, id string) error
+	UnpauseContainer(ctx context.Context, id string) error
+	KillContainer(ctx context.Context, id, signal string) error
+	RenameContainer(ctx context.Context, id, newName string) error
+
+	// CreateContainer and RawInspectConfig exist for redeploy: recreating a
+	// container from its own definition.
+	CreateContainer(ctx context.Context, spec CreateSpec) (string, error)
+	RawInspectConfig(ctx context.Context, id string) (CreateSpec, error)
+	PullImage(ctx context.Context, ref string) error
 
 	ListImages(ctx context.Context, opts ListImagesOptions) ([]Image, error)
 	ListVolumes(ctx context.Context) ([]Volume, error)
 	ListNetworks(ctx context.Context) ([]Network, error)
+
+	// Streaming operations: logs, stats, exec and engine events.
+	Streamer
 
 	// Close releases the underlying HTTP transport.
 	Close() error

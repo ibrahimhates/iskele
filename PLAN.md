@@ -287,9 +287,12 @@ Prefix `/api/v1`. Tüm hatalar:
 | POST | `/containers/{id}/{start\|stop\|restart\|pause\|unpause\|kill\|rename}` | operator | M1/M4 |
 | POST | `/containers/{id}/redeploy` | operator | M4 |
 | POST | `/containers/batch` `{ids:[],action}` | operator | M4 |
-| GET | `/containers/{id}/stats` (SSE) | viewer | M4 |
-| WS | `/containers/{id}/logs` | viewer | M4 |
-| WS | `/containers/{id}/exec` | operator | M4 |
+| POST | `/auth/ws-ticket` | any | M4 |
+| GET | `/containers/{id}/stats` (SSE) | viewer (ticket) | M4 |
+| GET | `/containers/stats` (SSE, hepsi tek bağlantıda) | viewer (ticket) | M4 |
+| GET | `/system/events` (SSE) | viewer (ticket) | M4 |
+| WS | `/containers/{id}/logs` | viewer (ticket) | M4 |
+| WS | `/containers/{id}/exec` | operator (ticket) | M4 |
 | GET | `/images` | viewer | M1 |
 | POST | `/images/pull` (SSE) | operator | M5 |
 | DELETE | `/images/{id}?force=` | operator | M5 |
@@ -393,27 +396,32 @@ Prefix `/api/v1`. Tüm hatalar:
 /                             → /dashboard
 /dashboard
 /containers                   /containers/:id  (overview|logs|stats|console|inspect|env|mounts|network)
-/containers/new               (sihirbaz)
-/stacks                       /stacks/:id  /stacks/new
+/containers/new               (sihirbaz — M5)
+/stacks                       /stacks/:id  /stacks/new                       (M7)
 /images  /volumes  /networks
-/catalog                      /catalog/:templateId
-/builds                       /builds/:id
-/audit
+/catalog                      /catalog/:templateId                           (M8)
+/builds                       /builds/:id                                    (M6)
+/audit                                                                       (M8)
 /settings                     (general|users|registries|paths|retention|appearance|about)
 ```
 
-**Ortak bileşenler:** `DataTable` (filtre/sıralama/çoklu seçim/sanallaştırma 500+),
-`LogViewer` (ring buffer, ANSI renk, arama, indir, otomatik kaydır kilidi), `TerminalPane` (xterm+fit+resize),
-`TaskDrawer` (global uzun iş çekmecesi), `ConfirmDestructive` (ad yazdırarak onay),
-`EmptyState`, `StatCard`, `JsonViewer`, `ReconnectingBanner`, `CommandPreview`.
+Route'lar ve sidebar öğeleri kendi milestone'larında ekleniyor; yapılmamış bir bölüm için
+menü öğesi konmuyor (D-041).
+
+**Ortak bileşenler:** container tablosu (filtre/sıralama/çoklu seçim/sanallaştırma 500+),
+`LogViewer` (ring buffer, arama, indir, otomatik kaydır kilidi), `ConsolePanel` (xterm+fit+resize),
+`ConfirmDialog` (ad yazdırarak onay), `EmptyState`, `StatCard`, `JsonViewer`, `ConnectionBanner`.
+`TaskDrawer` M5'te, `CommandPreview` M5'te geliyor.
+shadcn/ui yerine bu bileşenler elle yazıldı (D-039).
 
 **State**
 - Sunucu verisi: TanStack Query (`staleTime` 5 sn, liste ekranlarında 5 sn `refetchInterval`, docker event geldiğinde invalidate).
 - İstemci state: Zustand — `authStore` (token, user, role), `uiStore` (tema, dil, sidebar), `taskStore` (aktif işler).
 - WS/SSE: `useWebSocket` hook'u, exponential backoff (1s→30s), `ReconnectingBanner` bağlantı durumuna bağlı.
 
-**Klavye kısayolları:** `/` arama, `g c`/`g s`/`g i`/`g v`/`g n` navigasyon, `Esc` modal kapat.
-**Erişilebilirlik:** Radix primitiv'leri, tüm ikon butonlarda `aria-label`, odak halkaları korunur.
+**Klavye kısayolları:** `/` arama, `g c`/`g i`/`g v`/`g n`/`g d` navigasyon, `Esc` modal kapat.
+(`g s` stacks ile birlikte M7'de gelir.) Metin alanı ve terminal içindeyken kısayollar susar.
+**Erişilebilirlik:** tüm ikon butonlarda `aria-label`, odak halkaları korunur.
 **i18n:** hard-coded metin yasak; `locales/tr.json` ve `locales/en.json` anahtar bazında eşit.
 
 ---
@@ -456,17 +464,20 @@ Her milestone'un **Definition of Done (DoD)** ortak maddeleri:
 
 ---
 
-### M3 — Frontend iskeleti
-**Kapsam:** Vite+React+TS+Tailwind+shadcn kurulumu; `web/` tooling (eslint, prettier, vitest); router ve korumalı route'lar; bootstrap ve login ekranları; AppShell + sidebar + topbar + tema toggle; TanStack Query client + fetch wrapper (401→refresh→retry); OpenAPI'den TS tip üretimi (`make gen-api`); i18n TR/EN; `embed.FS` ile `web/dist` gömme + SPA fallback (`/api` hariç tüm yollar `index.html`); `make build` frontend'i de derler.
+### M3 — Frontend iskeleti  ✅
+**Kapsam:** Vite+React+TS+Tailwind kurulumu (shadcn yerine kendi bileşenleri, D-039); `web/` tooling (eslint, prettier, vitest); router ve korumalı route'lar; bootstrap ve login ekranları; AppShell + sidebar + topbar + tema toggle; TanStack Query client + fetch wrapper (401→refresh→retry); OpenAPI'den TS tip üretimi (`make gen-api`); i18n TR/EN; `embed.FS` ile `web/dist` gömme + SPA fallback (`/api` hariç tüm yollar `index.html`); `make build` frontend'i de derler.
 **Çıktılar:** tek binary çalıştırıldığında tarayıcıda login ekranı gelir.
 **Testler:** Vitest — fetch wrapper refresh akışı, protected route yönlendirmesi, i18n anahtar eşitliği testi.
-**Risk:** embed edilecek `dist` yoksa Go derlemesi kırılır → `web/dist/.gitkeep` + placeholder `index.html`.
+**Risk (gerçekleşti, çözüldü):** embed edilecek `dist` yoksa Go derlemesi kırılır → `web/dist/.gitkeep`
+commit'lendi ve `//go:embed all:dist` boş ağacı kabul ediyor; `web.Bundled()` false ise sunucu
+`make build` gerektiğini söyleyen bir sayfa döndürüyor (D-045).
 **Tahmini commit:** 6–9.
 
 ---
 
-### M4 — Container yönetimi (tam)
-**Kapsam:** Liste (durum, image, port, CPU/RAM, uptime, health, restart sayısı; filtre/arama/etiket gruplama/sıralama); toplu seçim + batch aksiyon; detay sayfası sekmeleri (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network); WS log stream (tail, timestamps, arama, indir); SSE stats + Recharts canlı grafik + ring buffer; xterm.js exec (shell seçimi, resize); redeploy (inspect'ten config türetip yeni image ile yeniden yarat); yıkıcı işlem onay diyaloğu; `ConnectionBanner`.
+### M4 — Container yönetimi (tam)  ✅
+**Kapsam:** Liste (durum, image, port, canlı CPU/RAM, uptime, health; filtre/arama/sıralama —
+restart sayısı listede yok, gerekçesi D-049); toplu seçim + batch aksiyon; detay sayfası sekmeleri (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network); WS log stream (tail, timestamps, arama, indir); SSE stats + Recharts canlı grafik + ring buffer; xterm.js exec (shell seçimi, resize); redeploy (inspect'ten config türetip yeni image ile yeniden yarat); yıkıcı işlem onay diyaloğu; `ConnectionBanner`.
 **Testler:** log/exec/stats handler'ları fake Docker ile; redeploy config türetme birim testi; LogViewer buffer ve Terminal resize Vitest testleri.
 **Risk:** exec/TTY akışı → küçük entegrasyon testi + manuel doğrulama, `docker exec` semantiği ile karşılaştırma.
 **Tahmini commit:** 8–12.

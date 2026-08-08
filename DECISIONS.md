@@ -310,6 +310,116 @@ geçmesi diğerini vermez.
 
 ---
 
+## M3 + M4 Sırasında Alınan Kararlar
+
+### D-039 — shadcn/ui yerine kendi bileşenleri
+**Durum:** Kabul · **Faz:** M3
+**Karar:** PLAN'da shadcn/ui yazıyordu; onun yerine Tailwind üstünde ~10 küçük bileşen elle yazıldı
+(`Spinner`, `EmptyState`, `ErrorPanel`, `ConfirmDialog`, `PageHeader`, `StatCard`, `StateBadge`, `JsonViewer`).
+**Gerekçe:** shadcn bir kütüphane değil, bir kopyala-yapıştır jeneratörüdür: Radix + CVA + tailwind-merge
+bağımlılıklarını ve onlarca dosyayı projeye kalıcı olarak sokar. İhtiyacımız olan yüzey bunun onda biri.
+Tema, CSS özel değişkenleriyle (`--bg`, `--fg`, `--accent`…) tanımlanıyor; koyu/açık tek sınıf değişimiyle geçiyor.
+**Sonuç:** Frontend bağımlılık ağacı küçük kaldı, `vendor` chunk'ı 54 kB gz.
+
+### D-040 — Elle yazılan TS tipleri + üretilen şema, derleme zamanında karşılaştırılıyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** `src/api/types.ts` elle yazılıyor (uygulamanın okuduğu tipler), `src/api/schema.d.ts`
+`make gen-api` ile OpenAPI'den üretiliyor, `src/api/conformance.ts` ise ikisi arasındaki uyumu
+tip düzeyinde iddia ediyor. CI ayrıca `gen:api` çıktısının commit'lenmiş dosyayla aynı olmasını şart koşuyor.
+**Gerekçe:** Üretilen tipler doğrudan kullanılırsa arayüz kodu jeneratörün şekline (`components['schemas'][...]`)
+bağlanır ve okunmaz hale gelir; sadece elle yazılırsa spec ile sessizce ayrışır. Bu kurulum ikisini de engelliyor:
+ayrışma `npm run build`'i kırıyor.
+**Sonuç:** İlk çalıştırmada iki gerçek hata çıktı — OpenAPI'de yinelenen `"409"` anahtarları (YAML'i geçersiz kılıyordu)
+ve `health` alanının spec'te enum, TS'te `string` olması.
+
+### D-041 — Yapılmamış bölümler için menü öğesi ve "yakında" sayfası yok
+**Durum:** Kabul · **Faz:** M3
+**Karar:** Stacks/Catalog/Builds/Audit menü öğeleri ve `ComingSoonPage` bileşeni kaldırıldı.
+Bu bölümler kendi milestone'larında (M6–M8) menüye geri eklenecek.
+**Gerekçe:** PROMPT §0: "işlevsiz UI butonu yok." Hiçbir şey yapmayan bir menü öğesi, ne kadar dürüstçe
+"M7'de gelecek" dese de, tıklanabilir ve hiçbir şey yapmıyor.
+**Sonuç:** Sidebar 6 öğe; hepsi çalışıyor.
+
+### D-042 — Go paket listesi `web/node_modules`'ü dışlıyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** Makefile `PKGS = go list ./... | grep -v /node_modules/` tanımlıyor; `test`, `test-cover`,
+`vet` ve `vuln` hedefleri joker yerine bu listeyi alıyor. `.golangci.yml` de aynı yolu dışlıyor.
+**Gerekçe:** npm paketleri bazen kendi Go kaynaklarını taşıyor — `flatted` bunu yapıyor ve
+`web/node_modules/flatted/golang/pkg/flatted` `./...`'a giriyordu. Frontend'in bir bağımlılığının
+bizim derlememize, vet çıktımıza ve kapsam sayımıza karışması kabul edilemez.
+**Sonuç:** `go list` çıktısı 15 paket + `web`; üçüncü parti kaynak yok.
+
+### D-043 — Testler cgo ile, ürün binary'si cgo'suz derleniyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** Makefile ikiye ayrıldı: `GO := CGO_ENABLED=0 go` (derleme, cross-compile) ve
+`GOTEST := CGO_ENABLED=1 go` (yalnız test hedefleri). CI'daki global `CGO_ENABLED=0` ortam değişkeni
+kaldırıldı, cross-compile adımına taşındı.
+**Gerekçe:** Yarış dedektörü C ile yazılmıştır; `CGO_ENABLED=0 go test -race` doğrudan
+"`-race` requires cgo" ile ölüyordu. Yani `make test` ve `make test-cover` **hiç koşmuyordu** —
+yeşil sanılan bir hedefti. Ürün binary'si statik kalmak zorunda olduğu için ayrım şart.
+**Sonuç:** `make test` 15 paketi `-race` ile koşuyor; `make build` hâlâ CGO'suz statik binary üretiyor.
+
+### D-044 — SPA fallback yalnız `/api` dışındaki yollara, varlıklara değil
+**Durum:** Kabul · **Faz:** M3
+**Karar:** `internal/server/spa.go`: `/api` ile başlayan yollar JSON 404 alır; diğerleri için dosya varsa
+dosya, yoksa `index.html` döner. **İstisna:** `/assets/` altında bulunamayan bir dosya 404 alır,
+`index.html` almaz. Hash'li varlıklar `immutable` bir yıl, `index.html` `no-cache`.
+**Gerekçe:** Eski bir kabuk artık var olmayan bir bundle'ı isterse, ona HTML dönmek tarayıcıda
+"JavaScript'te sözdizimi hatası" olarak görünür ve hatayı tamamen yanlış yere işaret eder.
+`index.html` hash'li dosya adlarını taşıdığı için kendisi asla cache'lenemez.
+**Sonuç:** Binary tek başına UI'ı sunuyor; `curl /containers/abc` kabuğu, `curl /api/v1/nope` JSON'u döndürüyor.
+
+### D-045 — Frontend'siz `go build` çalışmaya devam ediyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** `web/dist/.gitkeep` commit'leniyor ve `//go:embed all:dist` boş bir ağacı da kabul ediyor.
+`web.Bundled()` `index.html`'in varlığına bakıyor; yoksa sunucu, API'nin çalıştığını ve `make build`
+gerektiğini söyleyen bir sayfa döndürüyor.
+**Gerekçe:** `go build ./cmd/iskeled`, Node kurulu olmayan bir makinede de çalışmalı; aksi halde
+backend üzerinde çalışan biri frontend araç zincirini kurmak zorunda kalır. Alternatif — embed'i
+build tag'i arkasına almak — iki farklı derleme yolu demekti.
+**Sonuç:** CI'nın `go` job'ı Node'suz `make build-go` koşuyor, `bundle` job'ı ikisini birden.
+
+### D-046 — Ticket, izin kontrolü başarısız olsa bile tüketilir
+**Durum:** Kabul · **Faz:** M4
+**Karar:** `redeemTicket` önce ticket'ı siler, sonra izni kontrol eder.
+**Gerekçe:** Ticket tanımı gereği tek kullanımlıktır. Reddedilen bir ticket'ı hayatta bırakmak,
+onu başka bir endpoint'e karşı tekrar denemeye izin verir.
+**Sonuç:** Yanlış izinle gelen bir istek 403 alır ve ticket'ı da kaybeder.
+
+### D-047 — Redeploy: silmeden önce park et, hata olursa geri al
+**Durum:** Kabul · **Faz:** M4
+**Karar:** Eski container `_old_<ts>` adına yeniden adlandırılır, yenisi oluşturulup başlatılır,
+ancak o zaman eskisi silinir. Herhangi bir adımda hata olursa eski container kendi adına döndürülüp
+başlatılır ve sonuç `rolled_back: true` ile raporlanır.
+**Gerekçe:** Önce silip sonra oluşturmak, oluşturma başarısız olduğunda operatörü container'sız bırakır.
+**Sonuç:** Atomik değil (ikisinin de servis vermediği bir pencere var) ve bu OpenAPI'de açıkça yazıyor.
+Yalnızca engine'in inspect çıktısında ifade edilebilen ayarlar taşınır.
+
+### D-048 — Liste görünümündeki CPU/RAM tek bir çoğullanmış akıştan geliyor
+**Durum:** Kabul · **Faz:** M4
+**Karar:** `GET /containers/stats` (SSE) çalışan tüm container'ları tek bağlantıda yayınlıyor;
+her örnek ait olduğu container'ın ID'siyle etiketleniyor. Sunucu tarafında `statsMux` her container
+için bir engine akışı tutuyor ve 10 saniyede bir listeyi yeniden tarayarak yeni başlayanları ekliyor,
+duranları düşürüyor.
+**Gerekçe:** Satır başına bir SSE bağlantısı, tarayıcının origin başına ~6 bağlantı sınırına
+altıncı container'da toslar. Engine olaylarını dinlemek yerine periyodik tarama seçildi: tarama
+tek ucuz bir çağrı, kaçan bir olay ise satırı kalıcı olarak boş bırakır.
+**Sonuç:** Liste 500 container'da da tek bağlantı kullanıyor. Bir container'ın akışı hata verirse
+yalnızca o satır boş kalıyor; akışın tamamı yalnızca daemon erişilemezse kapanıyor.
+
+### D-049 — Restart sayısı listede değil, yalnızca detayda
+**Durum:** Kabul (kapsam daraltma) · **Faz:** M4
+**Karar:** ACCEPTANCE D1 listede "restart sayısı" istiyor; gösterilmiyor. Detay sayfasının
+Overview sekmesinde var.
+**Gerekçe:** Engine'in liste API'si (`docker ps` eşleniği) `RestartCount` döndürmüyor; yalnızca
+`inspect` döndürüyor. Listede göstermek, her sayfa yüklemesinde container sayısı kadar `inspect`
+çağrısı demek — 500 container'lı bir hostta 500 çağrı. Her zaman `—` yazan bir sütun ise
+hiç olmamasından kötü.
+**Sonuç:** ACCEPTANCE D1 bu gerekçeyle kısmi (🟡) işaretlendi; M8'de dashboard'a "en çok yeniden
+başlayan container'lar" olarak, tek seferlik ve isteğe bağlı bir sorguyla gelebilir.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**

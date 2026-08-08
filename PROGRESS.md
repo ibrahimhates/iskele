@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-08 · **Aktif faz:** M3 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-08 · **Aktif faz:** M5 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -16,8 +16,8 @@
 | M0 | İskelet | ✅ Bitti | 14/14 | Servis ayakta, CI kuruldu, kapsam %84.3 |
 | M1 | Docker katmanı + temel API | ✅ Bitti | 13/13 | 12 endpoint, offline istemci, kapsam %82.1 |
 | M2 | Auth + DB | ✅ Bitti | 16/16 | RBAC matrisi tam test edildi, kapsam %79.8 |
-| M3 | Frontend iskeleti | ⬜ Bekliyor | 0/14 | |
-| M4 | Container yönetimi (tam) | ⬜ Bekliyor | 0/16 | |
+| M3 | Frontend iskeleti | ✅ Bitti | 14/14 | Tek binary UI'ı sunuyor, 35 frontend testi |
+| M4 | Container yönetimi (tam) | ✅ Bitti | 16/16 | Log/stats/console/inspect + toplu işlem + redeploy |
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ⬜ Bekliyor | 0/18 | |
 | M6 | Dockerfile build | ⬜ Bekliyor | 0/12 | |
 | M7 | Compose stack | ⬜ Bekliyor | 0/15 | |
@@ -26,20 +26,23 @@
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-08, M2 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-08, M3+M4 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
-| `go build ./...` | ✅ | — |
+| `make build` | ✅ | web build + go build; 14 MB tek binary |
 | `gofmt -l` | ✅ | temiz |
-| `go vet ./...` | ✅ | — |
-| `go test -race ./...` | ✅ | 14 paket, hepsi yeşil |
+| `make vet` | ✅ | — |
+| `make test` | ✅ | 15 paket, hepsi yeşil (`-race`) |
 | `golangci-lint run` | ✅ | 0 issue (v2.5.0) |
 | Cross-compile | ✅ | amd64 / arm64 / armv7 |
 | `govulncheck` | ⚠️ | yerelde proxy engelliyor (`vuln.go.dev` 403); CI'da koşuyor |
-| `npm run lint` | — | M3'te devreye girer |
-| `npm run build` | — | M3'te devreye girer |
-| Backend coverage | ✅ **%79.8** | hedef ≥ %60 (`-coverpkg=./...`) |
+| `npm run lint` | ✅ | 0 uyarı (`--max-warnings 0`) |
+| `npm run format:check` | ✅ | prettier temiz |
+| `npm run build` | ✅ | tsc + vite, uyarısız |
+| `npm run test` | ✅ | 6 dosya / 35 test |
+| Frontend bundle | ✅ | index 63 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk |
+| Backend coverage | ✅ **%71.9** | hedef ≥ %60. `make test-cover` bu ortamda koşmuyor: Go araç zinciri budanmış, `covdata` yok (D-042). Sayı `web` paketi hariç ölçüldü; CI tam listeyle koşar. |
 
 ---
 
@@ -138,48 +141,67 @@ Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayı
 
 ---
 
-## M3 — Frontend iskeleti  ⬜
+## M3 — Frontend iskeleti  ✅
 
-- [ ] `web/` — Vite + React 18 + TS kurulumu
-- [ ] Tailwind + shadcn/ui + tema değişkenleri (dark varsayılan)
-- [ ] eslint + prettier + vitest yapılandırması
-- [ ] `src/api` — fetch wrapper (401 → refresh → retry), hata tipi eşlemesi
-- [ ] `make gen-api` — OpenAPI'den TS tip üretimi
-- [ ] Router + `ProtectedRoute` + rol bazlı gizleme
-- [ ] Bootstrap ekranı (parola gücü, doğrulama)
-- [ ] Login ekranı (hata mesajları, rate limit geri bildirimi)
-- [ ] AppShell: sidebar (10 bölüm), topbar, kullanıcı menüsü, tema toggle
-- [ ] TanStack Query client + varsayılan ayarlar
-- [ ] i18n (react-i18next) + `locales/tr.json` + `locales/en.json`
-- [ ] `internal/server/spa.go` — `embed.FS` + SPA fallback (`/api` hariç)
-- [ ] `make build` → web build + go build tek komutta
-- [ ] Vitest: fetch refresh akışı, protected route, i18n anahtar eşitliği
+- [x] `web/` — Vite 5 + React 18 + TS (strict) kurulumu
+- [x] Tailwind + CSS değişkeni tabanlı tema (açık/koyu, `dark` sınıfı) — shadcn/ui yerine kendi bileşenleri (D-039)
+- [x] eslint + prettier + vitest yapılandırması
+- [x] `src/api` — fetch wrapper (401 → tek paylaşımlı refresh → tek tekrar), `ApiError` kod eşlemesi
+- [x] `make gen-api` — OpenAPI'den TS tip üretimi + `conformance.ts` ile derleme zamanı uyum kanıtı (D-040)
+- [x] Router + `ProtectedRoute` + izin bazlı gizleme (`useAuth().can()`)
+- [x] Bootstrap ekranı (parola gücü ölçer, doğrulama)
+- [x] Login ekranı (hata mesajları, 429 geri bildirimi, `NOT_INITIALIZED` yönlendirmesi)
+- [x] AppShell: sidebar, topbar, kullanıcı menüsü, tema toggle, klavye kısayolları
+- [x] TanStack Query client + varsayılan ayarlar
+- [x] i18n (react-i18next) + `locales/tr.json` + `locales/en.json`
+- [x] `internal/server/spa.go` — `embed.FS` + SPA fallback (`/api` hariç), hash'li varlıklara `immutable` cache
+- [x] `make build` → web build + go build tek komutta
+- [x] Vitest: fetch refresh akışı, `ProtectedRoute`, i18n anahtar eşitliği, parola gücü, biçimleyiciler
 
-**DoD:** tek binary çalıştırılınca tarayıcıda login/bootstrap ekranı gelir · CI'da web adımları yeşil · commit + push
+**Not:** Sidebar yalnızca yapılmış bölümleri listeliyor. Henüz gelmemiş bölümler için "yakında" sayfası
+konulmadı; çalışmayan bir menü öğesi PROMPT'un "işlevsiz UI yok" kuralına aykırı (D-041).
+
+**DoD:** ✅ `make build` çıktısı tek başına UI'ı sunuyor · CI'da `web` ve `bundle` job'ları eklendi · commit + push
 
 ---
 
-## M4 — Container yönetimi (tam)  ⬜
+## M4 — Container yönetimi (tam)  ✅
 
-- [ ] Container liste: durum, image, port map, CPU/RAM, uptime, health, restart sayısı
-- [ ] Filtre + arama + etikete göre gruplama + sıralama + sanallaştırma (500+)
-- [ ] Çoklu seçim + `POST /containers/batch` (toplu aksiyon)
-- [ ] Aksiyonlar: start/stop/restart/pause/unpause/kill/rename/remove(force, volumes)
-- [ ] Yıkıcı işlem onayı (container adını yazdırma)
-- [ ] Detay sayfası sekme iskeleti (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network)
-- [ ] WS `/containers/{id}/logs` backend (tail, follow, timestamps, stdout/stderr)
-- [ ] `LogViewer` bileşeni: ring buffer, ANSI, arama, otomatik kaydırma kilidi, indir
-- [ ] SSE `/containers/{id}/stats` backend + in-memory ring buffer (60 örnek)
-- [ ] Stats sekmesi: CPU/mem/net/blk canlı grafikler (Recharts)
-- [ ] WS `/containers/{id}/exec` backend (attach, tty, resize)
-- [ ] `TerminalPane`: xterm.js + fit + shell seçimi + resize
-- [ ] Inspect sekmesi: ham JSON görüntüleyici (katlanabilir, arama, kopyala)
-- [ ] `POST /containers/{id}/redeploy` — inspect'ten config türetme + pull + recreate
-- [ ] WS/SSE ticket mekanizması + origin doğrulaması
-- [ ] `ReconnectingBanner` + exponential backoff yeniden bağlanma
+**M4-A — Docker katmanı**
+- [x] pause/unpause/kill/rename engine çağrıları
+- [x] `ContainerLogs` — 8 baytlık multiplex başlığı çözümü, TTY tespiti, 64 KB satır sınırı
+- [x] `ContainerStats` — `docker stats` ile aynı CPU formülü, page cache düşülmüş bellek, 60 örneklik ring buffer
+- [x] `Exec` / `ResizeExec` / `ExecExitCode`
+- [x] `Events` — engine olay akışı
 
-**Testler:** log/exec/stats handler'ları (fake) · redeploy config türetme · LogViewer buffer · Terminal resize
-**DoD:** gerçek bir container üzerinde log akar, konsol açılır, stats grafiği çizer · commit + push
+**M4-B — WS/SSE altyapısı**
+- [x] WS/SSE ticket mekanizması (60 sn, tek kullanımlık) + origin doğrulaması
+- [x] WS `/containers/{id}/logs` (tail, follow, timestamps, stdout/stderr)
+- [x] WS `/containers/{id}/exec` (binary=stdin, text=resize, exit kodu raporu, audit kaydı)
+- [x] SSE `/containers/{id}/stats` + `/system/events` (25 sn heartbeat)
+- [x] SSE `/containers/stats` — tüm çalışan container'lar tek bağlantıda, ID etiketli (D-048)
+- [x] `POST /containers/batch` — hiçbir hata döngüyü durdurmuyor, kısmi başarıda 207
+- [x] `POST /containers/{id}/redeploy` — inspect'ten config türetme + pull + recreate + rollback
+
+**M4-C — Arayüz**
+- [x] Container liste: durum, image, port map, uptime, health, **canlı CPU/RAM** (tek paylaşımlı akış).
+      Restart sayısı listede yok — engine'in liste API'si döndürmüyor (D-049), detay sekmesinde var.
+- [x] Filtre + arama + sıralama + 500+ satırda sanallaştırma
+- [x] Çoklu seçim + toplu aksiyon (batch endpoint'i)
+- [x] Aksiyonlar: start/stop/restart/pause/unpause/kill/rename/remove(force, volumes)
+- [x] Yıkıcı işlem onayı (container adını yazdırma)
+- [x] Detay sayfası 8 sekme (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network)
+- [x] `LogViewer`: ring buffer, arama, stderr vurgusu, otomatik kaydırma kilidi, indirme
+- [x] Stats sekmesi: CPU/mem/net/blk canlı grafikleri (Recharts)
+- [x] `ConsolePanel`: xterm.js + fit + shell seçimi + resize
+- [x] Inspect sekmesi: ham JSON görüntüleyici (arama, kopyala)
+- [x] `ConnectionBanner` + üstel geri çekilmeli yeniden bağlanma (maks. 30 sn)
+
+**Testler:** `internal/server/stream_test.go` (ticket, izin, WS/SSE handler'ları) · batch/redeploy servis testleri ·
+`useLogStream.test.ts` (ring buffer sınırı, yeniden bağlanma, hata ve EOF davranışı) · `spa_test.go`
+
+**DoD:** ✅ Docker soketi olmayan ortamda uçtan uca doğrulandı (bootstrap → ticket → batch → `DOCKER_UNAVAILABLE` zinciri);
+gerçek container üzerinde log/stats/console doğrulaması Docker'lı bir makinede yapılmalı (bkz. Bloke Eden Konular) · commit + push
 
 ---
 
@@ -305,6 +327,7 @@ Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayı
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-08 | M3 + M4 ✅ | Frontend tek binary'ye gömüldü (`web/embed.go` + `internal/server/spa.go`): derin bağlantılar SPA kabuğunu, `/api` altındaki bilinmeyen yollar JSON 404'ü döndürüyor. Container yönetimi tam: liste + toplu işlem + 8 sekmeli detay, WS log/exec, SSE stats/events, redeploy. `make gen-api` OpenAPI'den TS tipi üretiyor, `conformance.ts` elle yazılan tiplerle spec'i derleme zamanında karşılaştırıyor. CI'ya `web` ve `bundle` job'ları eklendi. Üç gerçek hata yakalandı: `web/node_modules` altındaki üçüncü parti Go dosyası `./...`'a sızıyordu (D-042), `make test`/`make test-cover` `-race` ile CGO_ENABLED=0 yüzünden hiç koşamıyordu (D-043), `go.mod` tidy değildi. Lint 0 issue, coverage %71.9, 35 frontend testi. |
 | 2026-08-08 | M2 ✅ | SQLite + migration'lar, argon2id, JWT + refresh rotasyonu, API token, brute-force limiti, 8 izinli RBAC matrisi, CSRF, rate limit, audit + maskeleme. M1'in tüm endpoint'leri koruma altında. Uçtan uca bootstrap→login→refresh zinciri doğrulandı. Lint 0 issue, coverage %79.8. |
 | 2026-08-07 | Planlama | PLAN/PROGRESS/DECISIONS/ACCEPTANCE oluşturuldu. Kodlamaya başlama komutu bekleniyor. |
 | 2026-08-07 | M1 ✅ | Docker katmanı: `Client` interface + SDK implementasyonu + fake + offline istemci. 12 yeni endpoint, OpenAPI spec'i, engine hatası → HTTP eşlemesi. Docker soketi olmayan ortamda uçtan uca doğrulandı. **Go minimumu 1.25'e yükseldi** (D-019, Docker SDK bağımlılık ağacı). Lint 0 issue, coverage %82.1. |
@@ -314,4 +337,8 @@ Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayı
 
 ## Bloke Eden Konular
 
-_(Şu an yok. Bir konu bloke ederse buraya tarih + açıklama + gereken karar yazılır ve `DECISIONS.md`'e bağlanır.)_
+| Tarih | Konu | Durum |
+|---|---|---|
+| 2026-08-08 | Bu geliştirme ortamında Docker soketi yok. Log/stats/console yolları fake engine ve offline istemciyle test edildi; **gerçek bir container üzerinde canlı doğrulama yapılmadı.** | Bloke değil — kod yolları test altında, ama Docker'lı bir makinede elle bir tur atılması gerekiyor. |
+| 2026-08-08 | `govulncheck` yerelde koşmuyor (`vuln.go.dev` proxy tarafından 403). | Bloke değil — CI'da koşuyor. |
+| 2026-08-08 | `make test-cover` yerelde koşmuyor: bu ortamın Go araç zincirinde `covdata` yok. `make test` (`-race`, kapsamsız) yeşil. | Bloke değil — CI'da tam araç zinciri var. |

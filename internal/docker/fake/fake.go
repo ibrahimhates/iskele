@@ -7,6 +7,7 @@ package fake
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"sync"
 	"time"
 
@@ -445,4 +446,261 @@ func (c *Client) setState(id, state string) {
 		}
 		return
 	}
+}
+
+// Streaming operation names accepted by Client.Fail.
+const (
+	OpPauseContainer   = "PauseContainer"
+	OpUnpauseContainer = "UnpauseContainer"
+	OpKillContainer    = "KillContainer"
+	OpRenameContainer  = "RenameContainer"
+	OpCreateContainer  = "CreateContainer"
+	OpInspectConfig    = "RawInspectConfig"
+	OpPullImage        = "PullImage"
+	OpContainerLogs    = "ContainerLogs"
+	OpContainerStats   = "ContainerStats"
+	OpExec             = "Exec"
+	OpResizeExec       = "ResizeExec"
+	OpExecExitCode     = "ExecExitCode"
+	OpEvents           = "Events"
+)
+
+// LogLines is what ContainerLogs replays. Tests set it to drive a viewer.
+var defaultLogLines = []docker.LogLine{
+	{Stream: "stdout", Message: "starting"},
+	{Stream: "stderr", Message: "a warning"},
+	{Stream: "stdout", Message: "ready"},
+}
+
+func (c *Client) PauseContainer(_ context.Context, id string) error {
+	if err := c.record(OpPauseContainer, id, nil); err != nil {
+		return err
+	}
+	if !c.containerExists(id) {
+		return notFound("container.pause", id)
+	}
+	c.setState(id, "paused")
+	return nil
+}
+
+func (c *Client) UnpauseContainer(_ context.Context, id string) error {
+	if err := c.record(OpUnpauseContainer, id, nil); err != nil {
+		return err
+	}
+	if !c.containerExists(id) {
+		return notFound("container.unpause", id)
+	}
+	c.setState(id, "running")
+	return nil
+}
+
+func (c *Client) KillContainer(_ context.Context, id, signal string) error {
+	if err := c.record(OpKillContainer, id, signal); err != nil {
+		return err
+	}
+	if !c.containerExists(id) {
+		return notFound("container.kill", id)
+	}
+	c.setState(id, "exited")
+	return nil
+}
+
+func (c *Client) RenameContainer(_ context.Context, id, newName string) error {
+	if err := c.record(OpRenameContainer, id, newName); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.Containers {
+		if c.Containers[i].ID != id && c.Containers[i].Name != id {
+			continue
+		}
+		c.Containers[i].Name = newName
+		c.Containers[i].Names = []string{newName}
+		if d, ok := c.Details[c.Containers[i].ID]; ok {
+			d.Name = newName
+			c.Details[c.Containers[i].ID] = d
+		}
+		return nil
+	}
+	return notFound("container.rename", id)
+}
+
+func (c *Client) CreateContainer(_ context.Context, spec docker.CreateSpec) (string, error) {
+	if err := c.record(OpCreateContainer, spec.Name, spec); err != nil {
+		return "", err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	id := "created-" + spec.Name
+	created := docker.Container{
+		ID: id, Name: spec.Name, Names: []string{spec.Name},
+		State: "created", Status: "Created",
+		Ports: []docker.Port{}, Labels: map[string]string{},
+		Networks: []string{}, Mounts: []string{},
+		SizeRW: -1, SizeRootFS: -1,
+	}
+	c.Containers = append(c.Containers, created)
+	c.Details[id] = docker.ContainerDetail{Container: created}
+	c.RawInspect[id] = json.RawMessage(`{"Id":"` + id + `"}`)
+	return id, nil
+}
+
+func (c *Client) RawInspectConfig(_ context.Context, id string) (docker.CreateSpec, error) {
+	if err := c.record(OpInspectConfig, id, nil); err != nil {
+		return docker.CreateSpec{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, ct := range c.Containers {
+		if ct.ID == id || ct.Name == id {
+			return docker.CreateSpec{Name: ct.Name}, nil
+		}
+	}
+	return docker.CreateSpec{}, notFound("container.inspect", id)
+}
+
+func (c *Client) PullImage(_ context.Context, ref string) error {
+	if err := c.record(OpPullImage, ref, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) ContainerLogs(ctx context.Context, id string, opts docker.LogOptions) (<-chan docker.LogLine, <-chan error) {
+	lines := make(chan docker.LogLine, len(defaultLogLines))
+	errs := make(chan error, 1)
+
+	if err := c.record(OpContainerLogs, id, opts); err != nil {
+		errs <- err
+		close(lines)
+		close(errs)
+		return lines, errs
+	}
+	if !c.containerExists(id) {
+		errs <- notFound("container.logs", id)
+		close(lines)
+		close(errs)
+		return lines, errs
+	}
+
+	go func() {
+		defer close(lines)
+		defer close(errs)
+		for _, line := range defaultLogLines {
+			select {
+			case lines <- line:
+			case <-ctx.Done():
+				return
+			}
+		}
+		// A non-following stream ends after the backlog, like the engine's.
+		if opts.Follow {
+			<-ctx.Done()
+		}
+	}()
+
+	return lines, errs
+}
+
+func (c *Client) ContainerStats(ctx context.Context, id string) (<-chan docker.Stats, <-chan error) {
+	out := make(chan docker.Stats, 4)
+	errs := make(chan error, 1)
+
+	if err := c.record(OpContainerStats, id, nil); err != nil {
+		errs <- err
+		close(out)
+		close(errs)
+		return out, errs
+	}
+	if !c.containerExists(id) {
+		errs <- notFound("container.stats", id)
+		close(out)
+		close(errs)
+		return out, errs
+	}
+
+	go func() {
+		defer close(out)
+		defer close(errs)
+		for i := 0; i < 3; i++ {
+			sample := docker.Stats{
+				Timestamp:     time.Now().UTC(),
+				CPUPercent:    float64(10 + i),
+				MemoryUsage:   int64(100<<20 + i),
+				MemoryLimit:   1 << 30,
+				MemoryPercent: 10,
+				PIDs:          5,
+			}
+			select {
+			case out <- sample:
+			case <-ctx.Done():
+				return
+			}
+		}
+		<-ctx.Done()
+	}()
+
+	return out, errs
+}
+
+func (c *Client) Exec(_ context.Context, id string, opts docker.ExecOptions) (*docker.ExecSession, error) {
+	if err := c.record(OpExec, id, opts); err != nil {
+		return nil, err
+	}
+	if !c.containerExists(id) {
+		return nil, notFound("container.exec", id)
+	}
+
+	// A pipe pair stands in for the hijacked connection: whatever the client
+	// writes to stdin comes back as output, which is enough to prove the
+	// plumbing without a container.
+	pr, pw := io.Pipe()
+	return &docker.ExecSession{
+		ID:     "exec-" + id,
+		Conn:   pw,
+		Reader: pr,
+		TTY:    opts.TTY,
+		Close:  func() { _ = pw.Close(); _ = pr.Close() },
+	}, nil
+}
+
+func (c *Client) ResizeExec(_ context.Context, execID string, rows, cols uint) error {
+	return c.record(OpResizeExec, execID, [2]uint{rows, cols})
+}
+
+func (c *Client) ExecExitCode(_ context.Context, execID string) (int, error) {
+	if err := c.record(OpExecExitCode, execID, nil); err != nil {
+		return 0, err
+	}
+	return 0, nil
+}
+
+func (c *Client) Events(ctx context.Context) (<-chan docker.Event, <-chan error) {
+	out := make(chan docker.Event, 4)
+	errs := make(chan error, 1)
+
+	if err := c.record(OpEvents, "", nil); err != nil {
+		errs <- err
+		close(out)
+		close(errs)
+		return out, errs
+	}
+
+	go func() {
+		defer close(out)
+		defer close(errs)
+		select {
+		case out <- docker.Event{Type: "container", Action: "start", Actor: "c1", Name: "web", Time: time.Now().UTC()}:
+		case <-ctx.Done():
+			return
+		}
+		<-ctx.Done()
+	}()
+
+	return out, errs
 }

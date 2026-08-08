@@ -5,7 +5,10 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 26 (M2 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 42 · **Kısmi (🟡):** 5 (M4 sonu)
+
+> 🟡 = kod yazıldı ve testleri geçiyor, ama son kanıt bu ortamda üretilemiyor (gerçek bir Docker
+> daemon'ı gerektiriyor) ya da madde birden çok milestone'a yayılıyor. Bunlar **işaretli sayılmaz.**
 
 ---
 
@@ -17,9 +20,9 @@
 | A2 | `go build ./...` ve `go vet ./...` temiz | CI | tüm | [ ] |
 | A3 | `go test ./...` yeşil, `-race` ile de geçer | CI | tüm | [ ] |
 | A4 | `golangci-lint run` (errcheck, govet, staticcheck, gosec) temiz | CI | tüm | [ ] |
-| A5 | `npm run lint` ve `npm run build` yeşil | CI | M3+ | [ ] |
+| A5 | `npm run lint` ve `npm run build` yeşil | CI | M3+ | [x] |
 | A6 | Binary `linux/amd64`, `linux/arm64`, `linux/armv7` için cross-compile edilir | CI | M9 | [ ] |
-| A7 | Frontend `embed.FS` ile binary'ye gömülüdür; harici dosya gerekmez | manuel | M3 | [ ] |
+| A7 | Frontend `embed.FS` ile binary'ye gömülüdür; harici dosya gerekmez | manuel | M3 | [x] |
 | A8 | `iskeled --help` tüm flag'leri açıklar; `--version` sürüm/commit/tarih basar | manuel | M0 | [x] |
 | A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [x] |
 | A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [x] |
@@ -74,16 +77,16 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| D1 | Liste: durum, image, port map, CPU/RAM, uptime, health, restart sayısı gösterilir | gözle | M4 | [ ] |
-| D2 | Filtre, arama, etiketle gruplama, sıralama çalışır | gözle | M4 | [ ] |
-| D3 | start / stop / restart / pause / unpause / kill / rename / remove(force, volumes) çalışır | manuel | M4 | [ ] |
-| D4 | Çoklu seçimle toplu aksiyon uygulanır, kısmi hata raporlanır | manuel | M4 | [ ] |
-| D5 | Detay sekmeleri: Overview, Logs, Stats, Console, Inspect, Env, Mounts, Network | gözle | M4 | [ ] |
-| D6 | Canlı log akışı çalışır; tail sayısı, timestamps toggle, arama, indirme mevcut | manuel | M4 | [ ] |
-| D7 | Console `docker exec -it` eşleniğidir; shell seçimi ve resize (SIGWINCH) çalışır | manuel | M4 | [ ] |
-| D8 | Stats: CPU %, mem kullanım/limit, net I/O, blk I/O canlı grafik (son 60 örnek) | gözle | M4 | [ ] |
-| D9 | Redeploy: yeni image çekip aynı config ile yeniden yaratır; hata olursa rollback | manuel | M4 | [ ] |
-| D10 | Inspect sekmesi ham JSON'u okunur biçimde gösterir | gözle | M4 | [ ] |
+| D1 | Liste: durum, image, port map, CPU/RAM, uptime, health gösterilir. **Restart sayısı listede yok** — engine'in liste API'si döndürmüyor, detay sekmesinde var (D-049). | gözle | M4 | 🟡 |
+| D2 | Filtre, arama, etiketle gruplama, sıralama çalışır | gözle | M4 | [x] |
+| D3 | start / stop / restart / pause / unpause / kill / rename / remove(force, volumes) çalışır | manuel | M4 | 🟡 |
+| D4 | Çoklu seçimle toplu aksiyon uygulanır, kısmi hata raporlanır | manuel | M4 | [x] |
+| D5 | Detay sekmeleri: Overview, Logs, Stats, Console, Inspect, Env, Mounts, Network | gözle | M4 | [x] |
+| D6 | Canlı log akışı çalışır; tail sayısı, timestamps toggle, arama, indirme mevcut | manuel | M4 | [x] |
+| D7 | Console `docker exec -it` eşleniğidir; shell seçimi ve resize (SIGWINCH) çalışır | manuel | M4 | 🟡 |
+| D8 | Stats: CPU %, mem kullanım/limit, net I/O, blk I/O canlı grafik (son 60 örnek) | gözle | M4 | [x] |
+| D9 | Redeploy: yeni image çekip aynı config ile yeniden yaratır; hata olursa rollback | manuel | M4 | 🟡 |
+| D10 | Inspect sekmesi ham JSON'u okunur biçimde gösterir | gözle | M4 | [x] |
 
 ## E. Container Oluşturma Sihirbazı
 
@@ -173,17 +176,17 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| K1 | Sidebar: Dashboard, Containers, Stacks, Images, Volumes, Networks, App Catalog, Builds, Audit, Settings | gözle | M3 | [ ] |
-| K2 | Dark mode varsayılan; light/system toggle çalışır ve kalıcıdır | gözle | M3 | [ ] |
+| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M3 sonunda: Dashboard, Containers, Images, Volumes, Networks, Settings. Stacks/Catalog/Builds/Audit kendi milestone'larında eklenir. | gözle | M3→M8 | 🟡 |
+| K2 | Dark mode varsayılan; light/system toggle çalışır ve kalıcıdır | gözle | M3 | [x] |
 | K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | [ ] |
-| K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [ ] |
-| K5 | Yıkıcı işlemler (remove, prune, down) kaynak adı yazdırılarak onaylanır | gözle | M4 | [ ] |
+| K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [x] |
+| K5 | Yıkıcı işlemler (remove, prune, down) kaynak adı yazdırılarak onaylanır | gözle | M4 | [x] |
 | K6 | Uzun işler için global task drawer: ilerleme, iptal, log | gözle | M5 | [ ] |
-| K7 | Klavye kısayolları: `/` arama, `g c` containers, `g s` stacks | manuel | M4 | [ ] |
-| K8 | Bağlantı kopunca "reconnecting" bandı çıkar; WS exponential backoff ile yeniden bağlanır | manuel | M4 | [ ] |
-| K9 | Hata mesajları Docker'ın döndürdüğü metni gizlemeden gösterir | gözle | M4 | [ ] |
+| K7 | Klavye kısayolları: `/` arama, `g c` containers, `g s` stacks | manuel | M4 | [x] |
+| K8 | Bağlantı kopunca "reconnecting" bandı çıkar; WS exponential backoff ile yeniden bağlanır | manuel | M4 | [x] |
+| K9 | Hata mesajları Docker'ın döndürdüğü metni gizlemeden gösterir | gözle | M4 | [x] |
 | K10 | Her liste ekranında empty state tasarımı var | gözle | M8 | [ ] |
-| K11 | i18n: TR ve EN tam; hard-coded metin yok; anahtar eşitliği testi geçer | test | M3 | [ ] |
+| K11 | i18n: TR ve EN tam; hard-coded metin yok; anahtar eşitliği testi geçer | test | M3 | [x] |
 | K12 | Erişilebilirlik: ikon butonlarda `aria-label`, klavye ile tam gezinme | gözle | M8 | [ ] |
 
 ## L. Test ve Kalite
@@ -195,7 +198,7 @@
 | L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M6 | [ ] |
 | L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [ ] |
 | L5 | Template render: her template için geçerli payload testi | test | M8 | [ ] |
-| L6 | Frontend Vitest: form validasyonu ve log viewer buffer testleri | test | M4 | [ ] |
+| L6 | Frontend Vitest: form validasyonu ve log viewer buffer testleri | test | M4 | [x] |
 | L7 | Backend test coverage ≥ %60 ve CI'da raporlanır | CI | M9 | [ ] |
 | L8 | CI'da lint (golangci-lint + eslint + prettier) zorunlu ve yeşil | CI | M9 | [ ] |
 

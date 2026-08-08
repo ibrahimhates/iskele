@@ -42,6 +42,10 @@ linters:
           disabled: true
 
   exclusions:
+    # npm packages sometimes ship Go sources (flatted does). They are not ours
+    # and `npm ci` regenerates them, so a finding there can never be fixed.
+    paths:
+      - web/node_modules
     rules:
       - path: _test\.go
         linters:
@@ -51,3 +55,6 @@ linters:
 formatters:
   enable:
     - gofmt
+  exclusions:
+    paths:
+      - web/node_modules
