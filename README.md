@@ -26,6 +26,9 @@ filesystem. Treat the panel as a root shell:
   never as root.
 - Keep `allowed_paths` as narrow as possible: it is the whitelist that bind
   mounts and build contexts cannot escape.
+- `secret_key_file` (default `/etc/iskele/secret.key`) holds the master key for
+  stored secrets and token signing. iskeled creates it with mode `0600` and
+  **refuses to start** if it is readable by anyone else.
 
 See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 
@@ -78,6 +81,7 @@ a fully commented example lives in
 listen: "127.0.0.1:8377"
 docker_host: "unix:///var/run/docker.sock"
 data_dir: "/var/lib/iskele"
+secret_key_file: "/etc/iskele/secret.key"
 allowed_paths:
   - "/opt/stacks"
   - "/srv"
@@ -104,30 +108,69 @@ All endpoints live under `/api/v1`. Errors use a single envelope:
 { "error": { "code": "CONTAINER_NOT_FOUND", "message": "no such container: abc", "details": {} } }
 ```
 
-Available today — all still unauthenticated, which is why the default bind
-address is loopback. Authentication arrives in M2.
+Every route requires a `Bearer` credential — a JWT access token from
+`/auth/login`, or an API token (`isk_<prefix>_<secret>`) — except the six
+listed as *open* below.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/health` | Liveness probe — `{"status":"ok","uptime":"1m2s"}` |
-| `GET` | `/version` | Build metadata of the running binary |
-| `GET` | `/system/ping` | Is the Docker daemon reachable? Always 200 |
-| `GET` | `/system/info` | Docker engine and host summary |
-| `GET` | `/system/df` | Disk usage (`docker system df`) |
-| `GET` | `/containers` | List containers — `all`, `size`, `label`, `status`, `name` |
-| `GET` | `/containers/{id}` | Container detail |
-| `GET` | `/containers/{id}/inspect` | The engine's raw inspect payload, verbatim |
-| `POST` | `/containers/{id}/start` | Start |
-| `POST` | `/containers/{id}/stop` | Stop — optional `timeout` |
-| `POST` | `/containers/{id}/restart` | Restart — optional `timeout` |
-| `DELETE` | `/containers/{id}` | Remove — `force`, `volumes` |
-| `GET` | `/images` | List images — `all`, `dangling`, `label` |
-| `GET` | `/volumes` | List volumes |
-| `GET` | `/networks` | List networks |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | open | Liveness probe — `{"status":"ok","uptime":"1m2s"}` |
+| `GET` | `/version` | open | Build metadata of the running binary |
+| `GET` | `/auth/status` | open | Has the installation been set up yet? |
+| `POST` | `/auth/bootstrap` | open | Create the first admin account (works once) |
+| `POST` | `/auth/login` | open | Sign in |
+| `POST` | `/auth/refresh` | open | Rotate the refresh token for a new pair |
+| `POST` | `/auth/logout` | any | Revoke the current session |
+| `GET` | `/auth/me` | any | The caller's identity and permissions |
+| `GET` | `/system/ping` | read | Is the Docker daemon reachable? Always 200 |
+| `GET` | `/system/info` | read | Docker engine and host summary |
+| `GET` | `/system/df` | read | Disk usage (`docker system df`) |
+| `GET` | `/containers` | read | List containers — `all`, `size`, `label`, `status`, `name` |
+| `GET` | `/containers/{id}` | read | Container detail |
+| `GET` | `/containers/{id}/inspect` | read | The engine's raw inspect payload, verbatim |
+| `POST` | `/containers/{id}/start` | operate | Start |
+| `POST` | `/containers/{id}/stop` | operate | Stop — optional `timeout` |
+| `POST` | `/containers/{id}/restart` | operate | Restart — optional `timeout` |
+| `DELETE` | `/containers/{id}` | delete | Remove — `force`, `volumes` |
+| `GET` | `/images` | read | List images — `all`, `dangling`, `label` |
+| `GET` | `/volumes` | read | List volumes |
+| `GET` | `/networks` | read | List networks |
 
 Collection endpoints return `{"items": [...], "total": N}`; `items` is never
 `null`. The full specification is [`docs/openapi.yaml`](docs/openapi.yaml), and
 the planned surface is in [`PLAN.md`](PLAN.md#6-api-yüzeyi).
+
+### Getting started
+
+```sh
+# 1. Is it set up yet?
+curl -s localhost:8377/api/v1/auth/status
+# {"initialized":false}
+
+# 2. Create the first admin (works exactly once)
+curl -s -X POST localhost:8377/api/v1/auth/bootstrap \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"a-long-enough-Passphrase-1"}'
+
+# 3. Use the access token it returns
+curl -s localhost:8377/api/v1/containers -H "Authorization: Bearer $TOKEN"
+```
+
+Until that first account exists, **every** route except the auth endpoints
+answers `409 NOT_INITIALIZED` — an installation that is running but not yet
+configured does not expose Docker to whoever reaches the port first.
+
+### Roles
+
+| | viewer | operator | admin |
+|---|:--:|:--:|:--:|
+| Read (list, inspect, logs, stats) | ✅ | ✅ | ✅ |
+| Start / stop / restart, create, remove | | ✅ | ✅ |
+| Build, prune, privileged options | | | ✅ |
+| Users, settings, registries, audit log | | | ✅ |
+
+Routes require *permissions*, not roles, and an unrecognised role carries no
+permissions at all — the check fails closed.
 
 **When Docker is down**, iskeled still starts and serves: `/health` keeps
 answering and every engine-backed route returns `503 DOCKER_UNAVAILABLE` with

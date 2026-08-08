@@ -208,6 +208,108 @@ bir istek değil. `/system/info` ve `/system/df` ise normal 503 semantiğini kor
 
 ---
 
+## M2 Sırasında Alınan Kararlar
+
+### D-027 — Rol/izin matrisi: roller doğrudan değil, **izinler** üzerinden kontrol edilir
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B7-B9
+**Bağlam:** Route'larda `if role == "admin"` kontrolü, endpoint sayısı arttıkça dağınıklaşır ve
+bir yerde unutulursa sessizce açık kalır.
+**Karar:** 8 izin tanımlandı (`read, operate, create, delete, build, prune, privileged, admin`);
+roller bu izinlerin kümesidir. Route'lar izin ister (`r.With(operate())`), rol değil.
+**Sonuç:** Matris tek yerde (`middleware/rbac.go`) ve testte satır satır doğrulanıyor.
+Bilinmeyen/bozuk bir rol **hiçbir izne sahip değildir** (fail-closed). `/auth/me` çağıranın izin
+listesini döner; UI kullanamayacağı kontrolleri buna göre gizleyecek.
+
+### D-028 — CSRF: çift-gönderim cookie yerine "yalnız Bearer" kabulü
+**Durum:** Kabul · **Faz:** M2 · **Gereksinim:** PROMPT §6.6 (iki seçenekten biri)
+**Bağlam:** Iskele'nin tarayıcı istemcisi access token'ı bellekte tutar ve `Authorization`
+başlığıyla gönderir. Siteler arası bir form veya `<img>` bu başlığı **ayarlayamaz**.
+**Karar:** Durum değiştiren her istek (a) `Bearer` token taşımak zorunda ve (b) `Origin` başlığı
+varsa aynı origin olmalı. Cookie tabanlı oturum yok, dolayısıyla çift-gönderim token'ına gerek yok.
+**Sonuç:** `Origin` göndermeyen istemciler (curl, CI) çalışır — CSRF onlar için geçerli bir tehdit
+değil — ama yine de token sunmak zorundalar. `OriginAllowed` M4'te WebSocket handshake'inde tekrar
+kullanılacak.
+
+### D-029 — Brute-force limiti IP bazlı, kullanıcı adı bazlı değil
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B11
+**Bağlam:** Kullanıcı adına göre kilitlemek, bilinen bir hesabı kasten yanlış parolayla deneyerek
+**kilitleme saldırısına** (account lockout DoS) açık hale getirir.
+**Karar:** Sayaç ve kilit kaynak IP'ye göre; 15 dk pencerede 10 başarısızlık → 15 dk kilit.
+**Başarılı giriş sayacı sıfırlar**, böylece iki kez yanlış yazıp sonra giren kullanıcı kilide
+bir adım uzakta kalmaz. Kayıtlar DB'de tutulur (yeniden başlatma kilidi sıfırlamaz).
+**Sonuç:** Ayrıca in-memory token bucket rate limit var: login/bootstrap 5/dk, genel API 120/dk.
+
+### D-030 — `/auth/refresh` ve `/auth/status` sıkı login limitine tabi değil
+**Durum:** Kabul · **Faz:** M2
+**Bağlam:** Uçtan uca testte, birkaç sekmeli bir tarayıcının normal token yenilemesinde 429 alacağı
+görüldü (login limiti 5/dk).
+**Karar:** Bu iki endpoint genel limite (120/dk) alındı. Gerekçe: refresh token 32 byte rastgeledir,
+kaba kuvvetle bulunamaz — tehdit modeli parola tahmini değil. `status` yalnız kurulumun yapılıp
+yapılmadığını söyler.
+**Sonuç:** `bootstrap` ve `login` sıkı limitte kalır.
+
+### D-031 — Parola politikası: uzunluk önce, karakter sınıfı hafif
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B3
+**Karar:** Minimum 12 karakter (PROMPT §4.1) + en az 2 karakter sınıfı. Maksimum 1024 karakter.
+**Gerekçe:** Uzun bir parola cümlesi, kısa ve karmaşık bir dizeden güçlüdür; sınıf kuralı yalnız
+`aaaaaaaaaaaa` gibi aşikâr girdileri eler. Üst sınır, tek bir login denemesinin bellek-yoğun
+argon2 hesabıyla DoS'a dönüşmesini engeller.
+**Ek:** argon2id `t=3, m=64MiB, p=2`; parametreler PHC formatında hash ile birlikte saklanır,
+`NeedsRehash` ile bir sonraki başarılı girişte otomatik yükseltilir.
+
+### D-032 — Kullanıcı adı büyük/küçük harf duyarsız, görünen biçim korunur
+**Durum:** Kabul · **Faz:** M2
+**Karar:** `users.username_lower` sütunu UNIQUE; arama bunun üzerinden. `username` operatörün
+yazdığı biçimi saklar.
+**Sonuç:** "Admin" ve "admin" aynı hesap; iki ayrı hesap açılamaz.
+
+### D-033 — Kimlik doğrulama hataları ayırt edilemez
+**Durum:** Kabul · **Faz:** M2
+**Karar:** "Kullanıcı yok" ve "parola yanlış" aynı `INVALID_CREDENTIALS` mesajını döner.
+Kullanıcı bulunamadığında bile sabit bir sahte hash'e karşı doğrulama yapılır, böylece
+**süre farkı** da hesap varlığını ele vermez.
+**Sonuç:** Login formu hesap numaralandırma aracına dönüşmez.
+
+### D-034 — Refresh token rotasyonu; iptal önce, üretim sonra
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B5
+**Karar:** Her `refresh` çağrısında eski oturum **önce** iptal edilir, sonra yeni çift üretilir.
+**Gerekçe:** Üretim başarısız olursa eski token zaten ölmüştür — güvenli yönde hata.
+Çalınan bir refresh token, gerçek kullanıcı bir kez yenilediği anda çalışmaz olur.
+**Sonuç:** Token'lar DB'de yalnız SHA-256 hash'i olarak durur; veritabanı sızıntısı canlı oturum vermez.
+
+### D-035 — Token iptali ve hesap durumu her istekte kontrol edilir
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** B14
+**Bağlam:** JWT kendi başına geçmişe dair bir iddiadır; hesap o sırada devre dışı bırakılmış olabilir.
+**Karar:** Her istekte kullanıcı DB'den okunur; `disabled` ise `403 ACCOUNT_DISABLED`, silinmişse `401`.
+**Sonuç:** Devre dışı bırakma anında etkili olur, token süresinin dolmasını beklemez. Maliyeti tek
+indeksli SELECT — tek sunucu ölçeğinde ihmal edilebilir.
+
+### D-036 — Audit maskelemesi: önce maskele, sonra sunucu alanlarını ekle
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** C9
+**Bağlam:** Maskeleme regex'i `token` içeren anahtarları gizliyor; bu, izleme için gereken
+`api_token_id` alanını da (bir sır olmadığı halde) gizliyordu — test bunu yakaladı.
+**Karar:** Kullanıcıdan gelen `detail` maskelenir, **sonra** sunucunun ürettiği güvenilir alanlar
+(`api_token_id`) üstüne yazılır.
+**Sonuç:** Sızmış bir API token'ının hangi işlemleri yaptığı izlenebilir kalır.
+
+### D-037 — Master anahtar izinleri her açılışta doğrulanır
+**Durum:** Kabul · **Faz:** M2 · **Kabul kriteri:** C8
+**Karar:** `/etc/iskele/secret.key` yoksa 0600 ile üretilir; **varsa izinleri kontrol edilir** ve
+grup/diğer okuyabiliyorsa servis başlamaz (`chmod 600 ...` ipucuyla).
+**Gerekçe:** Başka bir yerel hesabın okuyabildiği anahtar hiçbir şeyi korumuyordur; bu bir uyarı
+değil, başlatma hatasıdır. Anahtar `O_EXCL` ile yaratılır — eşzamanlı bir başlatma anahtarı ezmez.
+**Ek:** Amaç bazlı alt anahtarlar (`Derive("jwt-signing")`, `Derive("secretbox")`) — birinin ele
+geçmesi diğerini vermez.
+
+### D-038 — SQLite: tek yazar bağlantısı, WAL, RFC3339Nano zaman damgaları
+**Durum:** Kabul · **Faz:** M2
+**Karar:** `SetMaxOpenConns(1)` ile yazımlar seri hale getirilir (SQLITE_BUSY tamamen elenir),
+`journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`. Zaman damgaları RFC3339Nano UTC
+**metin** olarak saklanır; sözlüksel sıralama = kronolojik sıralama, indeksler beklendiği gibi çalışır.
+**Sonuç:** Tek sunucu ölçeğinde okuma performansı yeterli; basitlik kazanıyor.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**

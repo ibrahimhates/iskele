@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-07 · **Aktif faz:** M2 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-08 · **Aktif faz:** M3 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -15,7 +15,7 @@
 | — | Planlama | ✅ Bitti | 4/4 | PLAN/PROGRESS/DECISIONS/ACCEPTANCE üretildi |
 | M0 | İskelet | ✅ Bitti | 14/14 | Servis ayakta, CI kuruldu, kapsam %84.3 |
 | M1 | Docker katmanı + temel API | ✅ Bitti | 13/13 | 12 endpoint, offline istemci, kapsam %82.1 |
-| M2 | Auth + DB | ⬜ Bekliyor | 0/16 | |
+| M2 | Auth + DB | ✅ Bitti | 16/16 | RBAC matrisi tam test edildi, kapsam %79.8 |
 | M3 | Frontend iskeleti | ⬜ Bekliyor | 0/14 | |
 | M4 | Container yönetimi (tam) | ⬜ Bekliyor | 0/16 | |
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ⬜ Bekliyor | 0/18 | |
@@ -26,20 +26,20 @@
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-07, M1 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-08, M2 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
 | `go build ./...` | ✅ | — |
 | `gofmt -l` | ✅ | temiz |
 | `go vet ./...` | ✅ | — |
-| `go test -race ./...` | ✅ | 11 paket, hepsi yeşil |
+| `go test -race ./...` | ✅ | 14 paket, hepsi yeşil |
 | `golangci-lint run` | ✅ | 0 issue (v2.5.0) |
 | Cross-compile | ✅ | amd64 / arm64 / armv7 |
 | `govulncheck` | ⚠️ | yerelde proxy engelliyor (`vuln.go.dev` 403); CI'da koşuyor |
 | `npm run lint` | — | M3'te devreye girer |
 | `npm run build` | — | M3'te devreye girer |
-| Backend coverage | ✅ **%82.1** | hedef ≥ %60 (`-coverpkg=./...`) |
+| Backend coverage | ✅ **%79.8** | hedef ≥ %60 (`-coverpkg=./...`) |
 
 ---
 
@@ -108,26 +108,33 @@ dönüştürülebilir mesaj döndürüyor (uçtan uca `curl` ile doğrulandı) �
 
 ---
 
-## M2 — Auth + DB  ⬜
+## M2 — Auth + DB  ✅
 
-- [ ] `internal/store/db.go` — modernc sqlite, WAL, pragma, açılış
-- [ ] `internal/store/migrations/0001_init.sql` — tüm tablolar + indeksler
-- [ ] Migration runner (`embed.FS`, sıralı, idempotent, `schema_migrations`)
-- [ ] `internal/crypto` — `secret.key` üretimi (0600) + AES-GCM encrypt/decrypt
-- [ ] `internal/auth/password.go` — argon2id hash/verify + min 12 karakter kuralı
-- [ ] `internal/auth/jwt.go` — access token issue/parse/validate
-- [ ] `internal/auth/session.go` — refresh token üret/rotate/revoke
-- [ ] `internal/auth/apitoken.go` — `isk_` formatı, scope, expiry, hash
-- [ ] `internal/auth/bruteforce.go` — IP+kullanıcı bazlı sayaç ve kilit
-- [ ] Bootstrap akışı + `NOT_INITIALIZED` kapısı (diğer tüm endpoint'ler kapalı)
-- [ ] Handler'lar: bootstrap / login / refresh / logout / me
-- [ ] Middleware: auth (JWT + API token), rbac (rol matrisi), ratelimit, csrf
-- [ ] `internal/audit` — kayıt yazma + secret maskeleme
-- [ ] M1 endpoint'lerinin rol koruması altına alınması
-- [ ] Store repository'leri: users, sessions, tokens, audit, settings
-- [ ] Testler: hash, JWT expiry/imza, refresh rotate+revoke, **tam RBAC matrisi**, brute-force, migration, maskeleme
+- [x] `internal/store/db.go` — modernc sqlite, WAL, `foreign_keys`, tek yazar bağlantısı (D-038)
+- [x] `internal/store/migrations/0001_init.sql` — 6 tablo + 10 indeks + rol CHECK kısıtı
+- [x] Migration runner (`embed.FS`, sıralı, transaction başına bir migration, idempotent)
+- [x] `internal/crypto` — `secret.key` 0600 üretimi + **her açılışta izin doğrulaması** (D-037), AES-256-GCM, amaç bazlı alt anahtar
+- [x] `internal/auth/password.go` — argon2id (t=3, m=64MiB, p=2), PHC formatı, min 12 karakter, `NeedsRehash`
+- [x] `internal/auth/jwt.go` — HS256, algoritma/issuer pinlemesi, rol doğrulaması
+- [x] `internal/auth/token.go` — refresh token üret/hash, `isk_<prefix>_<secret>` API token formatı
+- [x] `internal/auth/bruteforce.go` — IP bazlı sayaç + kilit, başarı sayacı sıfırlar (D-029)
+- [x] Bootstrap akışı + `NOT_INITIALIZED` kapısı (kurulum bitene kadar tüm API kapalı)
+- [x] Handler'lar: status / bootstrap / login / refresh / logout / me
+- [x] Middleware: auth (JWT + API token), rbac (8 izin, D-027), ratelimit (token bucket), csrf (D-028)
+- [x] `internal/audit` — kayıt yazma + iç içe yapılarda secret maskeleme, iptal edilen istekte bile yazar
+- [x] M1 endpoint'lerinin tamamı izin koruması altına alındı
+- [x] Store repository'leri: users, sessions, tokens, audit, logins, settings
+- [x] Testler: parola politikası ve hash, JWT (expiry/imza/alg-none/tampering/issuer/bilinmeyen rol), refresh rotasyonu + replay, **tam RBAC matrisi (14 route × 3 rol)**, brute-force, migration idempotency, maskeleme, rate limit, CSRF
+- [x] `docs/openapi.yaml` — auth endpoint'leri, güvenlik şeması, yeni hata kodları
 
-**DoD:** bootstrap → login → korumalı endpoint zinciri uçtan uca çalışır · commit + push
+**Testler:** 6 yeni test dosyası · hesap numaralandırma karşıtı testler (aynı mesaj + sabit süre) ·
+devre dışı/silinmiş hesabın mevcut token'ı reddedilmesi · API token ile kimlik doğrulama ve iptali ·
+anahtar dosyası izinleri · AES-GCM kurcalama tespiti · audit'te sır sızıntısı kontrolü
+
+**DoD:** ✅ Uçtan uca doğrulandı: kurulmamış sistem `409 NOT_INITIALIZED` → bootstrap → ikinci bootstrap
+`409` → token'sız `401` → token'la `503 DOCKER_UNAVAILABLE` → refresh rotasyonu → eski token `401`.
+Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayıtları var.
+✅ lint 0 issue · ✅ coverage %79.8 · ✅ commit + push
 
 ---
 
@@ -298,6 +305,7 @@ dönüştürülebilir mesaj döndürüyor (uçtan uca `curl` ile doğrulandı) �
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-08 | M2 ✅ | SQLite + migration'lar, argon2id, JWT + refresh rotasyonu, API token, brute-force limiti, 8 izinli RBAC matrisi, CSRF, rate limit, audit + maskeleme. M1'in tüm endpoint'leri koruma altında. Uçtan uca bootstrap→login→refresh zinciri doğrulandı. Lint 0 issue, coverage %79.8. |
 | 2026-08-07 | Planlama | PLAN/PROGRESS/DECISIONS/ACCEPTANCE oluşturuldu. Kodlamaya başlama komutu bekleniyor. |
 | 2026-08-07 | M1 ✅ | Docker katmanı: `Client` interface + SDK implementasyonu + fake + offline istemci. 12 yeni endpoint, OpenAPI spec'i, engine hatası → HTTP eşlemesi. Docker soketi olmayan ortamda uçtan uca doğrulandı. **Go minimumu 1.25'e yükseldi** (D-019, Docker SDK bağımlılık ağacı). Lint 0 issue, coverage %82.1. |
 | 2026-08-07 | M0 ✅ | İskelet tamam: config zinciri, slog, chi router + 4 middleware, health/version, graceful shutdown, Makefile, CI (4 job). Uçtan uca doğrulandı: binary ayağa kalkıyor, `/api/v1/health` 200 dönüyor, SIGTERM ile temiz kapanıyor. Lint 0 issue, coverage %84.3. |

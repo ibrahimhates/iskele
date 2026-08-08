@@ -370,7 +370,8 @@ Prefix `/api/v1`. Tüm hatalar:
 | Servis kullanıcısı | `iskele` sistem kullanıcısı, `docker` grubunda; root varsayılan değil |
 | CI güvenlik | `govulncheck`, `gosec`, `npm audit`, CodeQL |
 
-**RBAC matrisi** (`internal/server/middleware/rbac.go` içinde tablo olarak, testte tam kapsanır):
+**RBAC matrisi** — route'lar rol değil **izin** ister (D-027); matris
+`internal/server/middleware/rbac.go` içinde tek tablodur ve testte satır satır kapsanır:
 
 | Aksiyon sınıfı | viewer | operator | admin |
 |---|:--:|:--:|:--:|

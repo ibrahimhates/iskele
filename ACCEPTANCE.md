@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 9 (M1 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 26 (M2 sonu)
 
 ---
 
@@ -34,20 +34,20 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| B1 | Kurulmamış sistemde yalnız `/auth/bootstrap` çalışır, diğerleri `NOT_INITIALIZED` döner | test | M2 | [ ] |
-| B2 | Bootstrap yalnız bir kez çalışır; ikinci deneme `ALREADY_INITIALIZED` | test | M2 | [ ] |
-| B3 | Parola argon2id ile hash'lenir; 12 karakterden kısa parola reddedilir | test | M2 | [ ] |
-| B4 | Access token 15 dk, refresh token 7 gün; süresi dolan token reddedilir | test | M2 | [ ] |
-| B5 | Refresh token rotasyonlu; kullanılan token tekrar kullanılamaz | test | M2 | [ ] |
-| B6 | Logout refresh token'ı revoke eder; sonraki refresh `UNAUTHORIZED` | test | M2 | [ ] |
-| B7 | `admin`/`operator`/`viewer` rol matrisinin tamamı test edilir | test | M2 | [ ] |
-| B8 | `viewer` hiçbir state-changing endpoint'i çağıramaz (403) | test | M2 | [ ] |
-| B9 | `operator` build, prune, users, settings çağıramaz (403) | test | M2 | [ ] |
-| B10 | API token `Authorization: Bearer` ile çalışır; scope ve expiry uygulanır | test | M2 | [ ] |
-| B11 | Başarısız girişte IP bazlı limit devreye girer, kilit süresi uygulanır | test | M2 | [ ] |
+| B1 | Kurulmamış sistemde yalnız `/auth/bootstrap` çalışır, diğerleri `NOT_INITIALIZED` döner | test | M2 | [x] |
+| B2 | Bootstrap yalnız bir kez çalışır; ikinci deneme `ALREADY_INITIALIZED` | test | M2 | [x] |
+| B3 | Parola argon2id ile hash'lenir; 12 karakterden kısa parola reddedilir | test | M2 | [x] |
+| B4 | Access token 15 dk, refresh token 7 gün; süresi dolan token reddedilir | test | M2 | [x] |
+| B5 | Refresh token rotasyonlu; kullanılan token tekrar kullanılamaz | test | M2 | [x] |
+| B6 | Logout refresh token'ı revoke eder; sonraki refresh `UNAUTHORIZED` | test | M2 | [x] |
+| B7 | `admin`/`operator`/`viewer` rol matrisinin tamamı test edilir | test | M2 | [x] |
+| B8 | `viewer` hiçbir state-changing endpoint'i çağıramaz (403) | test | M2 | [x] |
+| B9 | `operator` build, prune, users, settings çağıramaz (403) | test | M2 | [x] |
+| B10 | API token `Authorization: Bearer` ile çalışır; scope ve expiry uygulanır | test | M2 | [x] |
+| B11 | Başarısız girişte IP bazlı limit devreye girer, kilit süresi uygulanır | test | M2 | [x] |
 | B12 | TOTP 2FA kurulabilir, doğrulanır, devre dışı bırakılabilir; login akışına girer | test | M8 | [ ] |
 | B13 | Kullanıcı CRUD, rol atama, parola sıfırlama, devre dışı bırakma çalışır | manuel | M8 | [ ] |
-| B14 | Devre dışı kullanıcının mevcut oturumları geçersiz olur | test | M8 | [ ] |
+| B14 | Devre dışı kullanıcının mevcut oturumları geçersiz olur | test | M8 | [x] |
 
 ## C. Güvenlik
 
@@ -57,11 +57,11 @@
 | C2 | Bind mount ve build path'i `allowed_paths` dışına çıkamaz | test | M6 | [ ] |
 | C3 | Path traversal (`../`), symlink ve absolute bypass vektörleri reddedilir | test | M6 | [ ] |
 | C4 | `privileged`, cap add, devices, security-opt, host-bind yalnız `admin`; UI'da uyarı | test+gözle | M5 | [ ] |
-| C5 | State-changing endpoint'lerde CSRF koruması (cookie akışı) veya yalnız Bearer kabulü | test | M2 | [ ] |
-| C6 | Login endpoint'i sıkı, genel API gevşek rate limit uygular | test | M2 | [ ] |
+| C5 | State-changing endpoint'lerde CSRF koruması (cookie akışı) veya yalnız Bearer kabulü | test | M2 | [x] |
+| C6 | Login endpoint'i sıkı, genel API gevşek rate limit uygular | test | M2 | [x] |
 | C7 | Registry parolaları ve tunnel token'ları DB'de AES-GCM ile şifreli | test | M5 | [ ] |
-| C8 | `/etc/iskele/secret.key` 0600 izinle üretilir; yoksa oluşturulur | test | M2 | [ ] |
-| C9 | Audit log ve uygulama loglarında secret değerler maskelenir | test | M2 | [ ] |
+| C8 | `/etc/iskele/secret.key` 0600 izinle üretilir; yoksa oluşturulur | test | M2 | [x] |
+| C9 | Audit log ve uygulama loglarında secret değerler maskelenir | test | M2 | [x] |
 | C10 | WebSocket bağlantılarında `Origin` doğrulaması ve ticket kontrolü yapılır | test | M4 | [ ] |
 | C11 | systemd unit hardening direktiflerinin tamamı mevcut (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths`, `RestrictAddressFamilies`, `MemoryDenyWriteExecute`, boş `CapabilityBoundingSet`) | gözle | M9 | [ ] |
 | C12 | Servis `iskele` sistem kullanıcısıyla çalışır (root varsayılan değil), `docker` grubunda | manuel | M9 | [ ] |
@@ -165,7 +165,7 @@
 | J3 | Host CPU/RAM/disk (gopsutil), Docker Engine sürümü, uptime gösterilir | gözle | M8 | [ ] |
 | J4 | `docker events` akışı UI'ya canlı bildirim (toast + activity feed) olarak düşer | manuel | M8 | [ ] |
 | J5 | Prune araçları (dangling image, stopped container, unused volume/network) onay diyaloğuyla çalışır | manuel | M8 | [ ] |
-| J6 | Audit log kim/ne zaman/hangi kaynak/hangi işlem bilgisini kaydeder | test | M2 | [ ] |
+| J6 | Audit log kim/ne zaman/hangi kaynak/hangi işlem bilgisini kaydeder | test | M2 | [x] |
 | J7 | Audit log filtrelenebilir ve dışa aktarılabilir (CSV/JSON) | manuel | M8 | [ ] |
 | J8 | Log ve event retention ayarları uygulanır (budama çalışır) | test | M8 | [ ] |
 

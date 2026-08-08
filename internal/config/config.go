@@ -35,6 +35,9 @@ type Config struct {
 	DockerHost string `yaml:"docker_host"`
 	// DataDir holds the SQLite database, build logs and other mutable state.
 	DataDir string `yaml:"data_dir"`
+	// SecretKeyFile holds the master key used to encrypt stored secrets and to
+	// derive the JWT signing key. It must be readable only by iskeled's user.
+	SecretKeyFile string `yaml:"secret_key_file"`
 	// AllowedPaths restricts which host directories may be used for bind
 	// mounts and build contexts. Everything outside is rejected.
 	AllowedPaths []string `yaml:"allowed_paths"`
@@ -66,13 +69,14 @@ type Session struct {
 // Default returns the built-in configuration, matching deploy/config.example.yaml.
 func Default() Config {
 	return Config{
-		Listen:       "127.0.0.1:8377",
-		DockerHost:   "unix:///var/run/docker.sock",
-		DataDir:      "/var/lib/iskele",
-		AllowedPaths: []string{"/opt/stacks", "/srv"},
-		LogLevel:     "info",
-		LogFormat:    "auto",
-		TLS:          TLS{Enabled: false},
+		Listen:        "127.0.0.1:8377",
+		DockerHost:    "unix:///var/run/docker.sock",
+		DataDir:       "/var/lib/iskele",
+		SecretKeyFile: "/etc/iskele/secret.key",
+		AllowedPaths:  []string{"/opt/stacks", "/srv"},
+		LogLevel:      "info",
+		LogFormat:     "auto",
+		TLS:           TLS{Enabled: false},
 		Session: Session{
 			AccessTTL:  Duration(15 * time.Minute),
 			RefreshTTL: Duration(168 * time.Hour),
@@ -130,19 +134,20 @@ func Load(args []string, lookupEnv func(string) (string, bool), errOut io.Writer
 // rawFlags holds the flag values before precedence is applied. A value is only
 // used when its flag was actually present on the command line.
 type rawFlags struct {
-	configFile   string
-	listen       string
-	dockerHost   string
-	dataDir      string
-	allowedPaths string
-	logLevel     string
-	logFormat    string
-	tlsEnabled   bool
-	tlsCertFile  string
-	tlsKeyFile   string
-	accessTTL    time.Duration
-	refreshTTL   time.Duration
-	showVersion  bool
+	configFile    string
+	listen        string
+	dockerHost    string
+	dataDir       string
+	secretKeyFile string
+	allowedPaths  string
+	logLevel      string
+	logFormat     string
+	tlsEnabled    bool
+	tlsCertFile   string
+	tlsKeyFile    string
+	accessTTL     time.Duration
+	refreshTTL    time.Duration
+	showVersion   bool
 }
 
 func newFlagSet(errOut io.Writer) (*flag.FlagSet, *rawFlags) {
@@ -156,6 +161,7 @@ func newFlagSet(errOut io.Writer) (*flag.FlagSet, *rawFlags) {
 	fs.StringVar(&r.listen, "listen", "", "address to bind the HTTP server to (host:port)")
 	fs.StringVar(&r.dockerHost, "docker-host", "", "Docker Engine endpoint (unix:// or tcp://)")
 	fs.StringVar(&r.dataDir, "data-dir", "", "directory for the database and build logs")
+	fs.StringVar(&r.secretKeyFile, "secret-key-file", "", "path to the master key file (created with mode 0600 if absent)")
 	fs.StringVar(&r.allowedPaths, "allowed-paths", "", "comma-separated host directories usable for bind mounts and builds")
 	fs.StringVar(&r.logLevel, "log-level", "", "log level: debug, info, warn, error")
 	fs.StringVar(&r.logFormat, "log-format", "", "log format: auto, text, json")
@@ -182,6 +188,7 @@ func newFlagSet(errOut io.Writer) (*flag.FlagSet, *rawFlags) {
 
 var envNames = []string{
 	"ISKELE_CONFIG", "ISKELE_LISTEN", "ISKELE_DOCKER_HOST", "ISKELE_DATA_DIR",
+	"ISKELE_SECRET_KEY_FILE",
 	"ISKELE_ALLOWED_PATHS", "ISKELE_LOG_LEVEL", "ISKELE_LOG_FORMAT",
 	"ISKELE_TLS_ENABLED", "ISKELE_TLS_CERT_FILE", "ISKELE_TLS_KEY_FILE",
 	"ISKELE_ACCESS_TTL", "ISKELE_REFRESH_TTL",
@@ -233,6 +240,7 @@ func applyEnv(cfg *Config, lookupEnv func(string) (string, bool)) error {
 	str("ISKELE_LISTEN", &cfg.Listen)
 	str("ISKELE_DOCKER_HOST", &cfg.DockerHost)
 	str("ISKELE_DATA_DIR", &cfg.DataDir)
+	str("ISKELE_SECRET_KEY_FILE", &cfg.SecretKeyFile)
 	str("ISKELE_LOG_LEVEL", &cfg.LogLevel)
 	str("ISKELE_LOG_FORMAT", &cfg.LogFormat)
 	str("ISKELE_TLS_CERT_FILE", &cfg.TLS.CertFile)
@@ -275,6 +283,9 @@ func applyFlags(cfg *Config, set map[string]bool, r *rawFlags) {
 	if set["data-dir"] {
 		cfg.DataDir = r.dataDir
 	}
+	if set["secret-key-file"] {
+		cfg.SecretKeyFile = r.secretKeyFile
+	}
 	if set["allowed-paths"] {
 		cfg.AllowedPaths = splitList(r.allowedPaths)
 	}
@@ -311,6 +322,9 @@ func (c *Config) normalize() {
 
 	if c.DataDir != "" {
 		c.DataDir = filepath.Clean(strings.TrimSpace(c.DataDir))
+	}
+	if c.SecretKeyFile != "" {
+		c.SecretKeyFile = filepath.Clean(strings.TrimSpace(c.SecretKeyFile))
 	}
 
 	cleaned := make([]string, 0, len(c.AllowedPaths))

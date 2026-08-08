@@ -29,6 +29,19 @@ const (
 	CodeCanceled         Code = "REQUEST_CANCELED"
 )
 
+// Authentication and authorization codes. The frontend switches on these to
+// decide whether to show the bootstrap screen, attempt a refresh, or send the
+// user back to the login form.
+const (
+	CodeNotInitialized     Code = "NOT_INITIALIZED"
+	CodeAlreadyInitialized Code = "ALREADY_INITIALIZED"
+	// CodeInvalidCredentials is an error identifier, not a credential.
+	CodeInvalidCredentials Code = "INVALID_CREDENTIALS" //nolint:gosec // G101 false positive
+	CodeTokenExpired       Code = "TOKEN_EXPIRED"
+	CodeAccountDisabled    Code = "ACCOUNT_DISABLED"
+	CodeCSRFInvalid        Code = "CSRF_INVALID"
+)
+
 // Docker-specific error codes. The frontend switches on these to offer the
 // right recovery action (reconnect, refresh the list, force-remove, ...).
 const (

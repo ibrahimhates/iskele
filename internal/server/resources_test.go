@@ -3,16 +3,14 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/ibrahimhates/iskele/internal/config"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/docker/fake"
 	"github.com/ibrahimhates/iskele/internal/httpx"
+	"github.com/ibrahimhates/iskele/internal/store"
 )
 
 func TestListImages(t *testing.T) {
@@ -207,11 +205,7 @@ func TestDockerUnavailableIsReportedOnEveryEngineRoute(t *testing.T) {
 func TestRouterWithoutDockerServesUnavailable(t *testing.T) {
 	// This is the startup path when the daemon was down: iskeled still serves,
 	// and every Docker route explains why it cannot answer.
-	cfg := config.Default()
-	h := NewRouter(Deps{
-		Config: &cfg,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	h := newEnv(t, nil).as(store.RoleAdmin)
 
 	if rec := request(t, h, http.MethodGet, APIPrefix+"/health"); rec.Code != http.StatusOK {
 		t.Errorf("health status = %d, want the daemon to keep serving", rec.Code)

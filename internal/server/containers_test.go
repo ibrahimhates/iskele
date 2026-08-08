@@ -2,17 +2,15 @@ package server
 
 import (
 	"encoding/json"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/ibrahimhates/iskele/internal/config"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/docker/fake"
 	"github.com/ibrahimhates/iskele/internal/httpx"
+	"github.com/ibrahimhates/iskele/internal/store"
 )
 
 const (
@@ -20,15 +18,12 @@ const (
 	stoppedID = "c2000000000000000000000000000000000000000000000000000000000000b"
 )
 
-// routerWith builds a router backed by the supplied fake engine.
+// routerWith builds a fully wired server backed by the supplied fake engine
+// and authenticates every request as an admin, so the resource tests stay
+// focused on the resource behavior rather than on signing in.
 func routerWith(t *testing.T, f *fake.Client) http.Handler {
 	t.Helper()
-	cfg := config.Default()
-	return NewRouter(Deps{
-		Config: &cfg,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Docker: f,
-	})
+	return newEnv(t, f).as(store.RoleAdmin)
 }
 
 func request(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {

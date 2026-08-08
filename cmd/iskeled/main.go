@@ -13,16 +13,25 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ibrahimhates/iskele/internal/audit"
+	"github.com/ibrahimhates/iskele/internal/auth"
 	"github.com/ibrahimhates/iskele/internal/config"
+	"github.com/ibrahimhates/iskele/internal/crypto"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/logging"
 	"github.com/ibrahimhates/iskele/internal/server"
+	"github.com/ibrahimhates/iskele/internal/service"
+	"github.com/ibrahimhates/iskele/internal/store"
 	"github.com/ibrahimhates/iskele/internal/version"
 )
 
 // dockerConnectTimeout bounds the startup handshake with the daemon, so a
 // hung socket delays the listener by seconds rather than forever.
 const dockerConnectTimeout = 5 * time.Second
+
+// housekeepingInterval is how often expired sessions, stale login attempts and
+// idle rate-limit buckets are swept.
+const housekeepingInterval = time.Hour
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -78,6 +87,45 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	masterKey, err := crypto.LoadOrCreateKey(cfg.SecretKeyFile)
+	if err != nil {
+		return err
+	}
+
+	db, err := store.Open(ctx, store.Options{Path: cfg.DBPath()})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Warn("closing the database failed", slog.Any("error", closeErr))
+		}
+	}()
+
+	recorder := audit.New(db.Audit, log)
+	limiter := auth.NewLimiter(db.Logins, auth.LimiterOptions{})
+	issuer := auth.NewTokenIssuer(masterKey.Derive(auth.JWTPurpose), cfg.Session.AccessTTL.Duration())
+
+	authService := service.NewAuth(service.AuthDeps{
+		Users:      db.Users,
+		Sessions:   db.Sessions,
+		Tokens:     db.Tokens,
+		Limiter:    limiter,
+		Issuer:     issuer,
+		Recorder:   recorder,
+		RefreshTTL: cfg.Session.RefreshTTL.Duration(),
+	})
+
+	initialized, err := authService.Initialized(ctx)
+	if err != nil {
+		return err
+	}
+	if !initialized {
+		log.Warn("no accounts exist yet; the API stays closed until the first admin is created",
+			slog.String("next_step", "POST /api/v1/auth/bootstrap"),
+		)
+	}
+
 	// A missing daemon must not stop iskeled from starting: the operator needs
 	// the panel to tell them Docker is down. Docker-backed routes answer
 	// DOCKER_UNAVAILABLE until the connection is established.
@@ -102,7 +150,14 @@ func run(args []string) error {
 		}
 	}
 
-	router := server.NewRouter(server.Deps{Config: cfg, Logger: log, Docker: dockerClient})
+	go housekeeping(ctx, log, db, limiter)
+
+	router := server.NewRouter(server.Deps{
+		Config: cfg,
+		Logger: log,
+		Docker: dockerClient,
+		Auth:   authService,
+	})
 
 	srv, err := server.New(ctx, cfg, router, log)
 	if err != nil {
@@ -121,6 +176,32 @@ func run(args []string) error {
 
 	log.Info("stopped")
 	return nil
+}
+
+// housekeeping sweeps rows that can no longer affect a decision. Failures are
+// logged and retried on the next tick rather than taken as fatal.
+func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB, limiter *auth.Limiter) {
+	ticker := time.NewTicker(housekeepingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if n, err := db.Sessions.DeleteExpired(ctx, time.Now().UTC()); err != nil {
+				log.Warn("session cleanup failed", slog.Any("error", err))
+			} else if n > 0 {
+				log.Debug("removed expired sessions", slog.Int64("count", n))
+			}
+
+			if n, err := limiter.Prune(ctx); err != nil {
+				log.Warn("login attempt cleanup failed", slog.Any("error", err))
+			} else if n > 0 {
+				log.Debug("removed stale login attempts", slog.Int64("count", n))
+			}
+		}
+	}
 }
 
 func configSource(cfg *config.Config) string {

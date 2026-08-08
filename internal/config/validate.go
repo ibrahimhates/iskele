@@ -51,6 +51,12 @@ func (c *Config) Validate() error {
 		add("data_dir %q must be an absolute path", c.DataDir)
 	}
 
+	if c.SecretKeyFile == "" {
+		add("secret_key_file is required")
+	} else if !filepath.IsAbs(c.SecretKeyFile) {
+		add("secret_key_file %q must be an absolute path", c.SecretKeyFile)
+	}
+
 	for _, p := range c.AllowedPaths {
 		if !filepath.IsAbs(p) {
 			add("allowed_paths entry %q must be an absolute path", p)

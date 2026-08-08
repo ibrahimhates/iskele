@@ -33,7 +33,8 @@ build: ## Build the iskeled binary into bin/
 .PHONY: run
 run: ## Run iskeled with a local data dir and debug logging
 	$(GO) run -ldflags '$(LDFLAGS)' $(CMD_PKG) \
-		--data-dir ./.data --log-level debug --log-format text \
+		--data-dir ./.data --secret-key-file $(CURDIR)/.data/secret.key \
+		--log-level debug --log-format text \
 		--allowed-paths $(CURDIR)
 
 .PHONY: test
