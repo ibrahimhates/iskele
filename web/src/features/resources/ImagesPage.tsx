@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Download, HardDrive, Layers, Tag, Trash2 } from 'lucide-react';
+import { Download, HardDrive, Layers, Rocket, Tag, Trash2 } from 'lucide-react';
 
 import { images as imagesApi } from '../../api/endpoints';
 import type { Image } from '../../api/types';
@@ -18,7 +19,9 @@ import { formatBytes, formatRelative, shortID } from '../../lib/format';
 export function ImagesPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const canOperate = useAuth((s) => s.can('operate'));
+  const canCreate = useAuth((s) => s.can('create'));
   const canDelete = useAuth((s) => s.can('delete'));
   const canPrune = useAuth((s) => s.can('prune'));
 
@@ -191,71 +194,87 @@ export function ImagesPage() {
               </tr>
             </thead>
             <tbody>
-              {items.map((image) => (
-                <tr key={image.id} className="border-b border-border/50 last:border-0">
-                  <td className="px-3 py-2">
-                    {image.repo_tags.length === 0 ? (
-                      <span className="badge bg-elevated text-muted">{t('images.dangling')}</span>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {image.repo_tags.map((repoTag) => (
-                          <div key={repoTag} className="font-mono text-xs">
-                            {repoTag}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-muted">{shortID(image.id)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-muted">
-                    {formatRelative(image.created)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-xs">
-                    {formatBytes(image.size)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-xs text-muted">
-                    {image.containers < 0 ? '—' : image.containers}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        type="button"
-                        className="btn-ghost p-1.5"
-                        onClick={() => setInspecting(image.id)}
-                        aria-label={t('images.inspect')}
-                        title={t('images.inspect')}
-                      >
-                        <Layers size={15} aria-hidden />
-                      </button>
-                      {canOperate && (
+              {items.map((image) => {
+                const runTag = image.repo_tags[0];
+                return (
+                  <tr key={image.id} className="border-b border-border/50 last:border-0">
+                    <td className="px-3 py-2">
+                      {image.repo_tags.length === 0 ? (
+                        <span className="badge bg-elevated text-muted">{t('images.dangling')}</span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {image.repo_tags.map((repoTag) => (
+                            <div key={repoTag} className="font-mono text-xs">
+                              {repoTag}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-muted">{shortID(image.id)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-muted">
+                      {formatRelative(image.created)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-xs">
+                      {formatBytes(image.size)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-xs text-muted">
+                      {image.containers < 0 ? '—' : image.containers}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1">
                         <button
                           type="button"
                           className="btn-ghost p-1.5"
-                          onClick={() => {
-                            setTagging(image);
-                            setTagValue(image.repo_tags[0] ?? '');
-                          }}
-                          aria-label={t('images.tag')}
-                          title={t('images.tag')}
+                          onClick={() => setInspecting(image.id)}
+                          aria-label={t('images.inspect')}
+                          title={t('images.inspect')}
                         >
-                          <Tag size={15} aria-hidden />
+                          <Layers size={15} aria-hidden />
                         </button>
-                      )}
-                      {canDelete && (
-                        <button
-                          type="button"
-                          className="btn-ghost p-1.5 text-muted hover:text-danger"
-                          onClick={() => setRemoving(image)}
-                          aria-label={t('common.delete')}
-                          title={t('common.delete')}
-                        >
-                          <Trash2 size={15} aria-hidden />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {canCreate && runTag && (
+                          <button
+                            type="button"
+                            className="btn-ghost p-1.5"
+                            onClick={() =>
+                              navigate(`/containers/new?image=${encodeURIComponent(runTag)}`)
+                            }
+                            aria-label={t('images.run')}
+                            title={t('images.run')}
+                          >
+                            <Rocket size={15} aria-hidden />
+                          </button>
+                        )}
+                        {canOperate && (
+                          <button
+                            type="button"
+                            className="btn-ghost p-1.5"
+                            onClick={() => {
+                              setTagging(image);
+                              setTagValue(image.repo_tags[0] ?? '');
+                            }}
+                            aria-label={t('images.tag')}
+                            title={t('images.tag')}
+                          >
+                            <Tag size={15} aria-hidden />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            className="btn-ghost p-1.5 text-muted hover:text-danger"
+                            onClick={() => setRemoving(image)}
+                            aria-label={t('common.delete')}
+                            title={t('common.delete')}
+                          >
+                            <Trash2 size={15} aria-hidden />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

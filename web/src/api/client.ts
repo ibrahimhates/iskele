@@ -102,13 +102,18 @@ export interface RequestOptions extends Omit<RequestInit, 'body'> {
   anonymous?: boolean;
   /** Internal: prevents a refreshed request from refreshing again. */
   retried?: boolean;
+  /**
+   * What the endpoint sends back. A build log is the operator's own output
+   * verbatim, not JSON, and parsing it would only destroy it.
+   */
+  expect?: 'json' | 'text';
 }
 
 /**
  * Issues an API request, refreshing the access token once on expiry.
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, anonymous, retried, headers, ...rest } = options;
+  const { body, anonymous, retried, expect, headers, ...rest } = options;
 
   const finalHeaders = new Headers(headers);
   if (body !== undefined) {
@@ -132,6 +137,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   if (response.ok) {
     const text = await response.text();
+    if (expect === 'text') {
+      return text as T;
+    }
     return (text ? JSON.parse(text) : undefined) as T;
   }
 
@@ -171,6 +179,8 @@ async function toApiError(response: Response): Promise<ApiError> {
 export const api = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { ...options, method: 'GET' }),
+  getText: (path: string, options?: RequestOptions) =>
+    request<string>(path, { ...options, method: 'GET', expect: 'text' }),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: 'POST', body }),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>

@@ -13,8 +13,12 @@ import type { components } from './schema';
 import type {
   BatchResponse,
   BatchResult,
+  Build,
+  BuildFrame,
   Container,
   ContainerDetail,
+  DirEntry,
+  DirListing,
   DiskUsage,
   DockerEvent,
   Image,
@@ -55,3 +59,7 @@ export type RedeployResultConforms = Conforms<RedeployResult, Schemas['RedeployR
 export type StatsConforms = Conforms<Stats, Schemas['Stats']>;
 export type LogFrameConforms = Conforms<LogFrame, Schemas['LogFrame']>;
 export type DockerEventConforms = Conforms<DockerEvent, Schemas['DockerEvent']>;
+export type DirEntryConforms = Conforms<DirEntry, Schemas['DirEntry']>;
+export type DirListingConforms = Conforms<DirListing, Schemas['DirListing']>;
+export type BuildConforms = Conforms<Build, Schemas['Build']>;
+export type BuildFrameConforms = Conforms<BuildFrame, Schemas['BuildFrame']>;

@@ -510,6 +510,60 @@ gösterilenden başka bir container yaratır.
 
 ---
 
+## M6 Sırasında Alınan Kararlar
+
+### D-059 — Ayrı bir `internal/paths` paketi yazılmadı
+**Durum:** Kabul · **Faz:** M6
+**Bağlam:** PROGRESS M6 için `internal/paths/whitelist.go` öngörüyordu; ama M5'te bind mount kaynakları
+için yazılan `service.PathGuard` zaten `EvalSymlinks` + bileşen bazlı kök karşılaştırması yapıyor.
+**Karar:** Gezinme, bind mount ve build context aynı `PathGuard`'ı kullanıyor.
+**Gerekçe:** Üçü de tek bir güven sınırının farklı yüzleri. İkinci bir uygulama, yanlış yazılabilecek
+ikinci bir yer demekti; bir güvenlik kontrolünün iki kopyası er ya da geç ayrışır.
+**Sonuç:** `internal/service/paths.go` tek doğruluk kaynağı. Traversal/symlink tablo testleri hem
+mount hem browse tarafını kapsıyor.
+
+### D-060 — Build context boru üzerinden akıyor, diske ikinci kez yazılmıyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** `WriteBuildContext` tar'ı bir `io.Pipe`'a yazıyor, engine de aynı borudan okuyor.
+**Gerekçe:** Önce geçici bir tar dosyası üretmek, birkaç gigabaytlık bir ağacı diskte iki kere
+tutmak demekti; `/var/lib` dolduğunda build değil daemon ölür.
+**Sonuç:** Boyut limiti (`DefaultMaxContextBytes`, 512 MiB) akış sırasında uygulanıyor; aşıldığında
+boru hata ile kapanıyor ve engine kısmi bir tar görmek yerine hatayı alıyor.
+
+### D-061 — Symlink'ler context'e bağ olarak giriyor, izlenmiyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** Tar'a symlink girdisi olarak yazılıyor; hedefi okunmuyor.
+**Gerekçe:** İzlemek, whitelist dışındaki bir dosyanın (`/etc/shadow`) context'e kopyalanması demekti.
+Docker CLI de aynısını yapıyor, dolayısıyla davranış operatörün beklediğiyle aynı.
+**Sonuç:** Kök dışına işaret eden bir bağ, image içinde kırık bir bağ olur — sızıntı değil.
+
+### D-062 — Build, kendisini izleyen soketten uzun yaşıyor
+**Durum:** Kabul · **Faz:** M6
+**Bağlam:** Sekmeyi kapatmak, "bu build'i durdur" demek değil.
+**Karar:** Build `context.WithoutCancel(r.Context())` üzerine kurulu bir task'ta çalışıyor; soket
+koptuğunda yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor.
+**Gerekçe:** Yarıda kesilen bir build ne image üretir ne de log arşivler; kayıt "running"de asılı kalır.
+**Sonuç:** İptal yalnız `POST /builds/{id}/cancel` ile oluyor. Task, build'in kendi id'siyle
+kaydediliyor (`TaskRegistry.StartWithID`), bu yüzden ikinci bir tanımlayıcı taşımaya gerek yok.
+2 saatlik zaman aşımı, yavaş değil takılmış bir build'i sınırlıyor.
+
+### D-063 — Restart'ta "running" kalan build'ler uzlaştırılıyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** `Builder.ReconcileRunning` açılışta bu satırları "canceled" olarak kapatıyor.
+**Gerekçe:** Build, onu başlatan daemon'a bağlı; süreç ölünce engine isteği de ölüyor. Kayıt kendi
+başına asla bitemez, sonsuza dek "running" görünür.
+**Sonuç:** Açıklama mesajı ne olduğunu söylüyor: "iskeled restarted while this build was running".
+
+### D-064 — Log dosyası 30, kayıt 180 gün duruyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** `PruneLogs` yalnız dosyayı siliyor ve `log_archived`'ı düşürüyor; satırı `DeleteOlderThan`
+çok daha sonra siliyor.
+**Gerekçe:** "Bu build ne zaman oldu, ne üretti" bilgisi ucuz; megabaytlarca çıktı değil.
+**Sonuç:** UI, `log_archived` false ise "çıktıyı göster" düğmesini hiç göstermiyor; endpoint yine de
+410 döndürüyor.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**

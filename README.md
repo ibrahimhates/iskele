@@ -41,7 +41,6 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 | Containers | List, inspect, start/stop/restart/pause/kill/rename, bulk actions, redeploy |
 | Create wizard | Every `docker run` option, with a live command + API payload preview |
 | Live streams | Log streaming, `exec` console (xterm.js), live CPU/memory/IO stats |
-| Builds | Build from a Dockerfile on the host with streamed logs, cancel, history |
 | Compose | Parse and run Compose stacks natively, Monaco editor, diff before apply |
 | App catalog | One-click deploy templates (redis, postgres, traefik, gitea, …) |
 | Images, volumes, networks | Full CRUD, prune, private registries with encrypted credentials |
@@ -103,6 +102,11 @@ exists today:
   are flagged before you submit, not after the server refuses.
 - **Images** — pull with a per-layer progress bar, layer history, inspect, tag,
   remove, prune.
+- **Build** — build an image from a Dockerfile on the host. The context is
+  picked with a browser that cannot leave `allowed_paths`, output streams live
+  with the Dockerfile step it is on, and the build survives the tab: closing it
+  stops the frames, not the work. History keeps who built what, from where, and
+  the archived output to read back.
 - **Volumes and networks** — create, remove, prune; attach and detach
   containers.
 - **Tasks** — a drawer showing what is still running, with cancel. A pull keeps
@@ -198,6 +202,12 @@ listed as *open* below.
 | `GET` | `/images/{id}/history` | read | The image's layers |
 | `GET` | `/images/{id}/inspect` | read | Raw engine payload |
 | `DELETE` | `/images/{id}` | delete | Remove — `force`, `noprune` |
+| `GET` | `/fs/browse` | build | List a whitelisted host directory; no `path` returns the roots |
+| `GET` | `/build` | ticket | **WebSocket** — build an image, with live output and step progress |
+| `GET` | `/builds` | read | Build history — `status`, `limit` |
+| `GET` | `/builds/{id}` | read | One build record |
+| `GET` | `/builds/{id}/log` | read | The build's output verbatim, as `text/plain` |
+| `POST` | `/builds/{id}/cancel` | build | Stop a running build |
 | `GET` | `/volumes` | read | List volumes |
 | `POST` | `/volumes` | create | Create a volume — driver and driver options |
 | `GET` | `/volumes/{name}` | read | One volume, with usage when the engine has it |

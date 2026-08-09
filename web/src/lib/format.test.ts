@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatPort, formatRelative, shortID } from './format';
+import { formatBytes, formatDuration, formatPort, formatRelative, shortID } from './format';
 
 describe('formatBytes', () => {
   it('renders human units', () => {
@@ -54,5 +54,23 @@ describe('shortID', () => {
   it('trims to the 12 characters Docker shows', () => {
     expect(shortID('c1000000000000000000000000000000')).toBe('c10000000000');
     expect(shortID('sha256:abcdef1234567890')).toBe('abcdef123456');
+  });
+});
+
+describe('formatDuration', () => {
+  it('reports a short build in seconds', () => {
+    expect(formatDuration(4200)).toBe('4s');
+  });
+
+  it('reports a longer one in minutes and seconds', () => {
+    expect(formatDuration(3 * 60_000 + 7_000)).toBe('3m 7s');
+  });
+
+  it('drops to hours and minutes once a build runs that long', () => {
+    expect(formatDuration(2 * 3_600_000 + 5 * 60_000)).toBe('2h 5m');
+  });
+
+  it('has nothing to say about a negative duration', () => {
+    expect(formatDuration(-1)).toBe('—');
   });
 });

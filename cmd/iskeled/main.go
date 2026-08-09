@@ -155,7 +155,19 @@ func run(args []string) error {
 		}
 	}
 
-	go housekeeping(ctx, log, db, limiter)
+	// A build is bound to the process that ran it: the engine's build request
+	// died with the previous one, so a row still marked running can never
+	// finish on its own.
+	builder := service.NewBuilder(dockerClient, db.Builds, nil,
+		service.NewPathGuard(cfg.AllowedPaths), service.NewTaskRegistry(), recorder,
+		cfg.BuildLogDir())
+	if closed, reconcileErr := builder.ReconcileRunning(ctx); reconcileErr != nil {
+		log.Warn("could not reconcile unfinished builds", slog.Any("error", reconcileErr))
+	} else if closed > 0 {
+		log.Info("closed builds left running by a previous process", slog.Int("count", closed))
+	}
+
+	go housekeeping(ctx, log, db, limiter, builder)
 
 	router := server.NewRouter(server.Deps{
 		Config:   cfg,
@@ -167,6 +179,7 @@ func run(args []string) error {
 
 		Registries: db.Registries,
 		SecretBox:  secretBox,
+		Builds:     db.Builds,
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)
@@ -190,7 +203,9 @@ func run(args []string) error {
 
 // housekeeping sweeps rows that can no longer affect a decision. Failures are
 // logged and retried on the next tick rather than taken as fatal.
-func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB, limiter *auth.Limiter) {
+func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB,
+	limiter *auth.Limiter, builder *service.Builder,
+) {
 	ticker := time.NewTicker(housekeepingInterval)
 	defer ticker.Stop()
 
@@ -209,6 +224,22 @@ func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB, limiter *
 				log.Warn("login attempt cleanup failed", slog.Any("error", err))
 			} else if n > 0 {
 				log.Debug("removed stale login attempts", slog.Int64("count", n))
+			}
+
+			// The archived log goes first and the row much later: knowing a
+			// build happened stays cheap long after its megabytes of output
+			// stop being useful.
+			if n, err := builder.PruneLogs(ctx, time.Now()); err != nil {
+				log.Warn("build log cleanup failed", slog.Any("error", err))
+			} else if n > 0 {
+				log.Debug("removed archived build logs", slog.Int("count", n))
+			}
+
+			cutoff := time.Now().Add(-service.BuildRowRetention)
+			if n, err := db.Builds.DeleteOlderThan(ctx, cutoff); err != nil {
+				log.Warn("build history cleanup failed", slog.Any("error", err))
+			} else if n > 0 {
+				log.Debug("removed old build records", slog.Int64("count", n))
 			}
 		}
 	}

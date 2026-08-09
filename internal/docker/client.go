@@ -45,6 +45,7 @@ type Client interface {
 	TagImage(ctx context.Context, id, ref string) error
 	ImageHistory(ctx context.Context, id string) ([]ImageHistoryEntry, error)
 	InspectImageRaw(ctx context.Context, id string) (RawInspect, error)
+	BuildImage(ctx context.Context, opts BuildOptions) (<-chan BuildEvent, <-chan error)
 
 	ListVolumes(ctx context.Context) ([]Volume, error)
 	CreateVolume(ctx context.Context, opts CreateVolumeOptions) (Volume, error)

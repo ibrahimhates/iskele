@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,6 +59,10 @@ type Client struct {
 
 	// pullEvents overrides the replayed pull progress when non-nil.
 	pullEvents []docker.PullEvent
+	// buildEvents overrides the replayed build output when non-nil.
+	buildEvents []docker.BuildEvent
+	// builtContexts records the tar contexts BuildImage was handed.
+	builtContexts [][]byte
 
 	// errs maps an operation name to the error it should return.
 	errs map[string]error
@@ -1152,4 +1157,81 @@ func orEmptyMap(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return m
+}
+
+// OpBuildImage is accepted by Client.Fail.
+const OpBuildImage = "BuildImage"
+
+// defaultBuildEvents is a small successful build: a base-image pull, three
+// steps and the resulting image id.
+var defaultBuildEvents = []docker.BuildEvent{
+	{Status: "Pulling from library/alpine", ID: "3.20"},
+	{Stream: "Step 1/3 : FROM alpine:3.20\n", Step: 1, TotalSteps: 3},
+	{Stream: "Step 2/3 : COPY . /app\n", Step: 2, TotalSteps: 3},
+	{Stream: "Step 3/3 : CMD [\"/app/run\"]\n", Step: 3, TotalSteps: 3},
+	{Stream: "Successfully built sha256:built1\n"},
+	{ImageID: "sha256:built1"},
+}
+
+// SetBuildEvents overrides the replayed build output.
+func (c *Client) SetBuildEvents(events []docker.BuildEvent) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.buildEvents = events
+}
+
+// BuiltContexts returns the tar contexts the fake was handed, so a test can
+// assert on what was actually packed.
+func (c *Client) BuiltContexts() [][]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([][]byte, len(c.builtContexts))
+	copy(out, c.builtContexts)
+	return out
+}
+
+func (c *Client) BuildImage(ctx context.Context, opts docker.BuildOptions) (<-chan docker.BuildEvent, <-chan error) {
+	events := make(chan docker.BuildEvent, 16)
+	errs := make(chan error, 1)
+
+	// The context is drained here rather than in the goroutine: the caller
+	// closes its reader when BuildImage returns, exactly as the real engine
+	// makes it safe to.
+	var packed []byte
+	if opts.Context != nil {
+		packed, _ = io.ReadAll(opts.Context)
+	}
+
+	if err := c.record(OpBuildImage, strings.Join(opts.Tags, ","), opts); err != nil {
+		errs <- err
+		close(events)
+		close(errs)
+		return events, errs
+	}
+
+	c.mu.Lock()
+	c.builtContexts = append(c.builtContexts, packed)
+	replay := c.buildEvents
+	if replay == nil {
+		replay = defaultBuildEvents
+	}
+	c.mu.Unlock()
+
+	go func() {
+		defer close(events)
+		defer close(errs)
+		for _, e := range replay {
+			select {
+			case events <- e:
+			case <-ctx.Done():
+				return
+			}
+			if e.Error != "" {
+				errs <- docker.NewError(docker.KindUnknown, "image.build", "image", "", e.Error)
+				return
+			}
+		}
+	}()
+
+	return events, errs
 }

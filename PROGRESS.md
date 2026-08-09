@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-08 · **Aktif faz:** M6 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-09 · **Aktif faz:** M7 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -19,14 +19,14 @@
 | M3 | Frontend iskeleti | ✅ Bitti | 14/14 | Tek binary UI'ı sunuyor, 35 frontend testi |
 | M4 | Container yönetimi (tam) | ✅ Bitti | 16/16 | Log/stats/console/inspect + toplu işlem + redeploy |
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
-| M6 | Dockerfile build | ⬜ Bekliyor | 0/12 | |
+| M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
 | M7 | Compose stack | ⬜ Bekliyor | 0/15 | |
 | M8 | App Catalog + Dashboard + Ayarlar | ⬜ Bekliyor | 0/18 | |
 | M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-08, M5 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-09, M6 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
@@ -40,9 +40,9 @@
 | `npm run lint` | ✅ | 0 uyarı (`--max-warnings 0`) |
 | `npm run format:check` | ✅ | prettier temiz |
 | `npm run build` | ✅ | tsc + vite, uyarısız |
-| `npm run test` | ✅ | 8 dosya / 70 test |
+| `npm run test` | ✅ | 10 dosya / 94 test |
 | Frontend bundle | ✅ | index 82 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk |
-| Backend coverage | ✅ **%60.4** | hedef ≥ %60. M5 çok sayıda ince SDK sarmalayıcısı ekledi; bunlar yalnız canlı daemon'la ölçülebiliyor. Ayrıştırma ve eşleme mantığı (pull stream, registry host çözümü, layer ilerlemesi, whitelist) test altında. `make test-cover` bu ortamda koşmuyor (D-042); sayı `web` paketi hariç ölçüldü. |
+| Backend coverage | ✅ **%73.3** | hedef ≥ %60. `make test-cover`'ın yöntemiyle (`-coverpkg` ile tüm paketler) ölçüldü; paket-başına ölçüm %46.0 çünkü `internal/server/handlers` gibi paketler kendi testleriyle değil `internal/server` testleriyle kapsanıyor. `make test-cover` bu ortamda koşmuyor (D-042), komut elle çalıştırıldı. |
 
 ---
 
@@ -254,23 +254,30 @@ privileged seçenek operator'a 403 dönüyor. Docker'lı bir makinede canlı olu
 
 ---
 
-## M6 — Dockerfile build  ⬜
+## M6 — Dockerfile build  ✅
 
-- [ ] `internal/paths/whitelist.go` — `EvalSymlinks` + prefix kontrolü
-- [ ] `internal/paths/browse.go` + `GET /fs/browse?path=`
-- [ ] Path browser UI bileşeni (whitelist kökleri, ileri/geri, dizin seçimi)
-- [ ] Build formu: dizin, Dockerfile adı, tag'ler, build args, target, no-cache, platform, pull
-- [ ] Tar context üretimi (`.dockerignore` desteği, boyut limiti)
-- [ ] `WS /build` — canlı log stream + layer ilerleme + hata vurgusu
-- [ ] Build iptali (`POST /builds/{id}/cancel`) → `canceled` durumu
-- [ ] `builds` tablosu kayıt yaşam döngüsü (running→success/failed/canceled)
-- [ ] Log arşivi `/var/lib/iskele/builds/<id>.log` + retention
-- [ ] `GET /builds`, `GET /builds/{id}`, `GET /builds/{id}/log`
-- [ ] Build geçmişi ekranı + log yeniden görüntüleme
-- [ ] "Bu image'dan container oluştur" kısayolu (M5 sihirbazına ön-dolgulu geçiş)
+- [x] Yol whitelist'i — `EvalSymlinks` + bileşen bazlı kök kontrolü (`internal/service/paths.go`, M5'ten devralındı; ikinci bir uygulama yazılmadı → D-059)
+- [x] `internal/service/browse.go` + `GET /fs/browse?path=`
+- [x] Path browser UI bileşeni (whitelist kökleri, ileri/geri, dizin seçimi)
+- [x] Build formu: dizin, Dockerfile adı, tag'ler, build args, label, target, no-cache, platform, pull
+- [x] Tar context üretimi (`.dockerignore` desteği, negasyon + `**/`, boyut limiti, symlink takip edilmiyor)
+- [x] `WS /build` — canlı log stream + adım/layer ilerleme + hata vurgusu
+- [x] Build iptali (`POST /builds/{id}/cancel`) → `canceled` durumu
+- [x] `builds` tablosu kayıt yaşam döngüsü (running→success/failed/canceled) + restart sonrası uzlaştırma
+- [x] Log arşivi `<data_dir>/builds/<id>.log` + retention (log 30 gün, kayıt 180 gün)
+- [x] `GET /builds`, `GET /builds/{id}`, `GET /builds/{id}/log`
+- [x] Build geçmişi ekranı + log yeniden görüntüleme
+- [x] "Bu image'dan container oluştur" kısayolu (M5 sihirbazına ön-dolgulu geçiş) — image listesi, build sonucu ve build geçmişinden
 
-**Testler:** traversal/symlink saldırı vektörleri (tablo) · tar context · build kaydı · iptal
-**DoD:** gerçek bir dizinden build çalışır, log akar, iptal edilebilir · commit + push
+**Testler:** `browse_test.go` + `paths_test.go` (traversal/symlink tablosu, kök dışına çıkan bağ) ·
+`context_test.go` (`.dockerignore` negasyon + `**/`, boyut limiti, symlink girdileri) · `build_test.go` servis
+(kayıt yaşam döngüsü, iptal, log arşivi + retention, restart uzlaştırması) · `internal/server/build_test.go`
+(gerçek WebSocket üzerinden uçtan uca build, izin matrisi, soket açılmadan önceki reddler, log replay) ·
+`state.test.ts` + `useBuildStream.test.ts` (24 frontend testi)
+
+**DoD:** ✅ Whitelist dışı dizin 403, eksik Dockerfile 422, context'ten kaçan Dockerfile 422 — hepsi soket
+kabul edilmeden, canlı binary ile doğrulandı. Fake engine üzerinden build akıyor, iptal ediliyor, arşivlenen log
+geri okunuyor. Gerçek bir engine ile build hâlâ elle koşulmalı (bkz. Bloke Eden Konular) · commit + push
 
 ---
 
@@ -350,6 +357,7 @@ privileged seçenek operator'a 403 dönüyor. Docker'lı bir makinede canlı olu
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-09 | M6 ✅ | Dockerfile build uçtan uca. En kritik karar `PathGuard`'ın yeniden kullanılması (D-059): gezinme, bind mount ve build context aynı güven sınırının üç yüzü, ikinci bir uygulama ikinci bir hata kaynağı olurdu. Build context bir `io.Pipe` üzerinden engine'e akıyor, diske ikinci kez yazılmıyor; `.dockerignore` negasyon ve `**/` ile destekleniyor; symlink'ler izlenmeden bağ olarak yazılıyor (D-061). Build, kendisini izleyen soketten uzun yaşıyor: sekme kapanınca yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor, log arşivleniyor ve kayıt kapanıyor (D-062). İki hata yol boyunca yakalandı: `TaskRegistry.Finish` task context'ini iptal ettiği için son `done` frame'i sessizce düşüyordu — gönderim context'i artık task'tan değil kökten türüyor; ve `/fs/browse` `read` izniyle açıktı, host dizinlerini sıralayan bir uç için fazla gevşek, `build`'e çekildi. `WS /build` isteği soket kabul edilmeden önce doğrulanıyor, bu yüzden whitelist dışı bir dizin veya eksik Dockerfile sıradan bir HTTP hatası olarak dönüyor (403/422). Lint 0 issue, coverage %73.3 (`-coverpkg`), 94 frontend testi. Docker soketi olmayan ortamda whitelist/doğrulama yüzeyi canlı binary ile doğrulandı; gerçek bir engine ile build hâlâ elle koşulmalı (G3/G4 🟡). |
 | 2026-08-08 | M5 ✅ | Container oluşturma sihirbazı (10 sekme) ve tüm kaynak yönetimi. En kritik parça `PathGuard`: bind mount kaynakları `allowed_paths`'e karşı, symlink çözülerek ve bileşen bazlı karşılaştırılarak doğrulanıyor; boş whitelist hepsini reddediyor. Privileged seçenekler (`privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`) ayrı bir izin kapısının arkasında ve hata mesajı hangisinin takıldığını söylüyor. Registry parolaları AES-GCM ile şifreli saklanıyor ve hiçbir yanıtta geri dönmüyor. Image pull SSE ile akıyor, bir task olarak kaydediliyor ve drawer'dan iptal edilebiliyor. Sihirbazın canlı `docker run` önizlemesi API'ye gidenle aynı nesneden üretiliyor, bu yüzden ayrışamıyor. Yol boyunca üç hata düzeltildi: pull akışında `done` olayı hata kanalıyla yarışıyordu, registry yanıtları sıfır zaman damgası (`0001-01-01`) yayıyordu, `Create` yazdığı zaman damgalarını çağırana bildirmiyordu. Lint 0 issue, coverage %60.4, 70 frontend testi. |
 | 2026-08-08 | M3 + M4 ✅ | Frontend tek binary'ye gömüldü (`web/embed.go` + `internal/server/spa.go`): derin bağlantılar SPA kabuğunu, `/api` altındaki bilinmeyen yollar JSON 404'ü döndürüyor. Container yönetimi tam: liste + toplu işlem + 8 sekmeli detay, WS log/exec, SSE stats/events, redeploy. `make gen-api` OpenAPI'den TS tipi üretiyor, `conformance.ts` elle yazılan tiplerle spec'i derleme zamanında karşılaştırıyor. CI'ya `web` ve `bundle` job'ları eklendi. Üç gerçek hata yakalandı: `web/node_modules` altındaki üçüncü parti Go dosyası `./...`'a sızıyordu (D-042), `make test`/`make test-cover` `-race` ile CGO_ENABLED=0 yüzünden hiç koşamıyordu (D-043), `go.mod` tidy değildi. Lint 0 issue, coverage %71.9, 35 frontend testi. |
 | 2026-08-08 | M2 ✅ | SQLite + migration'lar, argon2id, JWT + refresh rotasyonu, API token, brute-force limiti, 8 izinli RBAC matrisi, CSRF, rate limit, audit + maskeleme. M1'in tüm endpoint'leri koruma altında. Uçtan uca bootstrap→login→refresh zinciri doğrulandı. Lint 0 issue, coverage %79.8. |
@@ -366,3 +374,4 @@ privileged seçenek operator'a 403 dönüyor. Docker'lı bir makinede canlı olu
 | 2026-08-08 | Bu geliştirme ortamında Docker soketi yok. Log/stats/console yolları fake engine ve offline istemciyle test edildi; **gerçek bir container üzerinde canlı doğrulama yapılmadı.** | Bloke değil — kod yolları test altında, ama Docker'lı bir makinede elle bir tur atılması gerekiyor. |
 | 2026-08-08 | `govulncheck` yerelde koşmuyor (`vuln.go.dev` proxy tarafından 403). | Bloke değil — CI'da koşuyor. |
 | 2026-08-08 | `make test-cover` yerelde koşmuyor: bu ortamın Go araç zincirinde `covdata` yok. `make test` (`-race`, kapsamsız) yeşil. | Bloke değil — CI'da tam araç zinciri var. |
+| 2026-08-09 | Gerçek bir engine ile Dockerfile build koşulmadı (soket yok). WS build akışı, iptal, log arşivi ve geçmiş fake engine ile uçtan uca test ediliyor; whitelist ve doğrulama reddleri canlı binary ile doğrulandı. | Bloke değil — G3/G4 🟡 olarak işaretli, Docker'lı bir makinede bir tur atılması gerekiyor. |

@@ -52,3 +52,21 @@ export function formatTime(iso: string | undefined): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
+
+/**
+ * Renders an elapsed time the way an operator reads it.
+ *
+ * Seconds below a minute, then minutes and seconds, then hours and minutes: a
+ * build that took two hours does not need to be reported to the second.
+ */
+export function formatDuration(ms: number, unknownLabel = '—'): string {
+  if (!Number.isFinite(ms) || ms < 0) return unknownLabel;
+
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}

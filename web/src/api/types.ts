@@ -474,3 +474,91 @@ export interface PullProgress {
   error?: string;
   percent: number;
 }
+
+/** One entry in a browsed host directory. */
+export interface DirEntry {
+  name: string;
+  /** The absolute path, so no caller has to join paths itself. */
+  path: string;
+  is_dir: boolean;
+  size: number;
+  mod_time: string;
+  /**
+   * The entry is a symlink. It is resolved to decide `is_dir`, but browsing
+   * into one that leaves the whitelist is still refused.
+   */
+  symlink?: boolean;
+}
+
+/** The result of browsing one whitelisted host directory. */
+export interface DirListing {
+  /** The directory listed. Empty when the roots were returned. */
+  path: string;
+  /** The directory above, absent at a root — which is what stops a walk out. */
+  parent?: string;
+  entries: DirEntry[];
+  /** The directory held more entries than the server's cap. */
+  truncated?: boolean;
+  /** Dockerfile-looking files here, so the form can offer them. */
+  dockerfiles?: string[];
+  /** The whitelist, so the picker can always get back to a root. */
+  allowed_roots: string[];
+}
+
+export type BuildStatus = 'running' | 'success' | 'failed' | 'canceled';
+
+/** One image build started from the panel. */
+export interface Build {
+  id: string;
+  user_id?: string;
+  username?: string;
+  context_dir: string;
+  /** Relative to the context directory. */
+  dockerfile: string;
+  tags: string[];
+  target?: string;
+  platform?: string;
+  no_cache: boolean;
+  pull: boolean;
+  status: BuildStatus;
+  image_id?: string;
+  error?: string;
+  /** Files sent to the engine, after `.dockerignore`. */
+  context_files: number;
+  context_bytes: number;
+  started_at: string;
+  finished_at?: string;
+  /** How long it ran, or how long it has been running. */
+  duration_ms: number;
+  /** The output is still archived and can be replayed. */
+  log_archived: boolean;
+}
+
+/** What the build form asks for. */
+export interface BuildRequest {
+  context: string;
+  dockerfile?: string;
+  tags: string[];
+  buildArgs: Record<string, string>;
+  labels: Record<string, string>;
+  target?: string;
+  platform?: string;
+  noCache: boolean;
+  pull: boolean;
+}
+
+/** One JSON text frame on the build WebSocket. */
+export interface BuildFrame {
+  t: 'build' | 'log' | 'status' | 'done' | 'err';
+  id?: string;
+  line?: string;
+  step?: number;
+  total_steps?: number;
+  status?: string;
+  layer_id?: string;
+  current?: number;
+  total?: number;
+  image_id?: string;
+  m?: string;
+  code?: string;
+}

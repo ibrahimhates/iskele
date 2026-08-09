@@ -1,11 +1,14 @@
 import { api } from './client';
 import type {
   BatchResponse,
+  Build,
+  BuildStatus,
   Container,
   ContainerAction,
   ContainerDetail,
   ContainerSpec,
   CreateResult,
+  DirListing,
   DiskUsage,
   EngineStatus,
   Image,
@@ -137,6 +140,22 @@ export const tasks = {
   list: () => api.get<ListResponse<Task>>('/tasks'),
   get: (id: string) => api.get<Task>(`/tasks/${encodeURIComponent(id)}`),
   cancel: (id: string) => api.post<Task>(`/tasks/${encodeURIComponent(id)}/cancel`),
+};
+
+export const fs = {
+  /** Lists a whitelisted host directory. An empty path returns the roots. */
+  browse: (path: string) => api.get<DirListing>(`/fs/browse${query({ path })}`),
+};
+
+export const builds = {
+  list: (opts: { status?: BuildStatus; limit?: number } = {}) =>
+    api.get<ListResponse<Build>>(
+      `/builds${query({ status: opts.status, limit: opts.limit ? String(opts.limit) : undefined })}`,
+    ),
+  get: (id: string) => api.get<Build>(`/builds/${encodeURIComponent(id)}`),
+  /** The build's output verbatim; plain text, not JSON. */
+  log: (id: string) => api.getText(`/builds/${encodeURIComponent(id)}/log`),
+  cancel: (id: string) => api.post<Build>(`/builds/${encodeURIComponent(id)}/cancel`),
 };
 
 export const system = {

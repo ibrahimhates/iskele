@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Check, Copy, Rocket } from 'lucide-react';
@@ -45,6 +45,19 @@ export function CreateContainerPage() {
 
   const { form, set, spec } = useCreateForm();
   const [active, setActive] = useState('general');
+
+  // An image can be handed in by whoever sent the operator here — the image
+  // list, or a build that has just produced one. Seeded once: re-applying it
+  // would fight an operator who then edits the field.
+  const [params] = useSearchParams();
+  const seeded = useRef(false);
+  useEffect(() => {
+    const image = params.get('image');
+    if (image && !seeded.current) {
+      seeded.current = true;
+      set('image', image);
+    }
+  }, [params, set]);
 
   const allowedPaths = useQuery({
     queryKey: ['system', 'allowed-paths'],

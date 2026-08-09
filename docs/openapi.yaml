@@ -62,7 +62,13 @@ tags:
       Private registry credentials. Admin-only: they are the one resource here
       that grants access to something outside this host.
   - name: tasks
-    description: Long-running operations — image pulls today, builds in M6
+    description: Long-running operations — image pulls and builds
+  - name: builds
+    description: |
+      Image builds from a Dockerfile on the host, the filesystem browser that
+      picks a build context, and the history of what was built. Building runs
+      arbitrary commands as root inside the daemon, so it takes its own
+      permission rather than `operate`.
 
 paths:
   /health:
@@ -1754,6 +1760,271 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /fs/browse:
+    get:
+      tags: [builds]
+      summary: Browse a whitelisted host directory
+      description: |
+        The same trust boundary as a bind mount, seen from the other side: only
+        directories inside `allowed_paths` open, and a symlink pointing out of
+        one is not followed. Omitting `path` returns the whitelist roots
+        themselves, which is where a picker starts.
+
+        Listings are capped at 2000 entries; `truncated` says when a directory
+        had more. `dockerfiles` names the Dockerfile-looking files in the
+        directory, so the build form can offer them without a second request.
+
+        This takes the `build` permission rather than `read`: it enumerates host
+        directories, and the build form is the only thing that needs it.
+      parameters:
+        - name: path
+          in: query
+          description: Absolute host path. Empty lists the whitelist roots.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The directory listing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DirListing" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The path is outside `allowed_paths`, or the caller lacks the build
+            permission.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No such directory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /build:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: context
+        in: query
+        required: true
+        description: |
+          The host directory to build from. Checked against `allowed_paths`
+          before anything is read.
+        schema: { type: string }
+      - name: dockerfile
+        in: query
+        description: Relative to the context directory. Defaults to `Dockerfile`.
+        schema: { type: string }
+      - name: tag
+        in: query
+        description: Tag for the built image, one repeat per tag.
+        schema:
+          type: array
+          items: { type: string }
+      - name: buildargs
+        in: query
+        description: A JSON object of string build arguments.
+        schema: { type: string }
+      - name: labels
+        in: query
+        description: A JSON object of string labels for the built image.
+        schema: { type: string }
+      - name: target
+        in: query
+        description: The multi-stage target to stop at.
+        schema: { type: string }
+      - name: platform
+        in: query
+        description: 'Target platform, e.g. `linux/arm64`.'
+        schema: { type: string }
+      - name: nocache
+        in: query
+        description: Ignore the layer cache.
+        schema: { type: boolean, default: false }
+      - name: pull
+        in: query
+        description: Always re-pull the base image.
+        schema: { type: boolean, default: false }
+    get:
+      tags: [builds]
+      summary: Build an image (WebSocket)
+      security: []
+      description: |
+        A WebSocket endpoint: send `Upgrade: websocket` and authenticate with a
+        `ticket` carrying the `build` permission — a Dockerfile runs arbitrary
+        commands as root inside the daemon, which is why building is not part
+        of `operate`.
+
+        The request is validated and recorded *before* the socket is accepted,
+        so a build that can never run — a directory outside the whitelist, a
+        missing Dockerfile — is refused with an ordinary HTTP error rather than
+        as the first frame of a stream the client then has to interpret.
+
+        The build outlives the socket. Closing the tab stops the frames, not the
+        work; `GET /builds/{id}` and `GET /builds/{id}/log` are how it is picked
+        up again, and `POST /builds/{id}/cancel` is how it is stopped.
+
+        The first frame is always `build`, carrying the id needed to cancel.
+        Then `log` frames for output, `status` frames for the base-image pull,
+        and finally either `done` or `err`.
+      responses:
+        "101":
+          description: Switching protocols; the build stream follows
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          description: |
+            The context directory is outside `allowed_paths`, or the ticket
+            lacks the build permission.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: The build context is larger than the configured limit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: No Dockerfile at the requested path
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /builds:
+    get:
+      tags: [builds]
+      summary: Build history
+      description: |
+        Newest first. Records are kept for 180 days; the archived logs behind
+        them only for 30, so a record whose `log_archived` is false still says
+        that the build happened and what it produced.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [running, success, failed, canceled]
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Builds, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Build" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /builds/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [builds]
+      summary: One build
+      responses:
+        "200":
+          description: The build record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such build
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /builds/{id}/log:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [builds]
+      summary: Replay a build's output
+      description: |
+        Plain text rather than JSON: this is the build's output verbatim, the
+        same bytes an operator would have seen on a terminal. Capped at 16 MiB.
+      responses:
+        "200":
+          description: The archived output
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such build
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: |
+            The build is known but its log is past the 30-day archive
+            retention.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /builds/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [builds]
+      summary: Stop a running build
+      description: |
+        Cancellation reaches the engine through the build's task: ending it ends
+        the daemon request, which is what actually stops the work. A build left
+        `running` by a daemon restart has no task to cancel and is closed out as
+        canceled instead.
+      responses:
+        "200":
+          description: The build, now canceled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such build
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The build has already finished
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2823,3 +3094,143 @@ components:
         started_at: { type: string, format: date-time }
         finished_at: { type: string, format: date-time }
         cancelable: { type: boolean }
+
+    DirEntry:
+      type: object
+      description: One entry in a browsed host directory.
+      required: [name, path, is_dir, size, mod_time]
+      properties:
+        name: { type: string }
+        path:
+          type: string
+          description: The absolute path, so a client never has to join paths itself.
+        is_dir: { type: boolean }
+        size: { type: integer, format: int64 }
+        mod_time: { type: string, format: date-time }
+        symlink:
+          type: boolean
+          description: |
+            The entry is a symlink. It is resolved to decide `is_dir`, but
+            browsing into one that leaves the whitelist is still refused.
+
+    DirListing:
+      type: object
+      description: The result of browsing one whitelisted host directory.
+      required: [path, entries, allowed_roots]
+      properties:
+        path:
+          type: string
+          description: The directory listed. Empty when the roots were returned.
+        parent:
+          type: string
+          description: |
+            The directory above, when it is still inside the whitelist. Absent
+            at a root, which is what stops a picker from walking out.
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/DirEntry" }
+        truncated:
+          type: boolean
+          description: The directory held more entries than the 2000-entry cap.
+        dockerfiles:
+          type: array
+          description: Dockerfile-looking files in this directory.
+          items: { type: string }
+        allowed_roots:
+          type: array
+          description: The whitelist, so a picker can always get back to a root.
+          items: { type: string }
+
+    Build:
+      type: object
+      description: One image build started from the panel.
+      required:
+        [id, context_dir, dockerfile, tags, no_cache, pull, status,
+         context_files, context_bytes, started_at, log_archived, duration_ms]
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        username:
+          type: string
+          description: Who started it, so a shared installation's history is not a mystery.
+        context_dir: { type: string }
+        dockerfile:
+          type: string
+          description: Relative to the context directory.
+        tags:
+          type: array
+          items: { type: string }
+        target: { type: string }
+        platform: { type: string }
+        no_cache: { type: boolean }
+        pull: { type: boolean }
+        status:
+          type: string
+          enum: [running, success, failed, canceled]
+        image_id:
+          type: string
+          description: What the build produced, on success.
+        error:
+          type: string
+          description: Why it failed, in the engine's words.
+        context_files:
+          type: integer
+          description: Files sent to the engine, after `.dockerignore`.
+        context_bytes: { type: integer, format: int64 }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        duration_ms:
+          type: integer
+          format: int64
+          description: |
+            How long the build ran, or how long it has been running. Sent so
+            that no client has to get a running build's elapsed time wrong.
+        log_archived:
+          type: boolean
+          description: |
+            The output is still on disk and `GET /builds/{id}/log` will serve
+            it. False once the 30-day archive retention has passed.
+
+    BuildFrame:
+      type: object
+      description: One JSON text frame on the build WebSocket.
+      required: [t]
+      properties:
+        t:
+          type: string
+          enum: [build, log, status, done, err]
+          description: |
+            `build` is the opening frame carrying the id; `log` is a line of
+            output; `status` is base-image pull progress, or the built image's
+            id; `done` and `err` are terminal.
+        id:
+          type: string
+          description: The build's id, on the `build` and `done` frames.
+        line:
+          type: string
+          description: A chunk of build output, on a `log` frame.
+        step:
+          type: integer
+          description: The Dockerfile instruction being run.
+        total_steps:
+          type: integer
+          description: How many instructions the Dockerfile has.
+        status:
+          type: string
+          description: |
+            The engine's pull status on a `status` frame, or the build's final
+            status on `done`.
+        layer_id:
+          type: string
+          description: The layer a pull `status` frame is about.
+        current: { type: integer, format: int64 }
+        total: { type: integer, format: int64 }
+        image_id:
+          type: string
+          description: What the build produced, on the final frames.
+        m:
+          type: string
+          description: The failure message, on an `err` frame.
+        code:
+          type: string
+          description: The stable error code, on an `err` frame.

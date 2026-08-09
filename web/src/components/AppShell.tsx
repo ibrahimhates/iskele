@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Boxes,
   Database,
+  Hammer,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { auth as authApi } from '../api/endpoints';
+import type { Permission } from '../api/types';
 import { useAuth } from '../stores/auth';
 import { useUI } from '../stores/ui';
 import { cn } from '../lib/cn';
@@ -25,10 +27,18 @@ const NAV = [
   { to: '/dashboard', key: 'nav.dashboard', Icon: LayoutDashboard },
   { to: '/containers', key: 'nav.containers', Icon: Boxes },
   { to: '/images', key: 'nav.images', Icon: HardDrive },
+  // Building is the one section not everyone has: a link to a page that can
+  // only say "you cannot do this" is not a section, so it is left out.
+  { to: '/build', key: 'nav.build', Icon: Hammer, permission: 'build' },
   { to: '/volumes', key: 'nav.volumes', Icon: Database },
   { to: '/networks', key: 'nav.networks', Icon: Network },
   { to: '/settings', key: 'nav.settings', Icon: Settings },
-] as const;
+] as const satisfies readonly {
+  to: string;
+  key: string;
+  Icon: typeof LayoutDashboard;
+  permission?: Permission;
+}[];
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -36,11 +46,14 @@ export function AppShell() {
   const user = useAuth((s) => s.user);
   const refreshToken = useAuth((s) => s.refreshToken);
   const signOut = useAuth((s) => s.signOut);
+  const can = useAuth((s) => s.can);
   const sidebarOpen = useUI((s) => s.sidebarOpen);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const setSidebarOpen = useUI((s) => s.setSidebarOpen);
 
   useKeyboardShortcuts();
+
+  const visibleNav = NAV.filter((item) => !('permission' in item) || can(item.permission));
 
   // On a phone the sidebar overlays the content, so it must not start open.
   useEffect(() => {
@@ -75,7 +88,7 @@ export function AppShell() {
         </div>
 
         <nav className="flex flex-col gap-0.5 p-2">
-          {NAV.map(({ to, key, Icon }) => (
+          {visibleNav.map(({ to, key, Icon }) => (
             <NavLink
               key={to}
               to={to}

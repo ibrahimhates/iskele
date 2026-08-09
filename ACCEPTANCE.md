@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 58 · **Kısmi (🟡):** 10 (M5 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 67 · **Kısmi (🟡):** 12 (M6 sonu)
 
 > 🟡 = kod yazıldı ve testleri geçiyor, ama son kanıt bu ortamda üretilemiyor (gerçek bir Docker
 > daemon'ı gerektiriyor) ya da madde birden çok milestone'a yayılıyor. Bunlar **işaretli sayılmaz.**
@@ -57,12 +57,12 @@
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
 | C1 | Varsayılan bind `127.0.0.1:8377`; `0.0.0.0` seçilirse log ve UI'da TLS/proxy uyarısı | manuel | M0/M3 | [ ] |
-| C2 | Bind mount ve build path'i `allowed_paths` dışına çıkamaz | test | M6 | [ ] |
-| C3 | Path traversal (`../`), symlink ve absolute bypass vektörleri reddedilir | test | M6 | [ ] |
-| C4 | `privileged`, cap add, devices, security-opt, host-bind yalnız `admin`; UI'da uyarı | test+gözle | M5 | [ ] |
+| C2 | Bind mount ve build path'i `allowed_paths` dışına çıkamaz | test | M6 | [x] |
+| C3 | Path traversal (`../`), symlink ve absolute bypass vektörleri reddedilir | test | M6 | [x] |
+| C4 | `privileged`, cap add, devices, security-opt, host-bind yalnız `admin`; UI'da uyarı | test+gözle | M5 | [x] |
 | C5 | State-changing endpoint'lerde CSRF koruması (cookie akışı) veya yalnız Bearer kabulü | test | M2 | [x] |
 | C6 | Login endpoint'i sıkı, genel API gevşek rate limit uygular | test | M2 | [x] |
-| C7 | Registry parolaları ve tunnel token'ları DB'de AES-GCM ile şifreli | test | M5 | [ ] |
+| C7 | Registry parolaları ve tunnel token'ları DB'de AES-GCM ile şifreli | test | M5 | [x] |
 | C8 | `/etc/iskele/secret.key` 0600 izinle üretilir; yoksa oluşturulur | test | M2 | [x] |
 | C9 | Audit log ve uygulama loglarında secret değerler maskelenir | test | M2 | [x] |
 | C10 | WebSocket bağlantılarında `Origin` doğrulaması ve ticket kontrolü yapılır | test | M4 | [ ] |
@@ -121,13 +121,13 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| G1 | Path browser yalnız whitelist içindeki dizinleri gezdirir | test | M6 | [ ] |
-| G2 | Dockerfile adı seçilebilir (`Dockerfile`, `Dockerfile.prod`, …) | gözle | M6 | [ ] |
-| G3 | Build args, target stage, image tag, `--no-cache`, platform, pull bayrakları uygulanır | manuel | M6 | [ ] |
-| G4 | Build çıktısı canlı stream olur; layer ilerlemesi görünür; hata kırmızı vurgulanır | gözle | M6 | [ ] |
-| G5 | Devam eden build iptal edilebilir ve `canceled` olarak kaydedilir | manuel | M6 | [ ] |
-| G6 | Build geçmişi DB'de: kim, ne zaman, hangi dizin, sonuç, süre, log arşivi | test | M6 | [ ] |
-| G7 | "Bu image'dan container oluştur" kısayolu sihirbaza ön-dolgulu geçer | gözle | M6 | [ ] |
+| G1 | Path browser yalnız whitelist içindeki dizinleri gezdirir | test | M6 | [x] |
+| G2 | Dockerfile adı seçilebilir (`Dockerfile`, `Dockerfile.prod`, …) | gözle | M6 | [x] |
+| G3 | Build args, target stage, image tag, `--no-cache`, platform, pull bayrakları uygulanır | manuel | M6 | 🟡 |
+| G4 | Build çıktısı canlı stream olur; layer ilerlemesi görünür; hata kırmızı vurgulanır | gözle | M6 | 🟡 |
+| G5 | Devam eden build iptal edilebilir ve `canceled` olarak kaydedilir | manuel | M6 | [x] |
+| G6 | Build geçmişi DB'de: kim, ne zaman, hangi dizin, sonuç, süre, log arşivi | test | M6 | [x] |
+| G7 | "Bu image'dan container oluştur" kısayolu sihirbaza ön-dolgulu geçer | gözle | M6 | [x] |
 
 ## H. Compose Stack
 
@@ -176,7 +176,7 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M3 sonunda: Dashboard, Containers, Images, Volumes, Networks, Settings. Stacks/Catalog/Builds/Audit kendi milestone'larında eklenir. | gözle | M3→M8 | 🟡 |
+| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M6 sonunda: Dashboard, Containers, Images, Build, Volumes, Networks, Settings. Stacks/Catalog/Audit kendi milestone'larında eklenir. | gözle | M3→M8 | 🟡 |
 | K2 | Dark mode varsayılan; light/system toggle çalışır ve kalıcıdır | gözle | M3 | [x] |
 | K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | [ ] |
 | K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [x] |

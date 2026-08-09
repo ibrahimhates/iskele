@@ -12,6 +12,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ContainerListPage } from './features/containers/ContainerListPage';
 import { ContainerDetailPage } from './features/containers/ContainerDetailPage';
 import { CreateContainerPage } from './features/create/CreateContainerPage';
+import { BuildPage } from './features/build/BuildPage';
 import { ImagesPage } from './features/resources/ImagesPage';
 import { VolumesPage } from './features/resources/VolumesPage';
 import { NetworksPage } from './features/resources/NetworksPage';
@@ -96,6 +97,7 @@ export default function App() {
         <Route path="/containers/:id" element={<ContainerDetailPage />} />
         <Route path="/containers/:id/:tab" element={<ContainerDetailPage />} />
         <Route path="/images" element={<ImagesPage />} />
+        <Route path="/build" element={<BuildPage />} />
         <Route path="/volumes" element={<VolumesPage />} />
         <Route path="/networks" element={<NetworksPage />} />
         <Route path="/settings" element={<SettingsPage />} />

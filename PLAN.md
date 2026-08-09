@@ -302,9 +302,9 @@ Prefix `/api/v1`. Tüm hatalar:
 | GET/POST/PUT/DELETE | `/registries` `/registries/{id}` | admin | M5 |
 | GET | `/tasks` `/tasks/{id}` · POST `/tasks/{id}/cancel` | viewer / operator | M5 |
 | GET | `/images/{id}/history` `/images/{id}/inspect` | viewer | M5 |
-| WS | `/build` | admin | M6 |
+| WS | `/build` | build | M6 |
 | GET | `/builds` `/builds/{id}` `/builds/{id}/log` | viewer | M6 |
-| POST | `/builds/{id}/cancel` | admin | M6 |
+| POST | `/builds/{id}/cancel` | build | M6 |
 | GET/POST | `/volumes` · DELETE `/volumes/{name}` · POST `/volumes/prune` | viewer/operator/admin | M1/M5 |
 | GET/POST | `/networks` · DELETE `/networks/{id}` · POST `/networks/prune` | viewer/operator/admin | M1/M5 |
 | POST | `/networks/{id}/{connect\|disconnect}` | operator | M5 |
@@ -317,7 +317,7 @@ Prefix `/api/v1`. Tüm hatalar:
 | GET | `/system/info` `/system/df` · SSE `/system/events` | viewer | M8 |
 | POST | `/system/prune` | admin | M8 |
 | GET | `/audit?actor=&action=&from=&to=&format=` | admin | M8 |
-| GET | `/fs/browse?path=` | operator | M6 |
+| GET | `/fs/browse?path=` | build | M6 |
 | GET/POST/PUT/DELETE | `/users`, `/users/{id}` | admin | M8 |
 | GET/PUT | `/settings` | admin | M8 |
 | GET/POST/DELETE | `/registries` | admin | M5 |

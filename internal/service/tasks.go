@@ -82,13 +82,23 @@ func NewTaskRegistry() *TaskRegistry {
 	return &TaskRegistry{tasks: map[string]*trackedTask{}}
 }
 
-// Start registers a task and returns its ID with a context that Cancel ends.
+// Start registers a task under a generated ID and returns a context that
+// Cancel ends.
 func (r *TaskRegistry) Start(ctx context.Context, kind, target, username string) (string, context.Context, error) {
 	id, err := auth.NewID()
 	if err != nil {
 		return "", nil, err
 	}
+	return id, r.StartWithID(ctx, id, kind, target, username), nil
+}
 
+// StartWithID registers a task under an ID the caller already has.
+//
+// A build is the case this exists for: its record is created before it runs,
+// and keying the task by the build's own ID is what lets POST
+// /builds/{id}/cancel reach the work without a second identifier to carry
+// around.
+func (r *TaskRegistry) StartWithID(ctx context.Context, id, kind, target, username string) context.Context {
 	taskCtx, cancel := context.WithCancel(ctx)
 
 	r.mu.Lock()
@@ -109,7 +119,7 @@ func (r *TaskRegistry) Start(ctx context.Context, kind, target, username string)
 	}
 	r.evictLocked()
 
-	return id, taskCtx, nil
+	return taskCtx
 }
 
 // Progress updates a running task. Updates to a finished task are ignored:

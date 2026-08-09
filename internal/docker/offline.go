@@ -227,3 +227,12 @@ func (o *offline) ConnectNetwork(context.Context, string, string, ConnectOptions
 func (o *offline) DisconnectNetwork(context.Context, string, string, bool) error {
 	return o.err("network.disconnect", "network")
 }
+
+func (o *offline) BuildImage(context.Context, BuildOptions) (<-chan BuildEvent, <-chan error) {
+	events := make(chan BuildEvent)
+	errs := make(chan error, 1)
+	errs <- o.err("image.build", "image")
+	close(events)
+	close(errs)
+	return events, errs
+}

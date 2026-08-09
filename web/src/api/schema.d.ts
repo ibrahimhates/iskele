@@ -3051,6 +3051,452 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/fs/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browse a whitelisted host directory
+         * @description The same trust boundary as a bind mount, seen from the other side: only
+         *     directories inside `allowed_paths` open, and a symlink pointing out of
+         *     one is not followed. Omitting `path` returns the whitelist roots
+         *     themselves, which is where a picker starts.
+         *
+         *     Listings are capped at 2000 entries; `truncated` says when a directory
+         *     had more. `dockerfiles` names the Dockerfile-looking files in the
+         *     directory, so the build form can offer them without a second request.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Absolute host path. Empty lists the whitelist roots. */
+                    path?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The directory listing */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DirListing"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                /**
+                 * @description The path is outside `allowed_paths`, or the caller lacks the build
+                 *     permission.
+                 */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such directory */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/build": {
+        parameters: {
+            query: {
+                /**
+                 * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                 *     arrival whether or not the permission check that follows passes, so a
+                 *     rejected ticket cannot be retried against another endpoint.
+                 */
+                ticket: components["parameters"]["StreamTicket"];
+                /**
+                 * @description The host directory to build from. Checked against `allowed_paths`
+                 *     before anything is read.
+                 */
+                context: string;
+                /** @description Relative to the context directory. Defaults to `Dockerfile`. */
+                dockerfile?: string;
+                /** @description Tag for the built image, one repeat per tag. */
+                tag?: string[];
+                /** @description A JSON object of string build arguments. */
+                buildargs?: string;
+                /** @description A JSON object of string labels for the built image. */
+                labels?: string;
+                /** @description The multi-stage target to stop at. */
+                target?: string;
+                /** @description Target platform, e.g. `linux/arm64`. */
+                platform?: string;
+                /** @description Ignore the layer cache. */
+                nocache?: boolean;
+                /** @description Always re-pull the base image. */
+                pull?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Build an image (WebSocket)
+         * @description A WebSocket endpoint: send `Upgrade: websocket` and authenticate with a
+         *     `ticket` carrying the `build` permission — a Dockerfile runs arbitrary
+         *     commands as root inside the daemon, which is why building is not part
+         *     of `operate`.
+         *
+         *     The request is validated and recorded *before* the socket is accepted,
+         *     so a build that can never run — a directory outside the whitelist, a
+         *     missing Dockerfile — is refused with an ordinary HTTP error rather than
+         *     as the first frame of a stream the client then has to interpret.
+         *
+         *     The build outlives the socket. Closing the tab stops the frames, not the
+         *     work; `GET /builds/{id}` and `GET /builds/{id}/log` are how it is picked
+         *     up again, and `POST /builds/{id}/cancel` is how it is stopped.
+         *
+         *     The first frame is always `build`, carrying the id needed to cancel.
+         *     Then `log` frames for output, `status` frames for the base-image pull,
+         *     and finally either `done` or `err`.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /**
+                     * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                     *     arrival whether or not the permission check that follows passes, so a
+                     *     rejected ticket cannot be retried against another endpoint.
+                     */
+                    ticket: components["parameters"]["StreamTicket"];
+                    /**
+                     * @description The host directory to build from. Checked against `allowed_paths`
+                     *     before anything is read.
+                     */
+                    context: string;
+                    /** @description Relative to the context directory. Defaults to `Dockerfile`. */
+                    dockerfile?: string;
+                    /** @description Tag for the built image, one repeat per tag. */
+                    tag?: string[];
+                    /** @description A JSON object of string build arguments. */
+                    buildargs?: string;
+                    /** @description A JSON object of string labels for the built image. */
+                    labels?: string;
+                    /** @description The multi-stage target to stop at. */
+                    target?: string;
+                    /** @description Target platform, e.g. `linux/arm64`. */
+                    platform?: string;
+                    /** @description Ignore the layer cache. */
+                    nocache?: boolean;
+                    /** @description Always re-pull the base image. */
+                    pull?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Switching protocols; the build stream follows */
+                101: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["TicketRejected"];
+                /**
+                 * @description The context directory is outside `allowed_paths`, or the ticket
+                 *     lacks the build permission.
+                 */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The build context is larger than the configured limit */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No Dockerfile at the requested path */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/builds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Build history
+         * @description Newest first. Records are kept for 180 days; the archived logs behind
+         *     them only for 30, so a record whose `log_archived` is false still says
+         *     that the build happened and what it produced.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "running" | "success" | "failed" | "canceled";
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Builds, newest first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["Build"][];
+                            total: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/builds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One build */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The build record */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Build"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such build */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/builds/{id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Replay a build's output
+         * @description Plain text rather than JSON: this is the build's output verbatim, the
+         *     same bytes an operator would have seen on a terminal. Capped at 16 MiB.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The archived output */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such build */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /**
+                 * @description The build is known but its log is past the 30-day archive
+                 *     retention.
+                 */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/builds/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a running build
+         * @description Cancellation reaches the engine through the build's task: ending it ends
+         *     the daemon request, which is what actually stops the work. A build left
+         *     `running` by a daemon restart has no task to cancel and is closed out as
+         *     canceled instead.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The build, now canceled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Build"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such build */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The build has already finished */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3756,6 +4202,114 @@ export interface components {
             /** Format: date-time */
             finished_at?: string;
             cancelable: boolean;
+        };
+        /** @description One entry in a browsed host directory. */
+        DirEntry: {
+            name: string;
+            /** @description The absolute path, so a client never has to join paths itself. */
+            path: string;
+            is_dir: boolean;
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            mod_time: string;
+            /**
+             * @description The entry is a symlink. It is resolved to decide `is_dir`, but
+             *     browsing into one that leaves the whitelist is still refused.
+             */
+            symlink?: boolean;
+        };
+        /** @description The result of browsing one whitelisted host directory. */
+        DirListing: {
+            /** @description The directory listed. Empty when the roots were returned. */
+            path: string;
+            /**
+             * @description The directory above, when it is still inside the whitelist. Absent
+             *     at a root, which is what stops a picker from walking out.
+             */
+            parent?: string;
+            entries: components["schemas"]["DirEntry"][];
+            /** @description The directory held more entries than the 2000-entry cap. */
+            truncated?: boolean;
+            /** @description Dockerfile-looking files in this directory. */
+            dockerfiles?: string[];
+            /** @description The whitelist, so a picker can always get back to a root. */
+            allowed_roots: string[];
+        };
+        /** @description One image build started from the panel. */
+        Build: {
+            id: string;
+            user_id?: string;
+            /** @description Who started it, so a shared installation's history is not a mystery. */
+            username?: string;
+            context_dir: string;
+            /** @description Relative to the context directory. */
+            dockerfile: string;
+            tags: string[];
+            target?: string;
+            platform?: string;
+            no_cache: boolean;
+            pull: boolean;
+            /** @enum {string} */
+            status: "running" | "success" | "failed" | "canceled";
+            /** @description What the build produced, on success. */
+            image_id?: string;
+            /** @description Why it failed, in the engine's words. */
+            error?: string;
+            /** @description Files sent to the engine, after `.dockerignore`. */
+            context_files: number;
+            /** Format: int64 */
+            context_bytes: number;
+            /** Format: date-time */
+            started_at: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /**
+             * Format: int64
+             * @description How long the build ran, or how long it has been running. Sent so
+             *     that no client has to get a running build's elapsed time wrong.
+             */
+            duration_ms: number;
+            /**
+             * @description The output is still on disk and `GET /builds/{id}/log` will serve
+             *     it. False once the 30-day archive retention has passed.
+             */
+            log_archived: boolean;
+        };
+        /** @description One JSON text frame on the build WebSocket. */
+        BuildFrame: {
+            /**
+             * @description `build` is the opening frame carrying the id; `log` is a line of
+             *     output; `status` is base-image pull progress, or the built image's
+             *     id; `done` and `err` are terminal.
+             * @enum {string}
+             */
+            t: "build" | "log" | "status" | "done" | "err";
+            /** @description The build's id, on the `build` and `done` frames. */
+            id?: string;
+            /** @description A chunk of build output, on a `log` frame. */
+            line?: string;
+            /** @description The Dockerfile instruction being run. */
+            step?: number;
+            /** @description How many instructions the Dockerfile has. */
+            total_steps?: number;
+            /**
+             * @description The engine's pull status on a `status` frame, or the build's final
+             *     status on `done`.
+             */
+            status?: string;
+            /** @description The layer a pull `status` frame is about. */
+            layer_id?: string;
+            /** Format: int64 */
+            current?: number;
+            /** Format: int64 */
+            total?: number;
+            /** @description What the build produced, on the final frames. */
+            image_id?: string;
+            /** @description The failure message, on an `err` frame. */
+            m?: string;
+            /** @description The stable error code, on an `err` frame. */
+            code?: string;
         };
     };
     responses: {

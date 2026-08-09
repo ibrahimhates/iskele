@@ -78,12 +78,17 @@ func (h *Stream) Ticket(w http.ResponseWriter, r *http.Request) error {
 }
 
 // redeemTicket authenticates a streaming request and checks its permission.
+func (h *Stream) redeemTicket(r *http.Request, perm middleware.Permission) (auth.Ticket, error) {
+	return redeemStreamTicket(h.tickets, r, perm)
+}
+
+// redeemStreamTicket authenticates any ticket-bearing request.
 //
 // The ticket is consumed whether or not the permission check passes: a ticket
 // is single-use by definition, and leaving a rejected one alive would let it
 // be retried against another endpoint.
-func (h *Stream) redeemTicket(r *http.Request, perm middleware.Permission) (auth.Ticket, error) {
-	ticket, err := h.tickets.Redeem(r.URL.Query().Get("ticket"))
+func redeemStreamTicket(store *auth.TicketStore, r *http.Request, perm middleware.Permission) (auth.Ticket, error) {
+	ticket, err := store.Redeem(r.URL.Query().Get("ticket"))
 	if err != nil {
 		return auth.Ticket{}, httpx.NewError(http.StatusUnauthorized, httpx.CodeUnauthorized,
 			"a valid streaming ticket is required; request one from POST /api/v1/auth/ws-ticket")
@@ -582,8 +587,16 @@ func writeSSEEvent(w http.ResponseWriter, event string, data []byte) bool {
 
 // sendWS writes one JSON frame, reporting whether the client is still there.
 func sendWS(ctx context.Context, conn *websocket.Conn, msg wsMessage) bool {
+	return sendWSJSON(ctx, conn, msg)
+}
+
+// sendWSJSON writes any envelope as a text frame, reporting whether the client
+// is still there.
+func sendWSJSON(ctx context.Context, conn *websocket.Conn, msg any) bool {
 	payload, err := json.Marshal(msg)
 	if err != nil {
+		// An envelope this package defines cannot fail to encode; reporting
+		// the client as gone over it would end a healthy stream.
 		return true
 	}
 

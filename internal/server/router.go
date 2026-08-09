@@ -53,6 +53,9 @@ type Deps struct {
 	Registries *store.RegistryRepo
 	// SecretBox encrypts those credentials. Required when Registries is set.
 	SecretBox *crypto.SecretBox
+	// Builds stores the build history. Nil leaves the build endpoints
+	// unmounted rather than failing at request time.
+	Builds *store.BuildRepo
 }
 
 // isAPIPath reports whether a request belongs to the JSON API rather than the
@@ -112,10 +115,23 @@ func NewRouter(deps Deps) http.Handler {
 	if deps.Config != nil {
 		allowedPaths = deps.Config.AllowedPaths
 	}
-	creator := service.NewCreator(dockerClient, registryService,
-		service.NewPathGuard(allowedPaths), deps.Recorder)
-	create := handlers.NewCreate(creator, service.NewPathGuard(allowedPaths))
+	// One guard, shared by everything that touches a host path: bind mounts,
+	// the directory browser and build contexts are the same trust boundary
+	// seen from three sides.
+	pathGuard := service.NewPathGuard(allowedPaths)
+
+	creator := service.NewCreator(dockerClient, registryService, pathGuard, deps.Recorder)
+	create := handlers.NewCreate(creator, pathGuard)
 	registries := handlers.NewRegistries(registryService)
+
+	// Builds need a database; without one the endpoints stay unmounted rather
+	// than failing at request time.
+	var builds *handlers.Builds
+	if deps.Builds != nil {
+		builder := service.NewBuilder(dockerClient, deps.Builds, registryService,
+			pathGuard, taskRegistry, deps.Recorder, buildLogDir(deps))
+		builds = handlers.NewBuilds(builder, service.NewBrowser(pathGuard), taskRegistry, tickets)
+	}
 
 	generalLimiter := middleware.NewRateLimiter(middleware.GeneralRate, middleware.GeneralBurst)
 	loginLimiter := middleware.NewRateLimiter(middleware.LoginRate, middleware.LoginBurst)
@@ -200,6 +216,10 @@ func NewRouter(deps Deps) http.Handler {
 			r.Method(http.MethodGet, "/containers/{id}/exec", httpx.Handler(streams.Exec))
 			r.Method(http.MethodGet, "/containers/{id}/stats", httpx.Handler(streams.Stats))
 			r.Method(http.MethodGet, "/system/events", httpx.Handler(streams.Events))
+
+			if builds != nil {
+				r.Method(http.MethodGet, "/build", httpx.Handler(builds.Build))
+			}
 		})
 
 		// Everything else requires a valid credential.
@@ -288,6 +308,19 @@ func NewRouter(deps Deps) http.Handler {
 				})
 			}
 
+			if builds != nil {
+				// Browsing takes the build permission, not read: this enumerates
+				// host directories, and the build form is the only thing that needs it.
+				r.With(build_()).Method(http.MethodGet, "/fs/browse", httpx.Handler(builds.Browse))
+
+				r.Route("/builds", func(r chi.Router) {
+					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(builds.List))
+					r.With(read()).Method(http.MethodGet, "/{id}", httpx.Handler(builds.Get))
+					r.With(read()).Method(http.MethodGet, "/{id}/log", httpx.Handler(builds.Log))
+					r.With(build_()).Method(http.MethodPost, "/{id}/cancel", httpx.Handler(builds.Cancel))
+				})
+			}
+
 			r.Route("/tasks", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(tasks.List))
 				r.With(read()).Method(http.MethodGet, "/{id}", httpx.Handler(tasks.Get))
@@ -327,6 +360,20 @@ func create_() func(http.Handler) http.Handler { //nolint:revive // see above
 
 func prune() func(http.Handler) http.Handler {
 	return middleware.RequirePermission(middleware.PermPrune, denyAuth)
+}
+
+// build_ carries a trailing underscore for the same reason create_ does: the
+// local variable holding the handler set is called `builds`.
+func build_() func(http.Handler) http.Handler { //nolint:revive // see above
+	return middleware.RequirePermission(middleware.PermBuild, denyAuth)
+}
+
+// buildLogDir is where build output is archived.
+func buildLogDir(deps Deps) string {
+	if deps.Config == nil {
+		return ""
+	}
+	return deps.Config.BuildLogDir()
 }
 
 // resolveIdentity adapts the auth service to the middleware's expectation.
