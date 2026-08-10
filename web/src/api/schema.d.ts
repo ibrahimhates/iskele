@@ -3068,6 +3068,9 @@ export interface paths {
          *     Listings are capped at 2000 entries; `truncated` says when a directory
          *     had more. `dockerfiles` names the Dockerfile-looking files in the
          *     directory, so the build form can offer them without a second request.
+         *
+         *     This takes the `build` permission rather than `read`: it enumerates host
+         *     directories, and the build form is the only thing that needs it.
          */
         get: {
             parameters: {
@@ -3489,6 +3492,930 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every stack
+         * @description The `env` content is withheld from listings — it routinely holds
+         *     database passwords, and a listing is the response most likely to be
+         *     logged or cached. Read a single stack to get it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Stacks, most recently touched first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["Stack"][];
+                            total: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Record a new stack
+         * @description Creating a stack does not deploy it. The name is fixed at creation: it
+         *     labels every container the stack creates, so changing it later would
+         *     orphan them all.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StackInput"];
+                };
+            };
+            responses: {
+                /** @description The stack */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Stack"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a compose file without saving it
+         * @description Answers 200 with a report rather than an error status: an invalid file
+         *     is the normal state of one being edited, and the editor needs every
+         *     problem at once rather than the first.
+         *
+         *     It runs exactly the checks a deploy runs — the path whitelist and the
+         *     privileged-option gate — so the button and the deploy agree.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StackInput"];
+                };
+            };
+            responses: {
+                /** @description The report */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackValidation"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/discovered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compose projects running here that are not stacks yet
+         * @description `docker compose up` on the command line produces the same labelled
+         *     containers Iskele does, so a stack list that showed only this panel's
+         *     own work would misrepresent what is running.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Discovered projects */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["DiscoveredStack"][];
+                            total: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt a discovered project
+         * @description A record, not a redeploy: the containers keep running untouched. The
+         *     next deploy is what brings them in line with the file, and that is the
+         *     operator's decision.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The adopted stack */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Stack"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such project is running here */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        /** One stack, with what the engine reports for it */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The stack and its live services */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackDetail"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+            };
+        };
+        /**
+         * Replace a stack's content
+         * @description The name is not editable; it labels the stack's containers.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StackInput"];
+                };
+            };
+            responses: {
+                /** @description The stack */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Stack"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        post?: never;
+        /**
+         * Forget a stack
+         * @description Removes the record and its working copy, not the containers. Taking
+         *     those away is `down`; an operator who already stopped them by hand
+         *     should not have this bring anything back.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What saving and deploying this content would do
+         * @description Reports the change per service, in compose's own vocabulary, so that
+         *     "this restarts your database" is knowable before the edit is saved
+         *     rather than after.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StackInput"];
+                };
+            };
+            responses: {
+                /** @description The difference */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackDiff"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/up": {
+        parameters: {
+            query: {
+                /**
+                 * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                 *     arrival whether or not the permission check that follows passes, so a
+                 *     rejected ticket cannot be retried against another endpoint.
+                 */
+                ticket: components["parameters"]["StreamTicket"];
+                /** @description Re-pull every image even when it is already present. */
+                pull?: boolean;
+                /**
+                 * @description Replace every container, even ones whose definition has not changed.
+                 *     Without it an unchanged service is left running — which is the
+                 *     difference between restarting one service and restarting all of them.
+                 */
+                recreate?: boolean;
+                /** @description Deploy only these services, one repeat per name. */
+                service?: string[];
+            };
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Deploy a stack (SSE)
+         * @description A stream because deploying pulls images and starts containers one after
+         *     another, and an operator watching a blank page cannot tell that from a
+         *     hang. Authentication is by ticket, like the other streaming endpoints.
+         *
+         *     Event names are the event's `kind`: `step` for progress, `log` for a
+         *     line from a build the deploy had to run first, `warn` for a compose
+         *     field Iskele will not act on, `done` at the end, and `error` for a
+         *     failure — which carries the per-service `problems` when the deploy was
+         *     refused rather than attempted.
+         *
+         *     The deploy outlives the request: closing the connection stops the
+         *     events, not the work.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /**
+                     * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                     *     arrival whether or not the permission check that follows passes, so a
+                     *     rejected ticket cannot be retried against another endpoint.
+                     */
+                    ticket: components["parameters"]["StreamTicket"];
+                    /** @description Re-pull every image even when it is already present. */
+                    pull?: boolean;
+                    /**
+                     * @description Replace every container, even ones whose definition has not changed.
+                     *     Without it an unchanged service is left running — which is the
+                     *     difference between restarting one service and restarting all of them.
+                     */
+                    recreate?: boolean;
+                    /** @description Deploy only these services, one repeat per name. */
+                    service?: string[];
+                };
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The event stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": components["schemas"]["StackEvent"];
+                    };
+                };
+                401: components["responses"]["TicketRejected"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+                /** @description This stack is already being deployed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/pull": {
+        parameters: {
+            query: {
+                /**
+                 * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                 *     arrival whether or not the permission check that follows passes, so a
+                 *     rejected ticket cannot be retried against another endpoint.
+                 */
+                ticket: components["parameters"]["StreamTicket"];
+            };
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        /** Re-pull every image a stack uses (SSE) */
+        get: {
+            parameters: {
+                query: {
+                    /**
+                     * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                     *     arrival whether or not the permission check that follows passes, so a
+                     *     rejected ticket cannot be retried against another endpoint.
+                     */
+                    ticket: components["parameters"]["StreamTicket"];
+                };
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The event stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": components["schemas"]["StackEvent"];
+                    };
+                };
+                401: components["responses"]["TicketRejected"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+                /** @description This stack is busy */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/scale": {
+        parameters: {
+            query: {
+                /**
+                 * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                 *     arrival whether or not the permission check that follows passes, so a
+                 *     rejected ticket cannot be retried against another endpoint.
+                 */
+                ticket: components["parameters"]["StreamTicket"];
+                service: string;
+                replicas: number;
+            };
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Change how many containers one service runs (SSE)
+         * @description The compose file is not rewritten. It belongs to the operator, and a
+         *     panel that silently edited it would lose their comments and formatting;
+         *     the next deploy restores what the file says, which is what makes the
+         *     file authoritative.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /**
+                     * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                     *     arrival whether or not the permission check that follows passes, so a
+                     *     rejected ticket cannot be retried against another endpoint.
+                     */
+                    ticket: components["parameters"]["StreamTicket"];
+                    service: string;
+                    replicas: number;
+                };
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The event stream */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": components["schemas"]["StackEvent"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["TicketRejected"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such stack, or no such service in it */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/logs": {
+        parameters: {
+            query: {
+                /**
+                 * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                 *     arrival whether or not the permission check that follows passes, so a
+                 *     rejected ticket cannot be retried against another endpoint.
+                 */
+                ticket: components["parameters"]["StreamTicket"];
+                /** @description Read only these services; omit for the whole stack. */
+                service?: string[];
+                follow?: boolean;
+                tail?: number;
+                timestamps?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Stream a whole stack's logs (WebSocket)
+         * @description One socket for every service, interleaved and tagged with the service
+         *     and container each line came from. One connection per service would
+         *     make the interleaving the browser's problem, and doing it correctly
+         *     needs timestamps the operator did not necessarily ask for.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /**
+                     * @description A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+                     *     arrival whether or not the permission check that follows passes, so a
+                     *     rejected ticket cannot be retried against another endpoint.
+                     */
+                    ticket: components["parameters"]["StreamTicket"];
+                    /** @description Read only these services; omit for the whole stack. */
+                    service?: string[];
+                    follow?: boolean;
+                    tail?: number;
+                    timestamps?: boolean;
+                };
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Switching protocols; the log stream follows */
+                101: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["TicketRejected"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/down": {
+        parameters: {
+            query?: {
+                /**
+                 * @description Remove the stack's named volumes too. Off by default: a volume is the
+                 *     one part of a stack that cannot be recreated.
+                 */
+                volumes?: boolean;
+                /** @description Remove the networks the stack created. */
+                networks?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop and remove a stack's containers */
+        post: {
+            parameters: {
+                query?: {
+                    /**
+                     * @description Remove the stack's named volumes too. Off by default: a volume is the
+                     *     one part of a stack that cannot be recreated.
+                     */
+                    volumes?: boolean;
+                    /** @description Remove the networks the stack created. */
+                    networks?: boolean;
+                };
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackActionResult"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a stack's containers
+         * @description In reverse dependency order: a database goes down after the thing using
+         *     it, not before.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was stopped */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackActionResult"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a stack's containers
+         * @description In dependency order, so nothing comes up before what it needs.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was started */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackActionResult"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stacks/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The stack's id. */
+                id: components["parameters"]["StackID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart a stack's containers */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The stack's id. */
+                    id: components["parameters"]["StackID"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was restarted */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StackActionResult"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["StackNotFound"];
             };
         };
         delete?: never;
@@ -4311,6 +5238,216 @@ export interface components {
             /** @description The stable error code, on an `err` frame. */
             code?: string;
         };
+        /** @description What an operator submits when creating or editing a stack. */
+        StackInput: {
+            /**
+             * @description Set once, at creation. It labels every container the stack creates,
+             *     so changing it would orphan them all.
+             */
+            name?: string;
+            /**
+             * @description `editor` is a compose file typed into the panel; `file` reads one
+             *     from this host, inside `allowed_paths`; `git` clones a repository.
+             * @enum {string}
+             */
+            source: "editor" | "file" | "git";
+            /** @description The compose file. Required for an `editor` stack. */
+            compose?: string;
+            /**
+             * @description The stack's `.env`, used for interpolation. It is the only thing
+             *     `${...}` resolves against — never the daemon's own environment.
+             */
+            env?: string;
+            /**
+             * @description The compose file's path for a `file` stack, or its path inside the
+             *     repository for a `git` one.
+             */
+            path?: string;
+            /**
+             * @description `https://`, `ssh://`, `git://` or the scp-style `git@host:org/repo`.
+             *     `ext::` and local paths are refused.
+             */
+            git_url?: string;
+            /** @description A branch, tag or commit. Empty takes the default branch. */
+            git_ref?: string;
+        };
+        /** @description One compose project Iskele manages. */
+        Stack: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            source: "editor" | "file" | "git";
+            path?: string;
+            git_url?: string;
+            git_ref?: string;
+            /** @description What the working copy is at, so a pull's effect is predictable. */
+            git_commit?: string;
+            /**
+             * @description The content that was last deployed, whatever the source. For a file
+             *     or git stack this is the copy that actually ran — the one worth
+             *     having once the working tree has moved on.
+             */
+            compose: string;
+            /**
+             * @description Present only when a single stack is read. Listings withhold it: it
+             *     routinely holds database passwords.
+             */
+            env?: string;
+            /** @description What relative paths in the compose file resolve against. */
+            working_dir?: string;
+            /**
+             * @description What the last deploy did — not what the containers are doing now.
+             *     The engine is the authority on that and is asked directly.
+             * @enum {string}
+             */
+            status: "created" | "deploying" | "deployed" | "failed" | "stopped";
+            last_error?: string;
+            /** Format: date-time */
+            last_deployed_at?: string;
+            created_by?: string;
+            created_by_id?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        StackDetail: components["schemas"]["Stack"] & {
+            services: components["schemas"]["StackServiceStatus"][];
+            warnings: components["schemas"]["ComposeWarning"][];
+            /**
+             * @description Set when the stored compose file no longer parses. The stack is
+             *     still listed and still says why — it has containers, and the
+             *     operator needs to know what is wrong with it.
+             */
+            parse_error?: string;
+            /**
+             * @description Set when the daemon could not be reached. The definition is
+             *     returned regardless: a stack read is not a Docker operation
+             *     first, and an operator whose engine is down still needs to read
+             *     the file they are about to fix.
+             */
+            engine_error?: string;
+        };
+        /** @description One service and the containers it currently has. */
+        StackServiceStatus: {
+            name: string;
+            /** @description What the compose file asks for. */
+            replicas: number;
+            /** @description How many containers are actually up. */
+            running: number;
+            image?: string;
+            ports?: components["schemas"]["Port"][];
+            containers: components["schemas"]["Container"][];
+            /**
+             * @description A container is running a configuration that no longer matches the
+             *     compose file, which is what a deploy would replace.
+             */
+            drifted?: boolean;
+        };
+        /**
+         * @description A compose field Iskele read but will not act on. Silence would be worse
+         *     than a refusal: an operator whose `secrets:` were quietly dropped finds
+         *     out when the application fails to start, and blames the application.
+         */
+        ComposeWarning: {
+            /** @description Empty for a project-level warning. */
+            service?: string;
+            field: string;
+            message: string;
+        };
+        /** @description One reason a stack cannot be deployed. */
+        StackProblem: {
+            service: string;
+            field: string;
+            message: string;
+        };
+        StackValidation: {
+            valid: boolean;
+            /** @description A file that would not parse at all. */
+            error?: string;
+            services?: string[];
+            warnings: components["schemas"]["ComposeWarning"][];
+            /**
+             * @description Why this stack would be refused: a path outside `allowed_paths`, an
+             *     option the caller may not set.
+             */
+            problems: components["schemas"]["StackProblem"][];
+        };
+        StackDiff: {
+            services: {
+                service: string;
+                /** @enum {string} */
+                kind: "added" | "removed" | "modified";
+                /**
+                 * @description What changed, in compose's own vocabulary — reading
+                 *     "image, ports" beats reading a line-by-line YAML diff.
+                 */
+                fields?: string[];
+                /** @description Applying this replaces the container rather than leaving it running. */
+                recreates: boolean;
+            }[];
+            networks: components["schemas"]["StackResourceChange"][];
+            volumes: components["schemas"]["StackResourceChange"][];
+            warnings: components["schemas"]["ComposeWarning"][];
+        };
+        StackResourceChange: {
+            name: string;
+            /** @enum {string} */
+            kind: "added" | "removed" | "modified";
+        };
+        /** @description One line of a deploy's progress, as an SSE `data` payload. */
+        StackEvent: {
+            /** @enum {string} */
+            kind: "step" | "log" | "warn" | "done";
+            /** @description Empty for project-level work. */
+            service?: string;
+            message: string;
+            /** @description Set when a step produced one. */
+            container?: string;
+        };
+        /** @description What a lifecycle action touched. */
+        StackActionResult: {
+            containers: string[];
+            networks?: string[];
+            volumes?: string[];
+            /** @description What could not be done, so a partial result stays legible. */
+            failed?: string[];
+        };
+        /** @description One JSON text frame on the stack log WebSocket. */
+        StackLogFrame: {
+            /** @enum {string} */
+            t: "log" | "err" | "eof";
+            service?: string;
+            container?: string;
+            /** @enum {string} */
+            s?: "stdout" | "stderr";
+            /** Format: date-time */
+            ts?: string;
+            m?: string;
+            code?: string;
+        };
+        /** @description A compose project running here that Iskele has no record of. */
+        DiscoveredStack: {
+            name: string;
+            services: string[];
+            containers: number;
+            running: number;
+            /**
+             * @description The compose file the CLI deployed from, when the containers record
+             *     one. It is what an import would read.
+             */
+            config_file?: string;
+            working_dir?: string;
+            /**
+             * @description The compose file is readable and inside `allowed_paths`, which is
+             *     what importing needs.
+             */
+            importable: boolean;
+            /** @description Why an unimportable stack cannot be imported. */
+            reason?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
     };
     responses: {
         /** @description The lifecycle action was applied */
@@ -4482,6 +5619,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description No such stack */
+        StackNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Too many requests; `Retry-After` says when to try again */
         RateLimited: {
             headers: {
@@ -4559,6 +5705,8 @@ export interface components {
          *     rejected ticket cannot be retried against another endpoint.
          */
         StreamTicket: string;
+        /** @description The stack's id. */
+        StackID: string;
     };
     requestBodies: never;
     headers: never;

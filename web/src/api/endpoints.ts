@@ -9,6 +9,7 @@ import type {
   ContainerSpec,
   CreateResult,
   DirListing,
+  DiscoveredStack,
   DiskUsage,
   EngineStatus,
   Image,
@@ -22,6 +23,12 @@ import type {
   Registry,
   RegistryInput,
   Session,
+  Stack,
+  StackActionResult,
+  StackDetail,
+  StackDiff,
+  StackInput,
+  StackValidation,
   SystemInfo,
   Task,
   User,
@@ -156,6 +163,35 @@ export const builds = {
   /** The build's output verbatim; plain text, not JSON. */
   log: (id: string) => api.getText(`/builds/${encodeURIComponent(id)}/log`),
   cancel: (id: string) => api.post<Build>(`/builds/${encodeURIComponent(id)}/cancel`),
+};
+
+export const stacks = {
+  list: () => api.get<ListResponse<Stack>>('/stacks'),
+  get: (id: string) => api.get<StackDetail>(`/stacks/${encodeURIComponent(id)}`),
+  create: (input: StackInput) => api.post<Stack>('/stacks', input),
+  update: (id: string, input: StackInput) =>
+    api.put<Stack>(`/stacks/${encodeURIComponent(id)}`, input),
+  remove: (id: string) => api.delete<void>(`/stacks/${encodeURIComponent(id)}`),
+
+  /** Checks a compose file without saving it; an invalid file is still a 200. */
+  validate: (input: StackInput) => api.post<StackValidation>('/stacks/validate', input),
+  diff: (id: string, input: StackInput) =>
+    api.post<StackDiff>(`/stacks/${encodeURIComponent(id)}/diff`, input),
+
+  down: (id: string, opts: { volumes?: boolean; networks?: boolean } = {}) =>
+    api.post<StackActionResult>(
+      // Serialized as strings on purpose: `query` drops a `false`, and
+      // `networks=false` is exactly how an operator asks to keep them.
+      `/stacks/${encodeURIComponent(id)}/down${query({
+        volumes: opts.volumes === undefined ? undefined : String(opts.volumes),
+        networks: opts.networks === undefined ? undefined : String(opts.networks),
+      })}`,
+    ),
+  act: (id: string, action: 'stop' | 'start' | 'restart') =>
+    api.post<StackActionResult>(`/stacks/${encodeURIComponent(id)}/${action}`),
+
+  discovered: () => api.get<ListResponse<DiscoveredStack>>('/stacks/discovered'),
+  import: (name: string) => api.post<Stack>('/stacks/import', { name }),
 };
 
 export const system = {

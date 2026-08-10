@@ -564,6 +564,80 @@ başına asla bitemez, sonsuza dek "running" görünür.
 
 ---
 
+## M7 Sırasında Alınan Kararlar
+
+### D-065 — Interpolasyon yalnız stack'in kendi `.env`'ini görüyor
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** `docker compose` CLI'ı `${VAR}` için kabuğun ortamını da okur. iskeled'in ortamı ise kabuk değil:
+secret key yolu, veritabanı yolu ve unit dosyasının verdiği ne varsa orada.
+**Karar:** Interpolasyon kaynağı yalnız stack'in `.env` içeriği. Servis `environment:` bloğundaki değersiz
+girdiler (`- FROM_HOST`) de düşürülüyor — onlar da "çağıranın ortamından kopyala" demek.
+**Gerekçe:** Aksi hâlde "bu stack'i ayağa kaldır", "bana daemon'ın ortamını yazdır"a dönüşürdü.
+**Sonuç:** `${VAR:-default}` çalışıyor, `${VAR:?mesaj}` deploy'u reddediyor, `${VAR}` boş kalırsa **uyarı**
+üretiliyor. Davranış `docs/compose-support.md`'de açıkça yazılı.
+
+### D-066 — Parser'ın kendi uyarıları yakalanıyor, stderr'e sızmıyor
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** compose-go, "değişken atanmamış, boş string kullanılıyor" gibi düzeltmelerini dönüş değeriyle değil
+global logrus ile bildiriyor.
+**Karar:** Parse sırasında logrus'a geçici bir hook takılıyor, çıktı `io.Discard`'a alınıyor ve uyarılar
+`[]Warning` olarak dönüyor. Parse, global hook yüzünden bir mutex ile seri hâle getiriliyor.
+**Gerekçe:** JSON log yazan bir daemon'ın araya düz metin satırı sıkıştırması bir sorun; asıl sorun ise
+`${DB_PASSWORD}` boş kaldığında operatörün bunu hiç duymaması. Parse, insanın yazdığı bir belge üzerinde
+milisaniyelik iş; mutex'in maliyeti tasarım yapmaya değmez.
+**Sonuç:** Obsolete `version:` uyarısı eleniyor — her dosyada var ve eyleme dönüşmeyen uyarı, uyarıları
+görmezden gelmeyi öğretir.
+
+### D-067 — Değişmeyen servis yerinde bırakılıyor (config-hash)
+**Durum:** Kabul · **Faz:** M7
+**Karar:** Her container, oluşturulduğu tanımın SHA-256 özetiyle etiketleniyor
+(`com.docker.compose.config-hash`, compose'un kendi etiketi). `up`, özet aynıysa ve container çalışıyorsa ona
+dokunmuyor.
+**Gerekçe:** Her deploy'da her şeyi yeniden yaratmak, komşusunun image etiketi değişti diye veritabanını
+yeniden başlatmak demek. Özet isim ve replica etiketlerini dışlıyor; yoksa aynı servisin iki kopyası her
+seferinde farklı özetlenir ve ikisi de yeniden yaratılırdı.
+**Sonuç:** CLI ile ayağa kaldırılmış bir stack de aynı ölçüyle değerlendiriliyor, çünkü etiket ortak.
+
+### D-068 — Compose dosyası privileged kapısını ve whitelist'i aşamıyor
+**Durum:** Kabul · **Faz:** M7
+**Karar:** `privileged: true`, `cap_add`, `devices`, `security_opt`, `sysctls` YAML'dan geldiğinde de aynı izin
+kapısından geçiyor; bind mount kaynakları ve build context'leri aynı `PathGuard`'dan.
+**Gerekçe:** Bir compose dosyası, kutuyu işaretlemekle aynı istektir. İkisinin farklı davranması, sihirbazdaki
+kapıyı anlamsız kılardı.
+**Sonuç:** Reddedilen deploy hiçbir şey yaratmadan duruyor ve **hangi servis, hangi alan** olduğunu listeliyor —
+operatör birini düzeltip yeniden deneyerek diğerini keşfetmiyor.
+
+### D-069 — Git için `git` binary'si çalıştırılıyor, gömülü implementasyon değil
+**Durum:** Kabul · **Faz:** M7
+**Karar:** Klonlama `exec.Command("git", ...)` ile, `--depth 1`, `GIT_TERMINAL_PROMPT=0` ve 5 dakikalık zaman
+aşımıyla. Binary yoksa hata bunu açıkça söylüyor.
+**Gerekçe:** go-git birkaç megabaytlık bir bağımlılık; repodan deploy eden her makinede `git` zaten var.
+**Sonuç:** URL doğrulaması bu kararın bedeli: `ext::` git'e keyfî komut çalıştırtır, tire ile başlayan bir URL
+seçenek olarak okunur. İkisi de reddediliyor, `file://` ve yerel yollar da öyle. `git_test.go` bunları pinliyor.
+
+### D-070 — Monaco gömülü ve budanmış, editör sayfası tembel yükleniyor
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** `@monaco-editor/react` varsayılan olarak Monaco'yu CDN'den çekiyor.
+**Karar:** Monaco pakete gömülüyor; `monaco-editor` barrel'ı yerine yalnız `editor.api` + yaml/ini dil kayıtları
++ sayılı contrib içe aktarılıyor; editör sayfası `React.lazy` ile ayrı chunk'ta.
+**Gerekçe:** Kendi arayüzünü sunan tek binary, internete çıkışı olmayan makinelerde çalışacak. Barrel 4 MB'lık bir
+chunk üretiyordu (Solidity, PowerShell, TypeScript derleyicisi dahil); budanmış hâli 2.7 MB ve artık **ilk açılışta
+indirilmiyor** — index chunk 539 kB'den 345 kB'ye düştü.
+**Sonuç:** Şema doğrulaması istemcide yok; `POST /stacks/validate` deploy'un çalıştırdığı kontrollerin aynısını
+çalıştırıyor. İkinci ve daha zayıf bir doğrulayıcı, karar veren doğrulayıcıyla çelişirdi.
+
+### D-071 — Stack okuma, Docker'a bağlı değil
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** `GET /stacks/{id}` container listesi için engine'e gidiyordu; engine kapalıyken tüm istek 503 dönüyordu.
+**Karar:** Engine'e ulaşılamazsa tanım yine dönüyor, canlı durum boş kalıyor ve `engine_error` alanı nedeni
+söylüyor.
+**Gerekçe:** Bir stack okuma isteği önce bir Docker işlemi değil: compose dosyası, servisleri ve uyarıları
+engine olmadan da bilinebilir. Docker'ı çökmüş bir operatörün, düzeltmek üzere olduğu dosyayı okuyamaması saçma.
+**Sonuç:** Arayüz sarı bir bant gösteriyor; `stack_test.go` bunu pinliyor. Uçtan uca doğrulamada da bu yoldan
+geçildi (bu ortamda Docker yok).
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**

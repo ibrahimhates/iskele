@@ -70,6 +70,7 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 			Registries: db.Registries,
 			SecretBox:  secretBox,
 			Builds:     db.Builds,
+			Stacks:     db.Stacks,
 		}),
 		tokens: map[store.Role]string{},
 	}

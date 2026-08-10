@@ -562,3 +562,150 @@ export interface BuildFrame {
   m?: string;
   code?: string;
 }
+
+export type StackSource = 'editor' | 'file' | 'git';
+
+export type StackStatus = 'created' | 'deploying' | 'deployed' | 'failed' | 'stopped';
+
+/** One compose project Iskele manages. */
+export interface Stack {
+  id: string;
+  name: string;
+  source: StackSource;
+  path?: string;
+  git_url?: string;
+  git_ref?: string;
+  git_commit?: string;
+  compose: string;
+  /** Present only when a single stack is read; listings withhold it. */
+  env?: string;
+  working_dir?: string;
+  /** What the last deploy did — not what the containers are doing now. */
+  status: StackStatus;
+  last_error?: string;
+  last_deployed_at?: string;
+  created_by?: string;
+  created_by_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What the create and edit forms submit. */
+export interface StackInput {
+  name?: string;
+  source: StackSource;
+  compose?: string;
+  env?: string;
+  path?: string;
+  git_url?: string;
+  git_ref?: string;
+}
+
+/** A compose field Iskele read but will not act on. */
+export interface ComposeWarning {
+  service?: string;
+  field: string;
+  message: string;
+}
+
+/** One reason a stack cannot be deployed. */
+export interface StackProblem {
+  service: string;
+  field: string;
+  message: string;
+}
+
+/** One service and the containers it currently has. */
+export interface StackServiceStatus {
+  name: string;
+  /** What the compose file asks for. */
+  replicas: number;
+  /** How many containers are actually up. */
+  running: number;
+  image?: string;
+  ports?: Port[];
+  containers: Container[];
+  /** A container is running a configuration the compose file no longer asks for. */
+  drifted?: boolean;
+}
+
+export interface StackDetail extends Stack {
+  services: StackServiceStatus[];
+  warnings: ComposeWarning[];
+  /** Set when the stored compose file no longer parses. */
+  parse_error?: string;
+  /** Set when the daemon could not be reached; the definition still arrives. */
+  engine_error?: string;
+}
+
+export interface StackValidation {
+  valid: boolean;
+  /** A file that would not parse at all. */
+  error?: string;
+  services?: string[];
+  warnings: ComposeWarning[];
+  problems: StackProblem[];
+}
+
+export type ChangeKind = 'added' | 'removed' | 'modified';
+
+export interface StackServiceChange {
+  service: string;
+  kind: ChangeKind;
+  /** What changed, in compose's own vocabulary. */
+  fields?: string[];
+  recreates: boolean;
+}
+
+export interface StackResourceChange {
+  name: string;
+  kind: ChangeKind;
+}
+
+export interface StackDiff {
+  services: StackServiceChange[];
+  networks: StackResourceChange[];
+  volumes: StackResourceChange[];
+  warnings: ComposeWarning[];
+}
+
+/** One line of a deploy's progress. */
+export interface StackEvent {
+  kind: 'step' | 'log' | 'warn' | 'done';
+  service?: string;
+  message: string;
+  container?: string;
+}
+
+/** What a lifecycle action touched. */
+export interface StackActionResult {
+  containers: string[];
+  networks?: string[];
+  volumes?: string[];
+  /** What could not be done, so a partial result stays legible. */
+  failed?: string[];
+}
+
+/** One JSON text frame on the stack log WebSocket. */
+export interface StackLogFrame {
+  t: 'log' | 'err' | 'eof';
+  service?: string;
+  container?: string;
+  s?: 'stdout' | 'stderr';
+  ts?: string;
+  m?: string;
+  code?: string;
+}
+
+/** A compose project running here that Iskele has no record of. */
+export interface DiscoveredStack {
+  name: string;
+  services: string[];
+  containers: number;
+  running: number;
+  config_file?: string;
+  working_dir?: string;
+  importable: boolean;
+  reason?: string;
+  created_at?: string;
+}

@@ -1,0 +1,18 @@
+# Bind mounts, read-only flags and a tmpfs — the things that touch the host.
+services:
+  web:
+    image: nginx:1.27-alpine
+    ports:
+      - "8443:443"
+    volumes:
+      - ./site:/usr/share/nginx/html:ro
+      - /srv/certs:/etc/nginx/certs:ro
+      - logs:/var/log/nginx
+    tmpfs:
+      - /tmp
+    read_only: true
+    user: "101:101"
+    working_dir: /usr/share/nginx/html
+
+volumes:
+  logs:

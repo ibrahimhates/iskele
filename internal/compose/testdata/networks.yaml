@@ -1,0 +1,36 @@
+# Two networks, one of them internal, with aliases and a static address.
+services:
+  proxy:
+    image: traefik:v3.0
+    ports:
+      - "80:80"
+      - "127.0.0.1:8080:8080"
+    networks:
+      edge:
+        aliases:
+          - gateway
+      backend: {}
+    labels:
+      com.example.role: proxy
+
+  api:
+    image: ghcr.io/example/api:1.4.2
+    networks:
+      backend:
+        ipv4_address: 172.28.1.10
+    expose:
+      - "9000"
+    environment:
+      - LOG_LEVEL=debug
+      - LISTEN=:9000
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.1.0/24
+          gateway: 172.28.1.1

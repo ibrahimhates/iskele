@@ -350,6 +350,10 @@ func (c *Config) DBPath() string { return filepath.Join(c.DataDir, "iskele.db") 
 // BuildLogDir is where build logs are archived.
 func (c *Config) BuildLogDir() string { return filepath.Join(c.DataDir, "builds") }
 
+// StackDir is where each stack's working copy lives: a git clone, or the
+// directory relative paths in an editor-written compose file resolve against.
+func (c *Config) StackDir() string { return filepath.Join(c.DataDir, "stacks") }
+
 // PubliclyBound reports whether the listener is reachable from outside the
 // host, which warrants a TLS / reverse-proxy warning.
 func (c *Config) PubliclyBound() bool {

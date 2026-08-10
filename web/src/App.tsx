@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
@@ -13,6 +13,14 @@ import { ContainerListPage } from './features/containers/ContainerListPage';
 import { ContainerDetailPage } from './features/containers/ContainerDetailPage';
 import { CreateContainerPage } from './features/create/CreateContainerPage';
 import { BuildPage } from './features/build/BuildPage';
+import { StacksPage } from './features/stacks/StacksPage';
+import { StackDetailPage } from './features/stacks/StackDetailPage';
+// The compose editor carries Monaco, which is most of a megabyte gzipped.
+// Loading it lazily keeps that out of the first paint for the many sessions
+// that never open it.
+const StackEditorPage = lazy(() =>
+  import('./features/stacks/StackEditorPage').then((m) => ({ default: m.StackEditorPage })),
+);
 import { ImagesPage } from './features/resources/ImagesPage';
 import { VolumesPage } from './features/resources/VolumesPage';
 import { NetworksPage } from './features/resources/NetworksPage';
@@ -96,6 +104,24 @@ export default function App() {
         <Route path="/containers/new" element={<CreateContainerPage />} />
         <Route path="/containers/:id" element={<ContainerDetailPage />} />
         <Route path="/containers/:id/:tab" element={<ContainerDetailPage />} />
+        <Route path="/stacks" element={<StacksPage />} />
+        <Route
+          path="/stacks/new"
+          element={
+            <LazyPage>
+              <StackEditorPage />
+            </LazyPage>
+          }
+        />
+        <Route path="/stacks/:id" element={<StackDetailPage />} />
+        <Route
+          path="/stacks/:id/edit"
+          element={
+            <LazyPage>
+              <StackEditorPage />
+            </LazyPage>
+          }
+        />
         <Route path="/images" element={<ImagesPage />} />
         <Route path="/build" element={<BuildPage />} />
         <Route path="/volumes" element={<VolumesPage />} />
@@ -106,6 +132,11 @@ export default function App() {
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
+}
+
+/** Wraps a route whose code is fetched on demand. */
+function LazyPage({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={<FullPageSpinner />}>{children}</Suspense>;
 }
 
 function FullPageSpinner() {

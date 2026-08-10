@@ -301,9 +301,28 @@ func (c *Client) ListContainers(_ context.Context, opts docker.ListContainersOpt
 		if !opts.All && ct.State != "running" {
 			continue
 		}
+		if !matchesLabels(ct.Labels, opts.Label) {
+			continue
+		}
+		if opts.Name != "" && !strings.Contains(ct.Name, opts.Name) {
+			continue
+		}
 		out = append(out, ct)
 	}
 	return out, nil
+}
+
+// matchesLabels applies the engine's "key=value" label filter, which stacks
+// depend on: a stack finds its own containers by label and nothing else.
+func matchesLabels(labels map[string]string, filters []string) bool {
+	for _, filter := range filters {
+		key, value, hasValue := strings.Cut(filter, "=")
+		got, ok := labels[key]
+		if !ok || (hasValue && got != value) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) InspectContainer(_ context.Context, id string) (docker.ContainerDetail, error) {
@@ -550,6 +569,15 @@ func (c *Client) CreateContainer(_ context.Context, spec docker.CreateSpec) (str
 		Ports: []docker.Port{}, Labels: map[string]string{},
 		Networks: []string{}, Mounts: []string{},
 		SizeRW: -1, SizeRootFS: -1,
+	}
+	// The labels and image come back out of a listing on the real engine, and
+	// stacks read both: the labels are how a stack finds its containers, and
+	// the config hash among them is how it tells changed from unchanged.
+	if spec.Config != nil {
+		created.Image = spec.Config.Image
+		for key, value := range spec.Config.Labels {
+			created.Labels[key] = value
+		}
 	}
 	c.Containers = append(c.Containers, created)
 	c.Details[id] = docker.ContainerDetail{Container: created}

@@ -19,6 +19,7 @@ import type {
   ContainerDetail,
   DirEntry,
   DirListing,
+  DiscoveredStack,
   DiskUsage,
   DockerEvent,
   Image,
@@ -26,6 +27,11 @@ import type {
   NetworkResource,
   RedeployResult,
   Session,
+  Stack,
+  StackActionResult,
+  StackDiff,
+  StackEvent,
+  StackValidation,
   Stats,
   SystemInfo,
   User,
@@ -63,3 +69,9 @@ export type DirEntryConforms = Conforms<DirEntry, Schemas['DirEntry']>;
 export type DirListingConforms = Conforms<DirListing, Schemas['DirListing']>;
 export type BuildConforms = Conforms<Build, Schemas['Build']>;
 export type BuildFrameConforms = Conforms<BuildFrame, Schemas['BuildFrame']>;
+export type StackConforms = Conforms<Stack, Schemas['Stack']>;
+export type StackValidationConforms = Conforms<StackValidation, Schemas['StackValidation']>;
+export type StackDiffConforms = Conforms<StackDiff, Schemas['StackDiff']>;
+export type StackEventConforms = Conforms<StackEvent, Schemas['StackEvent']>;
+export type StackActionResultConforms = Conforms<StackActionResult, Schemas['StackActionResult']>;
+export type DiscoveredStackConforms = Conforms<DiscoveredStack, Schemas['DiscoveredStack']>;

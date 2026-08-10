@@ -56,6 +56,8 @@ type Deps struct {
 	// Builds stores the build history. Nil leaves the build endpoints
 	// unmounted rather than failing at request time.
 	Builds *store.BuildRepo
+	// Stacks stores compose stacks. Nil leaves the stack endpoints unmounted.
+	Stacks *store.StackRepo
 }
 
 // isAPIPath reports whether a request belongs to the JSON API rather than the
@@ -126,11 +128,24 @@ func NewRouter(deps Deps) http.Handler {
 
 	// Builds need a database; without one the endpoints stay unmounted rather
 	// than failing at request time.
-	var builds *handlers.Builds
+	var (
+		builds  *handlers.Builds
+		builder *service.Builder
+	)
 	if deps.Builds != nil {
-		builder := service.NewBuilder(dockerClient, deps.Builds, registryService,
+		builder = service.NewBuilder(dockerClient, deps.Builds, registryService,
 			pathGuard, taskRegistry, deps.Recorder, buildLogDir(deps))
 		builds = handlers.NewBuilds(builder, service.NewBrowser(pathGuard), taskRegistry, tickets)
+	}
+
+	// Stacks need a database too. The builder is passed along so a compose
+	// service with a `build:` section produces its image the same way a manual
+	// build does — through the whitelist, with the same log archive.
+	var stacks *handlers.Stacks
+	if deps.Stacks != nil {
+		stackService := service.NewStackService(dockerClient, deps.Stacks, registryService,
+			builder, pathGuard, taskRegistry, deps.Recorder, stackStateDir(deps))
+		stacks = handlers.NewStacks(stackService, tickets)
 	}
 
 	generalLimiter := middleware.NewRateLimiter(middleware.GeneralRate, middleware.GeneralBurst)
@@ -219,6 +234,12 @@ func NewRouter(deps Deps) http.Handler {
 
 			if builds != nil {
 				r.Method(http.MethodGet, "/build", httpx.Handler(builds.Build))
+			}
+			if stacks != nil {
+				r.Method(http.MethodGet, "/stacks/{id}/up", httpx.Handler(stacks.Up))
+				r.Method(http.MethodGet, "/stacks/{id}/pull", httpx.Handler(stacks.PullImages))
+				r.Method(http.MethodGet, "/stacks/{id}/scale", httpx.Handler(stacks.Scale))
+				r.Method(http.MethodGet, "/stacks/{id}/logs", httpx.Handler(stacks.Logs))
 			}
 		})
 
@@ -327,6 +348,30 @@ func NewRouter(deps Deps) http.Handler {
 				r.With(operate()).Method(http.MethodPost, "/{id}/cancel", httpx.Handler(tasks.Cancel))
 			})
 
+			if stacks != nil {
+				r.Route("/stacks", func(r chi.Router) {
+					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(stacks.List))
+					r.With(create_()).Method(http.MethodPost, "/", httpx.Handler(stacks.Create))
+					// Validation is a read of the caller's own text; it creates
+					// nothing and is what the editor calls on every keystroke.
+					r.With(read()).Method(http.MethodPost, "/validate", httpx.Handler(stacks.Validate))
+					r.With(read()).Method(http.MethodGet, "/discovered", httpx.Handler(stacks.Discovered))
+					r.With(create_()).Method(http.MethodPost, "/import", httpx.Handler(stacks.Import))
+
+					r.With(read()).Method(http.MethodGet, "/{id}", httpx.Handler(stacks.Get))
+					r.With(create_()).Method(http.MethodPut, "/{id}", httpx.Handler(stacks.Update))
+					r.With(remove()).Method(http.MethodDelete, "/{id}", httpx.Handler(stacks.Delete))
+					r.With(read()).Method(http.MethodPost, "/{id}/diff", httpx.Handler(stacks.Diff))
+
+					// Taking a stack away removes containers, so it takes the
+					// delete permission rather than operate.
+					r.With(remove()).Method(http.MethodPost, "/{id}/down", httpx.Handler(stacks.Down))
+					r.With(operate()).Method(http.MethodPost, "/{id}/stop", httpx.Handler(stacks.Act(service.StackStop)))
+					r.With(operate()).Method(http.MethodPost, "/{id}/start", httpx.Handler(stacks.Act(service.StackStart)))
+					r.With(operate()).Method(http.MethodPost, "/{id}/restart", httpx.Handler(stacks.Act(service.StackRestart)))
+				})
+			}
+
 			r.Route("/system", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/ping", httpx.Handler(engine.Ping))
 				r.With(read()).Method(http.MethodGet, "/info", httpx.Handler(engine.Info))
@@ -366,6 +411,14 @@ func prune() func(http.Handler) http.Handler {
 // local variable holding the handler set is called `builds`.
 func build_() func(http.Handler) http.Handler { //nolint:revive // see above
 	return middleware.RequirePermission(middleware.PermBuild, denyAuth)
+}
+
+// stackStateDir is where each stack's working copy lives.
+func stackStateDir(deps Deps) string {
+	if deps.Config == nil {
+		return ""
+	}
+	return deps.Config.StackDir()
 }
 
 // buildLogDir is where build output is archived.

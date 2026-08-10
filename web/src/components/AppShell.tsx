@@ -6,6 +6,7 @@ import {
   Database,
   Hammer,
   LayoutDashboard,
+  Layers,
   LogOut,
   Menu,
   Network,
@@ -26,6 +27,7 @@ import { useKeyboardShortcuts } from '../lib/useKeyboardShortcuts';
 const NAV = [
   { to: '/dashboard', key: 'nav.dashboard', Icon: LayoutDashboard },
   { to: '/containers', key: 'nav.containers', Icon: Boxes },
+  { to: '/stacks', key: 'nav.stacks', Icon: Layers },
   { to: '/images', key: 'nav.images', Icon: HardDrive },
   // Building is the one section not everyone has: a link to a page that can
   // only say "you cannot do this" is not a section, so it is left out.

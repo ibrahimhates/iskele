@@ -63,6 +63,13 @@ tags:
       that grants access to something outside this host.
   - name: tasks
     description: Long-running operations — image pulls and builds
+  - name: stacks
+    description: |
+      Compose stacks: parsing, deploying, scaling and reading back what is
+      running. Iskele parses with compose-go — the same library the CLI uses —
+      and creates the containers itself over the engine socket, so no `docker
+      compose` binary has to be installed. What each compose field does here is
+      documented in `docs/compose-support.md`.
   - name: builds
     description: |
       Image builds from a Dockerfile on the host, the filesystem browser that
@@ -2025,6 +2032,489 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /stacks:
+    get:
+      tags: [stacks]
+      summary: Every stack
+      description: |
+        The `env` content is withheld from listings — it routinely holds
+        database passwords, and a listing is the response most likely to be
+        logged or cached. Read a single stack to get it.
+      responses:
+        "200":
+          description: Stacks, most recently touched first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Stack" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [stacks]
+      summary: Record a new stack
+      description: |
+        Creating a stack does not deploy it. The name is fixed at creation: it
+        labels every container the stack creates, so changing it later would
+        orphan them all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "201":
+          description: The stack
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stack" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /stacks/validate:
+    post:
+      tags: [stacks]
+      summary: Check a compose file without saving it
+      description: |
+        Answers 200 with a report rather than an error status: an invalid file
+        is the normal state of one being edited, and the editor needs every
+        problem at once rather than the first.
+
+        It runs exactly the checks a deploy runs — the path whitelist and the
+        privileged-option gate — so the button and the deploy agree.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackValidation" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /stacks/discovered:
+    get:
+      tags: [stacks]
+      summary: Compose projects running here that are not stacks yet
+      description: |
+        `docker compose up` on the command line produces the same labelled
+        containers Iskele does, so a stack list that showed only this panel's
+        own work would misrepresent what is running.
+      responses:
+        "200":
+          description: Discovered projects
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/DiscoveredStack" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /stacks/import:
+    post:
+      tags: [stacks]
+      summary: Adopt a discovered project
+      description: |
+        A record, not a redeploy: the containers keep running untouched. The
+        next deploy is what brings them in line with the file, and that is the
+        operator's decision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: The adopted stack
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stack" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such project is running here
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    get:
+      tags: [stacks]
+      summary: One stack, with what the engine reports for it
+      responses:
+        "200":
+          description: The stack and its live services
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackDetail" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+    put:
+      tags: [stacks]
+      summary: Replace a stack's content
+      description: The name is not editable; it labels the stack's containers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "200":
+          description: The stack
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stack" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [stacks]
+      summary: Forget a stack
+      description: |
+        Removes the record and its working copy, not the containers. Taking
+        those away is `down`; an operator who already stopped them by hand
+        should not have this bring anything back.
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/diff:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: What saving and deploying this content would do
+      description: |
+        Reports the change per service, in compose's own vocabulary, so that
+        "this restarts your database" is knowable before the edit is saved
+        rather than after.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "200":
+          description: The difference
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackDiff" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /stacks/{id}/up:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: pull
+        in: query
+        description: Re-pull every image even when it is already present.
+        schema: { type: boolean, default: false }
+      - name: recreate
+        in: query
+        description: |
+          Replace every container, even ones whose definition has not changed.
+          Without it an unchanged service is left running — which is the
+          difference between restarting one service and restarting all of them.
+        schema: { type: boolean, default: false }
+      - name: service
+        in: query
+        description: Deploy only these services, one repeat per name.
+        schema:
+          type: array
+          items: { type: string }
+    get:
+      tags: [stacks]
+      summary: Deploy a stack (SSE)
+      security: []
+      description: |
+        A stream because deploying pulls images and starts containers one after
+        another, and an operator watching a blank page cannot tell that from a
+        hang. Authentication is by ticket, like the other streaming endpoints.
+
+        Event names are the event's `kind`: `step` for progress, `log` for a
+        line from a build the deploy had to run first, `warn` for a compose
+        field Iskele will not act on, `done` at the end, and `error` for a
+        failure — which carries the per-service `problems` when the deploy was
+        refused rather than attempted.
+
+        The deploy outlives the request: closing the connection stops the
+        events, not the work.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StackEvent" }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "409":
+          description: This stack is already being deployed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}/pull:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [stacks]
+      summary: Re-pull every image a stack uses (SSE)
+      security: []
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StackEvent" }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "409":
+          description: This stack is busy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}/scale:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: service
+        in: query
+        required: true
+        schema: { type: string }
+      - name: replicas
+        in: query
+        required: true
+        schema: { type: integer, minimum: 0 }
+    get:
+      tags: [stacks]
+      summary: Change how many containers one service runs (SSE)
+      security: []
+      description: |
+        The compose file is not rewritten. It belongs to the operator, and a
+        panel that silently edited it would lose their comments and formatting;
+        the next deploy restores what the file says, which is what makes the
+        file authoritative.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StackEvent" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such stack, or no such service in it
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}/logs:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: service
+        in: query
+        description: Read only these services; omit for the whole stack.
+        schema:
+          type: array
+          items: { type: string }
+      - name: follow
+        in: query
+        schema: { type: boolean, default: true }
+      - name: tail
+        in: query
+        schema: { type: integer, minimum: 0, default: 500 }
+      - name: timestamps
+        in: query
+        schema: { type: boolean, default: false }
+    get:
+      tags: [stacks]
+      summary: Stream a whole stack's logs (WebSocket)
+      security: []
+      description: |
+        One socket for every service, interleaved and tagged with the service
+        and container each line came from. One connection per service would
+        make the interleaving the browser's problem, and doing it correctly
+        needs timestamps the operator did not necessarily ask for.
+      responses:
+        "101":
+          description: Switching protocols; the log stream follows
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/down:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - name: volumes
+        in: query
+        description: |
+          Remove the stack's named volumes too. Off by default: a volume is the
+          one part of a stack that cannot be recreated.
+        schema: { type: boolean, default: false }
+      - name: networks
+        in: query
+        description: Remove the networks the stack created.
+        schema: { type: boolean, default: true }
+    post:
+      tags: [stacks]
+      summary: Stop and remove a stack's containers
+      responses:
+        "200":
+          description: What was removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: Stop a stack's containers
+      description: |
+        In reverse dependency order: a database goes down after the thing using
+        it, not before.
+      responses:
+        "200":
+          description: What was stopped
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: Start a stack's containers
+      description: In dependency order, so nothing comes up before what it needs.
+      responses:
+        "200":
+          description: What was started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/restart:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: Restart a stack's containers
+      responses:
+        "200":
+          description: What was restarted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2080,6 +2570,13 @@ components:
         A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
         arrival whether or not the permission check that follows passes, so a
         rejected ticket cannot be retried against another endpoint.
+      schema: { type: string }
+
+    StackID:
+      name: id
+      in: path
+      required: true
+      description: The stack's id.
       schema: { type: string }
 
   responses:
@@ -2196,6 +2693,12 @@ components:
 
     ValidationFailed:
       description: The request body failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    StackNotFound:
+      description: No such stack
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -3234,3 +3737,300 @@ components:
         code:
           type: string
           description: The stable error code, on an `err` frame.
+
+    StackInput:
+      type: object
+      description: What an operator submits when creating or editing a stack.
+      required: [source]
+      properties:
+        name:
+          type: string
+          description: |
+            Set once, at creation. It labels every container the stack creates,
+            so changing it would orphan them all.
+        source:
+          type: string
+          enum: [editor, file, git]
+          description: |
+            `editor` is a compose file typed into the panel; `file` reads one
+            from this host, inside `allowed_paths`; `git` clones a repository.
+        compose:
+          type: string
+          description: The compose file. Required for an `editor` stack.
+        env:
+          type: string
+          description: |
+            The stack's `.env`, used for interpolation. It is the only thing
+            `${...}` resolves against — never the daemon's own environment.
+        path:
+          type: string
+          description: |
+            The compose file's path for a `file` stack, or its path inside the
+            repository for a `git` one.
+        git_url:
+          type: string
+          description: |
+            `https://`, `ssh://`, `git://` or the scp-style `git@host:org/repo`.
+            `ext::` and local paths are refused.
+        git_ref:
+          type: string
+          description: A branch, tag or commit. Empty takes the default branch.
+
+    Stack:
+      type: object
+      description: One compose project Iskele manages.
+      required: [id, name, source, compose, status, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        source:
+          type: string
+          enum: [editor, file, git]
+        path: { type: string }
+        git_url: { type: string }
+        git_ref: { type: string }
+        git_commit:
+          type: string
+          description: What the working copy is at, so a pull's effect is predictable.
+        compose:
+          type: string
+          description: |
+            The content that was last deployed, whatever the source. For a file
+            or git stack this is the copy that actually ran — the one worth
+            having once the working tree has moved on.
+        env:
+          type: string
+          description: |
+            Present only when a single stack is read. Listings withhold it: it
+            routinely holds database passwords.
+        working_dir:
+          type: string
+          description: What relative paths in the compose file resolve against.
+        status:
+          type: string
+          enum: [created, deploying, deployed, failed, stopped]
+          description: |
+            What the last deploy did — not what the containers are doing now.
+            The engine is the authority on that and is asked directly.
+        last_error: { type: string }
+        last_deployed_at: { type: string, format: date-time }
+        created_by: { type: string }
+        created_by_id: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    StackDetail:
+      allOf:
+        - $ref: "#/components/schemas/Stack"
+        - type: object
+          required: [services, warnings]
+          properties:
+            services:
+              type: array
+              items: { $ref: "#/components/schemas/StackServiceStatus" }
+            warnings:
+              type: array
+              items: { $ref: "#/components/schemas/ComposeWarning" }
+            parse_error:
+              type: string
+              description: |
+                Set when the stored compose file no longer parses. The stack is
+                still listed and still says why — it has containers, and the
+                operator needs to know what is wrong with it.
+            engine_error:
+              type: string
+              description: |
+                Set when the daemon could not be reached. The definition is
+                returned regardless: a stack read is not a Docker operation
+                first, and an operator whose engine is down still needs to read
+                the file they are about to fix.
+
+    StackServiceStatus:
+      type: object
+      description: One service and the containers it currently has.
+      required: [name, replicas, running, containers]
+      properties:
+        name: { type: string }
+        replicas:
+          type: integer
+          description: What the compose file asks for.
+        running:
+          type: integer
+          description: How many containers are actually up.
+        image: { type: string }
+        ports:
+          type: array
+          items: { $ref: "#/components/schemas/Port" }
+        containers:
+          type: array
+          items: { $ref: "#/components/schemas/Container" }
+        drifted:
+          type: boolean
+          description: |
+            A container is running a configuration that no longer matches the
+            compose file, which is what a deploy would replace.
+
+    ComposeWarning:
+      type: object
+      description: |
+        A compose field Iskele read but will not act on. Silence would be worse
+        than a refusal: an operator whose `secrets:` were quietly dropped finds
+        out when the application fails to start, and blames the application.
+      required: [field, message]
+      properties:
+        service:
+          type: string
+          description: Empty for a project-level warning.
+        field: { type: string }
+        message: { type: string }
+
+    StackProblem:
+      type: object
+      description: One reason a stack cannot be deployed.
+      required: [service, field, message]
+      properties:
+        service: { type: string }
+        field: { type: string }
+        message: { type: string }
+
+    StackValidation:
+      type: object
+      required: [valid, warnings, problems]
+      properties:
+        valid: { type: boolean }
+        error:
+          type: string
+          description: A file that would not parse at all.
+        services:
+          type: array
+          items: { type: string }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ComposeWarning" }
+        problems:
+          type: array
+          description: |
+            Why this stack would be refused: a path outside `allowed_paths`, an
+            option the caller may not set.
+          items: { $ref: "#/components/schemas/StackProblem" }
+
+    StackDiff:
+      type: object
+      required: [services, networks, volumes, warnings]
+      properties:
+        services:
+          type: array
+          items:
+            type: object
+            required: [service, kind, recreates]
+            properties:
+              service: { type: string }
+              kind:
+                type: string
+                enum: [added, removed, modified]
+              fields:
+                type: array
+                description: |
+                  What changed, in compose's own vocabulary — reading
+                  "image, ports" beats reading a line-by-line YAML diff.
+                items: { type: string }
+              recreates:
+                type: boolean
+                description: Applying this replaces the container rather than leaving it running.
+        networks:
+          type: array
+          items: { $ref: "#/components/schemas/StackResourceChange" }
+        volumes:
+          type: array
+          items: { $ref: "#/components/schemas/StackResourceChange" }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ComposeWarning" }
+
+    StackResourceChange:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        kind:
+          type: string
+          enum: [added, removed, modified]
+
+    StackEvent:
+      type: object
+      description: One line of a deploy's progress, as an SSE `data` payload.
+      required: [kind, message]
+      properties:
+        kind:
+          type: string
+          enum: [step, log, warn, done]
+        service:
+          type: string
+          description: Empty for project-level work.
+        message: { type: string }
+        container:
+          type: string
+          description: Set when a step produced one.
+
+    StackActionResult:
+      type: object
+      description: What a lifecycle action touched.
+      required: [containers]
+      properties:
+        containers:
+          type: array
+          items: { type: string }
+        networks:
+          type: array
+          items: { type: string }
+        volumes:
+          type: array
+          items: { type: string }
+        failed:
+          type: array
+          description: What could not be done, so a partial result stays legible.
+          items: { type: string }
+
+    StackLogFrame:
+      type: object
+      description: One JSON text frame on the stack log WebSocket.
+      required: [t]
+      properties:
+        t:
+          type: string
+          enum: [log, err, eof]
+        service: { type: string }
+        container: { type: string }
+        s:
+          type: string
+          enum: [stdout, stderr]
+        ts: { type: string, format: date-time }
+        m: { type: string }
+        code: { type: string }
+
+    DiscoveredStack:
+      type: object
+      description: A compose project running here that Iskele has no record of.
+      required: [name, services, containers, running, importable]
+      properties:
+        name: { type: string }
+        services:
+          type: array
+          items: { type: string }
+        containers: { type: integer }
+        running: { type: integer }
+        config_file:
+          type: string
+          description: |
+            The compose file the CLI deployed from, when the containers record
+            one. It is what an import would read.
+        working_dir: { type: string }
+        importable:
+          type: boolean
+          description: |
+            The compose file is readable and inside `allowed_paths`, which is
+            what importing needs.
+        reason:
+          type: string
+          description: Why an unimportable stack cannot be imported.
+        created_at: { type: string, format: date-time }

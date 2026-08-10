@@ -26,6 +26,9 @@ export default defineConfig({
           vendor: ['react', 'react-dom', 'react-router-dom'],
           charts: ['recharts'],
           terminal: ['@xterm/xterm', '@xterm/addon-fit'],
+          // Monaco is deliberately absent here: naming it as a manual chunk
+          // makes Vite treat it as part of the entry's graph and preload it,
+          // which is exactly what lazily loading the editor page avoids.
         },
       },
     },

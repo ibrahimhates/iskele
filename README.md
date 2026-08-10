@@ -41,7 +41,6 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 | Containers | List, inspect, start/stop/restart/pause/kill/rename, bulk actions, redeploy |
 | Create wizard | Every `docker run` option, with a live command + API payload preview |
 | Live streams | Log streaming, `exec` console (xterm.js), live CPU/memory/IO stats |
-| Compose | Parse and run Compose stacks natively, Monaco editor, diff before apply |
 | App catalog | One-click deploy templates (redis, postgres, traefik, gitea, …) |
 | Images, volumes, networks | Full CRUD, prune, private registries with encrypted credentials |
 | Dashboard | Container/host metrics, live Docker events, audit log |
@@ -102,6 +101,14 @@ exists today:
   are flagged before you submit, not after the server refuses.
 - **Images** — pull with a per-layer progress bar, layer history, inspect, tag,
   remove, prune.
+- **Stacks** — Compose files, parsed with the same library the `docker
+  compose` CLI uses and then deployed over the engine socket, so no `docker
+  compose` binary has to be installed. Write one in the editor, read one from
+  this host, or clone a repository. Deploying streams its progress, leaves an
+  unchanged service running, and says which service and field it would refuse
+  before it touches anything. A compose project started with the CLI on the
+  same host shows up in the list and can be adopted. What each compose field
+  does is in [`docs/compose-support.md`](docs/compose-support.md).
 - **Build** — build an image from a Dockerfile on the host. The context is
   picked with a browser that cannot leave `allowed_paths`, output streams live
   with the Dockerfile step it is on, and the build survives the tab: closing it
@@ -208,6 +215,21 @@ listed as *open* below.
 | `GET` | `/builds/{id}` | read | One build record |
 | `GET` | `/builds/{id}/log` | read | The build's output verbatim, as `text/plain` |
 | `POST` | `/builds/{id}/cancel` | build | Stop a running build |
+| `GET` | `/stacks` | read | Compose stacks; `env` is withheld from listings |
+| `POST` | `/stacks` | create | Record a stack — editor, file or git |
+| `GET` | `/stacks/{id}` | read | One stack, with what the engine reports for it |
+| `PUT` | `/stacks/{id}` | create | Replace its content; the name is fixed |
+| `DELETE` | `/stacks/{id}` | delete | Forget the record; containers are left alone |
+| `POST` | `/stacks/validate` | read | Check a compose file without saving it |
+| `POST` | `/stacks/{id}/diff` | read | What saving and deploying would change |
+| `GET` | `/stacks/{id}/up` | ticket | **SSE** — deploy, with live progress |
+| `GET` | `/stacks/{id}/pull` | ticket | **SSE** — re-pull every image |
+| `GET` | `/stacks/{id}/scale` | ticket | **SSE** — change one service's replica count |
+| `GET` | `/stacks/{id}/logs` | ticket | **WebSocket** — every service, interleaved |
+| `POST` | `/stacks/{id}/down` | delete | Stop and remove its containers |
+| `POST` | `/stacks/{id}/{stop,start,restart}` | operate | In dependency order |
+| `GET` | `/stacks/discovered` | read | Compose projects running here that are not stacks |
+| `POST` | `/stacks/import` | create | Adopt one, without touching its containers |
 | `GET` | `/volumes` | read | List volumes |
 | `POST` | `/volumes` | create | Create a volume — driver and driver options |
 | `GET` | `/volumes/{name}` | read | One volume, with usage when the engine has it |

@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 67 · **Kısmi (🟡):** 12 (M6 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 76 · **Kısmi (🟡):** 15 (M7 sonu)
 
 > 🟡 = kod yazıldı ve testleri geçiyor, ama son kanıt bu ortamda üretilemiyor (gerçek bir Docker
 > daemon'ı gerektiriyor) ya da madde birden çok milestone'a yayılıyor. Bunlar **işaretli sayılmaz.**
@@ -133,18 +133,18 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| H1 | Stack kaynağı: sunucudaki dosya yolu | manuel | M7 | [ ] |
-| H2 | Stack kaynağı: UI'da Monaco editör (YAML syntax + şema doğrulama) | gözle | M7 | [ ] |
-| H3 | Stack kaynağı: Git repo URL'inden clone/pull | manuel | M7 | [ ] |
-| H4 | `up -d`, `down`, `restart`, `pull`, `stop`, `start` çalışır | manuel | M7 | [ ] |
-| H5 | Servis ölçekleme (scale) çalışır | manuel | M7 | [ ] |
-| H6 | Birleşik ve servis bazlı log akışı çalışır | manuel | M7 | [ ] |
-| H7 | `.env` dosyası yönetimi ve değişken interpolasyonu doğru | test | M7 | [ ] |
-| H8 | Stack servisleri tek ekranda durum tablosu olarak listelenir | gözle | M7 | [ ] |
-| H9 | Kaydetmeden önce diff gösterilir | gözle | M7 | [ ] |
-| H10 | ≥5 gerçek compose dosyası fixture'ı parse testinden geçer | test | M7 | [ ] |
-| H11 | Desteklenmeyen compose alanları sessizce yutulmaz, kullanıcıya uyarı olarak gösterilir | gözle | M7 | [ ] |
-| H12 | CLI fallback kullanılıyorsa `DECISIONS.md`'de yazılı ve ayarda görünür | gözle | M7 | [ ] |
+| H1 | Stack kaynağı: sunucudaki dosya yolu | manuel | M7 | [x] |
+| H2 | Stack kaynağı: UI'da Monaco editör (YAML syntax + doğrulama). Şema doğrulaması sunucuda: `POST /stacks/validate` deploy'un kontrollerinin aynısını çalıştırır (D-070) | gözle | M7 | [x] |
+| H3 | Stack kaynağı: Git repo URL'inden clone/pull | manuel | M7 | 🟡 |
+| H4 | `up -d`, `down`, `restart`, `pull`, `stop`, `start` çalışır | manuel | M7 | 🟡 |
+| H5 | Servis ölçekleme (scale) çalışır | manuel | M7 | [x] |
+| H6 | Birleşik ve servis bazlı log akışı çalışır | manuel | M7 | 🟡 |
+| H7 | `.env` dosyası yönetimi ve değişken interpolasyonu doğru | test | M7 | [x] |
+| H8 | Stack servisleri tek ekranda durum tablosu olarak listelenir | gözle | M7 | [x] |
+| H9 | Kaydetmeden önce diff gösterilir | gözle | M7 | [x] |
+| H10 | ≥5 gerçek compose dosyası fixture'ı parse testinden geçer (6 fixture) | test | M7 | [x] |
+| H11 | Desteklenmeyen compose alanları sessizce yutulmaz, kullanıcıya uyarı olarak gösterilir | gözle | M7 | [x] |
+| H12 | CLI fallback kullanılıyorsa `DECISIONS.md`'de yazılı. Compose için fallback yok — compose-go ile ayrıştırılıp engine soketine gidiliyor; yalnız git klonlama `git` binary'sini çalıştırıyor (D-069) | gözle | M7 | [x] |
 
 ## I. App Catalog
 
@@ -176,7 +176,7 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M6 sonunda: Dashboard, Containers, Images, Build, Volumes, Networks, Settings. Stacks/Catalog/Audit kendi milestone'larında eklenir. | gözle | M3→M8 | 🟡 |
+| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M7 sonunda: Dashboard, Containers, Stacks, Images, Build, Volumes, Networks, Settings. Catalog/Audit kendi milestone'larında eklenir. | gözle | M3→M8 | 🟡 |
 | K2 | Dark mode varsayılan; light/system toggle çalışır ve kalıcıdır | gözle | M3 | [x] |
 | K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | [ ] |
 | K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [x] |

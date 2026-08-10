@@ -308,9 +308,11 @@ Prefix `/api/v1`. Tüm hatalar:
 | GET/POST | `/volumes` · DELETE `/volumes/{name}` · POST `/volumes/prune` | viewer/operator/admin | M1/M5 |
 | GET/POST | `/networks` · DELETE `/networks/{id}` · POST `/networks/prune` | viewer/operator/admin | M1/M5 |
 | POST | `/networks/{id}/{connect\|disconnect}` | operator | M5 |
-| GET/POST | `/stacks` · GET/PUT/DELETE `/stacks/{id}` | viewer/admin | M7 |
-| POST | `/stacks/{id}/{up\|down\|restart\|pull\|stop\|start}` | operator | M7 |
-| POST | `/stacks/{id}/diff` `/stacks/{id}/validate` `/stacks/{id}/scale` | operator | M7 |
+| GET/POST | `/stacks` · GET/PUT/DELETE `/stacks/{id}` | viewer/create/delete | M7 |
+| SSE | `/stacks/{id}/{up\|pull\|scale}` | ticket (operate) | M7 |
+| POST | `/stacks/{id}/{down\|stop\|start\|restart}` | operator/delete | M7 |
+| POST | `/stacks/{id}/diff` · `/stacks/validate` · `/stacks/import` | viewer/create | M7 |
+| GET | `/stacks/discovered` | viewer | M7 |
 | WS | `/stacks/{id}/logs` | viewer | M7 |
 | GET | `/templates` `/templates/{id}` | viewer | M8 |
 | POST | `/templates/{id}/deploy` | operator | M8 |

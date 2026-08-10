@@ -167,6 +167,17 @@ func run(args []string) error {
 		log.Info("closed builds left running by a previous process", slog.Int("count", closed))
 	}
 
+	// A deploy is bound to its process for the same reason, and a stack stuck
+	// at "deploying" would never move again.
+	stackService := service.NewStackService(dockerClient, db.Stacks, nil, builder,
+		service.NewPathGuard(cfg.AllowedPaths), service.NewTaskRegistry(), recorder,
+		cfg.StackDir())
+	if closed, reconcileErr := stackService.ReconcileDeploying(ctx); reconcileErr != nil {
+		log.Warn("could not reconcile unfinished deploys", slog.Any("error", reconcileErr))
+	} else if closed > 0 {
+		log.Info("closed stack deploys left running by a previous process", slog.Int("count", closed))
+	}
+
 	go housekeeping(ctx, log, db, limiter, builder)
 
 	router := server.NewRouter(server.Deps{
@@ -180,6 +191,7 @@ func run(args []string) error {
 		Registries: db.Registries,
 		SecretBox:  secretBox,
 		Builds:     db.Builds,
+		Stacks:     db.Stacks,
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)

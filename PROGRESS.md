@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-09 · **Aktif faz:** M7 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-10 · **Aktif faz:** M8 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -20,13 +20,13 @@
 | M4 | Container yönetimi (tam) | ✅ Bitti | 16/16 | Log/stats/console/inspect + toplu işlem + redeploy |
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
 | M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
-| M7 | Compose stack | ⬜ Bekliyor | 0/15 | |
+| M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
 | M8 | App Catalog + Dashboard + Ayarlar | ⬜ Bekliyor | 0/18 | |
 | M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-09, M6 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-10, M7 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
@@ -40,9 +40,9 @@
 | `npm run lint` | ✅ | 0 uyarı (`--max-warnings 0`) |
 | `npm run format:check` | ✅ | prettier temiz |
 | `npm run build` | ✅ | tsc + vite, uyarısız |
-| `npm run test` | ✅ | 10 dosya / 94 test |
-| Frontend bundle | ✅ | index 82 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk |
-| Backend coverage | ✅ **%73.3** | hedef ≥ %60. `make test-cover`'ın yöntemiyle (`-coverpkg` ile tüm paketler) ölçüldü; paket-başına ölçüm %46.0 çünkü `internal/server/handlers` gibi paketler kendi testleriyle değil `internal/server` testleriyle kapsanıyor. `make test-cover` bu ortamda koşmuyor (D-042), komut elle çalıştırıldı. |
+| `npm run test` | ✅ | 11 dosya / 100 test |
+| Frontend bundle | ✅ | index 96 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk · Monaco (743 kB gz) yalnız editör açılınca indiriliyor (D-070) |
+| Backend coverage | ✅ **%72.5** | hedef ≥ %60. `make test-cover`'ın yöntemiyle (`-coverpkg` ile tüm paketler) ölçüldü. M7 `internal/compose` ile ~1600 satır ekledi; oran sabit kaldı. `make test-cover` bu ortamda koşmuyor (D-042), komut elle çalıştırıldı. |
 
 ---
 
@@ -281,26 +281,35 @@ geri okunuyor. Gerçek bir engine ile build hâlâ elle koşulmalı (bkz. Bloke 
 
 ---
 
-## M7 — Compose stack  ⬜
+## M7 — Compose stack  ✅
 
-- [ ] `internal/compose/parse.go` — compose-go v2 parse + normalize
-- [ ] `.env` yükleme + değişken interpolasyon
-- [ ] `convert.go` — service → container/network/volume spec (portlar, volume, healthcheck, limitler, depends_on)
-- [ ] Desteklenen alan matrisi (`docs/compose-support.md`) + desteklenmeyen alan uyarısı
-- [ ] `up.go` — bağımlılık sıralı `up -d`, Iskele etiketleri (`com.iskele.stack`, `.service`)
-- [ ] `down.go`, `stop/start`, `restart`, `pull`, `scale`
-- [ ] `diff.go` — kaydetmeden önce diff üretimi
-- [ ] `git.go` — repo clone/pull (ref seçimi)
-- [ ] Stack CRUD API (`/stacks`, `/stacks/{id}`) + kaynak tipleri (file/editor/git)
-- [ ] `WS /stacks/{id}/logs` — birleşik + servis bazlı
-- [ ] Stacks liste ekranı + servis durum tablosu
-- [ ] Monaco YAML editör + şema doğrulama + hata işaretleri
-- [ ] Diff görünümü (kaydetmeden önce)
-- [ ] `.env` yönetimi ekranı
-- [ ] Mevcut compose ile başlatılmış container'ların stack olarak keşfi
+- [x] `internal/compose/parse.go` — compose-go v2 parse + normalize + `depends_on` döngü kontrolü
+- [x] `.env` yükleme + değişken interpolasyon (yalnız stack'in kendi `.env`'i; daemon ortamı görünmüyor → D-065)
+- [x] `convert.go` — service → container/network/volume spec (portlar, volume, healthcheck, limitler, depends_on, güvenlik seçenekleri)
+- [x] Desteklenen alan matrisi (`docs/compose-support.md`) + desteklenmeyen alan uyarısı (parser'ın kendi uyarıları dahil → D-066)
+- [x] `stackup.go` — bağımlılık sıralı `up`, Iskele + compose etiketleri, config-hash ile değişmeyen servisi yerinde bırakma (D-067)
+- [x] `down`, `stop/start`, `restart`, `pull`, `scale`
+- [x] `diff.go` — kaydetmeden önce alan bazlı diff
+- [x] `git.go` — repo clone/pull (ref seçimi) + tehlikeli URL reddi (D-069)
+- [x] Stack CRUD API (`/stacks`, `/stacks/{id}`) + kaynak tipleri (file/editor/git)
+- [x] `WS /stacks/{id}/logs` — birleşik + servis bazlı, satırlar servis adıyla etiketli
+- [x] Stacks liste ekranı + servis durum tablosu
+- [x] Monaco YAML editör (gömülü, CDN'siz; yalnız yaml + ini dilleri → D-070) + sunucu tarafı doğrulama
+- [x] Diff görünümü (kaydetmeden önce)
+- [x] `.env` yönetimi ekranı
+- [x] Mevcut compose ile başlatılmış container'ların stack olarak keşfi ve içe aktarımı
 
-**Testler:** ≥5 gerçek compose fixture · interpolasyon · diff · dönüşüm birim testleri
-**DoD:** UI'dan yazılan bir compose stack ayağa kalkar ve logları akar · commit + push
+**Testler:** `parse_test.go` (6 gerçek fixture, interpolasyon, `:?` zorunlu değişken, daemon ortamının görünmezliği,
+döngü) · `convert_test.go` (etiketler, namespace, replica, kaynak limitleri, healthcheck, ağ/alias, bind/tmpfs,
+uyarı listesi, privileged geçişi) · `diff_test.go` · `git_test.go` (`ext::`, tire ile başlayan URL, dosya yolu) ·
+`stack_test.go` servis (deploy sırası, değişmeyeni bırakma, whitelist reddi, privileged kapısı, eşzamanlı deploy,
+down/scale, keşif/import, engine'siz okuma) · `internal/server/stacks_test.go` (CRUD, RBAC, SSE deploy akışı, reddin
+problem listesi)
+
+**DoD:** ✅ Canlı binary ile doğrulandı: whitelist dışı compose yolu 403, `ext::` git URL'i 422, whitelist dışı bind
+mount `problems` listesiyle raporlanıyor, `.env` yanındaki dosyadan okunuyor, diff alan bazlı çıkıyor, Docker
+kapalıyken bile stack tanımı okunabiliyor. Fake engine üzerinden uçtan uca deploy/scale/down akıyor. Gerçek bir
+engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konular) · commit + push
 
 ---
 
@@ -357,6 +366,7 @@ geri okunuyor. Gerçek bir engine ile build hâlâ elle koşulmalı (bkz. Bloke 
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-10 | M7 ✅ | Compose stack yönetimi uçtan uca. `docker compose` binary'si çalıştırılmıyor: dosyalar CLI'ın kullandığı compose-go ile ayrıştırılıp container'lar engine soketi üzerinden oluşturuluyor, böylece kurulu bir CLI'a bağımlılık yok. En önemli iki karar güvenlik tarafında: interpolasyon yalnız stack'in kendi `.env`'ini görüyor — daemon'ın ortamı görünmez (D-065) — ve `privileged`/`cap_add`/`devices` ile bind mount'lar YAML'dan geldiğinde de sihirbazdakiyle aynı kapılardan geçiyor (D-068). Reddedilen bir deploy hiçbir şey yaratmadan duruyor ve hangi servisin hangi alanının takıldığını listeliyor. Deploy, config-hash sayesinde değişmeyen servisi yerinde bırakıyor (D-067): komşusunun etiketi değişti diye veritabanı yeniden başlamıyor. compose-go'nun logrus'a yazdığı "değişken atanmamış, boş string kullanılıyor" uyarısı yakalanıp operatöre gösteriliyor (D-066) — parolası sessizce boşalan bir veritabanı bir satır metne değer. Git klonlama `git` binary'siyle (D-069); `ext::` gibi git'e komut çalıştırtan URL'ler reddediliyor. Monaco gömülü ve budanmış, editör sayfası tembel yükleniyor (D-070). Yol boyunca üç hata düzeltildi: `StackDetail`, gömülü `store.Stack`'in `MarshalJSON`'ını devraldığı için servis listesini sessizce düşürüyordu; `?networks=false` istemcide serileştirilmiyordu; ve stack okuma engine'e bağımlıydı — Docker kapalıyken operatör düzeltmek üzere olduğu dosyayı okuyamıyordu (D-071). Lint 0 issue, coverage %72.5, 100 frontend testi. |
 | 2026-08-09 | M6 ✅ | Dockerfile build uçtan uca. En kritik karar `PathGuard`'ın yeniden kullanılması (D-059): gezinme, bind mount ve build context aynı güven sınırının üç yüzü, ikinci bir uygulama ikinci bir hata kaynağı olurdu. Build context bir `io.Pipe` üzerinden engine'e akıyor, diske ikinci kez yazılmıyor; `.dockerignore` negasyon ve `**/` ile destekleniyor; symlink'ler izlenmeden bağ olarak yazılıyor (D-061). Build, kendisini izleyen soketten uzun yaşıyor: sekme kapanınca yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor, log arşivleniyor ve kayıt kapanıyor (D-062). İki hata yol boyunca yakalandı: `TaskRegistry.Finish` task context'ini iptal ettiği için son `done` frame'i sessizce düşüyordu — gönderim context'i artık task'tan değil kökten türüyor; ve `/fs/browse` `read` izniyle açıktı, host dizinlerini sıralayan bir uç için fazla gevşek, `build`'e çekildi. `WS /build` isteği soket kabul edilmeden önce doğrulanıyor, bu yüzden whitelist dışı bir dizin veya eksik Dockerfile sıradan bir HTTP hatası olarak dönüyor (403/422). Lint 0 issue, coverage %73.3 (`-coverpkg`), 94 frontend testi. Docker soketi olmayan ortamda whitelist/doğrulama yüzeyi canlı binary ile doğrulandı; gerçek bir engine ile build hâlâ elle koşulmalı (G3/G4 🟡). |
 | 2026-08-08 | M5 ✅ | Container oluşturma sihirbazı (10 sekme) ve tüm kaynak yönetimi. En kritik parça `PathGuard`: bind mount kaynakları `allowed_paths`'e karşı, symlink çözülerek ve bileşen bazlı karşılaştırılarak doğrulanıyor; boş whitelist hepsini reddediyor. Privileged seçenekler (`privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`) ayrı bir izin kapısının arkasında ve hata mesajı hangisinin takıldığını söylüyor. Registry parolaları AES-GCM ile şifreli saklanıyor ve hiçbir yanıtta geri dönmüyor. Image pull SSE ile akıyor, bir task olarak kaydediliyor ve drawer'dan iptal edilebiliyor. Sihirbazın canlı `docker run` önizlemesi API'ye gidenle aynı nesneden üretiliyor, bu yüzden ayrışamıyor. Yol boyunca üç hata düzeltildi: pull akışında `done` olayı hata kanalıyla yarışıyordu, registry yanıtları sıfır zaman damgası (`0001-01-01`) yayıyordu, `Create` yazdığı zaman damgalarını çağırana bildirmiyordu. Lint 0 issue, coverage %60.4, 70 frontend testi. |
 | 2026-08-08 | M3 + M4 ✅ | Frontend tek binary'ye gömüldü (`web/embed.go` + `internal/server/spa.go`): derin bağlantılar SPA kabuğunu, `/api` altındaki bilinmeyen yollar JSON 404'ü döndürüyor. Container yönetimi tam: liste + toplu işlem + 8 sekmeli detay, WS log/exec, SSE stats/events, redeploy. `make gen-api` OpenAPI'den TS tipi üretiyor, `conformance.ts` elle yazılan tiplerle spec'i derleme zamanında karşılaştırıyor. CI'ya `web` ve `bundle` job'ları eklendi. Üç gerçek hata yakalandı: `web/node_modules` altındaki üçüncü parti Go dosyası `./...`'a sızıyordu (D-042), `make test`/`make test-cover` `-race` ile CGO_ENABLED=0 yüzünden hiç koşamıyordu (D-043), `go.mod` tidy değildi. Lint 0 issue, coverage %71.9, 35 frontend testi. |
@@ -374,4 +384,5 @@ geri okunuyor. Gerçek bir engine ile build hâlâ elle koşulmalı (bkz. Bloke 
 | 2026-08-08 | Bu geliştirme ortamında Docker soketi yok. Log/stats/console yolları fake engine ve offline istemciyle test edildi; **gerçek bir container üzerinde canlı doğrulama yapılmadı.** | Bloke değil — kod yolları test altında, ama Docker'lı bir makinede elle bir tur atılması gerekiyor. |
 | 2026-08-08 | `govulncheck` yerelde koşmuyor (`vuln.go.dev` proxy tarafından 403). | Bloke değil — CI'da koşuyor. |
 | 2026-08-08 | `make test-cover` yerelde koşmuyor: bu ortamın Go araç zincirinde `covdata` yok. `make test` (`-race`, kapsamsız) yeşil. | Bloke değil — CI'da tam araç zinciri var. |
+| 2026-08-10 | Gerçek bir engine ile compose stack ayağa kaldırılmadı (soket yok). Deploy/scale/down/keşif fake engine ile uçtan uca test ediliyor; ayrıştırma, whitelist reddi, git URL reddi, diff ve engine'siz okuma canlı binary ile doğrulandı. | Bloke değil — H3/H4/H6 🟡 olarak işaretli. |
 | 2026-08-09 | Gerçek bir engine ile Dockerfile build koşulmadı (soket yok). WS build akışı, iptal, log arşivi ve geçmiş fake engine ile uçtan uca test ediliyor; whitelist ve doğrulama reddleri canlı binary ile doğrulandı. | Bloke değil — G3/G4 🟡 olarak işaretli, Docker'lı bir makinede bir tur atılması gerekiyor. |

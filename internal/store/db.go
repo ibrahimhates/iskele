@@ -46,6 +46,7 @@ type DB struct {
 
 	Registries *RegistryRepo
 	Builds     *BuildRepo
+	Stacks     *StackRepo
 }
 
 // Options configures Open.
@@ -92,6 +93,7 @@ func Open(ctx context.Context, opts Options) (*DB, error) {
 	db.Settings = &SettingsRepo{db: handle}
 	db.Registries = &RegistryRepo{db: handle}
 	db.Builds = &BuildRepo{db: handle}
+	db.Stacks = &StackRepo{db: handle}
 
 	if err := db.Migrate(ctx); err != nil {
 		_ = handle.Close()
