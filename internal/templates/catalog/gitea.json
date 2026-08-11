@@ -1,0 +1,115 @@
+{
+  "id": "gitea",
+  "title": "Gitea",
+  "category": "tools",
+  "description": "Self-hosted Git service with pull requests, issues and CI.",
+  "icon": "GitBranch",
+  "website": "https://about.gitea.com",
+  "keywords": [
+    "git",
+    "repository",
+    "forge"
+  ],
+  "image": "gitea/gitea:{{version}}",
+  "env": {
+    "USER_UID": "1000",
+    "USER_GID": "1000",
+    "GITEA__server__ROOT_URL": "{{root_url}}",
+    "GITEA__server__SSH_PORT": "{{ssh_port}}",
+    "GITEA__server__DOMAIN": "{{domain}}",
+    "GITEA__service__DISABLE_REGISTRATION": "{{disable_registration}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 3000
+    },
+    {
+      "host": "{{ssh_port}}",
+      "container": 22
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/data"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "1.22",
+      "options": [
+        {
+          "value": "1.22",
+          "label": "1.22"
+        },
+        {
+          "value": "1.23",
+          "label": "1.23"
+        },
+        {
+          "value": "latest",
+          "label": "latest"
+        }
+      ]
+    },
+    {
+      "name": "domain",
+      "label": "Domain",
+      "type": "text",
+      "default": "localhost",
+      "required": true
+    },
+    {
+      "name": "root_url",
+      "label": "Root URL",
+      "type": "text",
+      "help": "What Gitea prints in clone URLs. Getting it wrong gives everyone unusable clone commands.",
+      "default": "http://localhost:3000/",
+      "required": true
+    },
+    {
+      "name": "port",
+      "label": "Web port",
+      "type": "port",
+      "default": "3000",
+      "required": true
+    },
+    {
+      "name": "ssh_port",
+      "label": "SSH port",
+      "type": "port",
+      "help": "Git-over-SSH. Not 22, unless you have moved this host's own sshd.",
+      "default": "2222",
+      "required": true
+    },
+    {
+      "name": "disable_registration",
+      "label": "Disable registration",
+      "type": "select",
+      "help": "Leave this on unless you want anyone who finds the URL to have an account.",
+      "default": "true",
+      "options": [
+        {
+          "value": "true",
+          "label": "true"
+        },
+        {
+          "value": "false",
+          "label": "false"
+        }
+      ]
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume",
+      "help": "Every repository lives here."
+    }
+  ],
+  "notes": "Finish the install wizard at {{root_url}} — the first account it creates is the administrator, so do it before anyone else can. Clone over SSH on port {{ssh_port}}."
+}

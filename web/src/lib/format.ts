@@ -70,3 +70,23 @@ export function formatDuration(ms: number, unknownLabel = '—'): string {
 
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
+
+/**
+ * Renders an uptime in seconds the way `uptime` does.
+ *
+ * Days and hours for a host that has been up for weeks, minutes for one that
+ * just booted: nobody reads a machine's uptime to the second, and
+ * `formatDuration` would report 26 days as "624h 13m".
+ */
+export function formatUptime(seconds: number, unknownLabel = '—'): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return unknownLabel;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return `${Math.floor(seconds)}s`;
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}

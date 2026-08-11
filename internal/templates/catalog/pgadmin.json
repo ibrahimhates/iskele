@@ -1,0 +1,81 @@
+{
+  "id": "pgadmin",
+  "title": "pgAdmin",
+  "category": "tools",
+  "description": "The full PostgreSQL administration UI, for when Adminer is not enough.",
+  "icon": "Table",
+  "website": "https://www.pgadmin.org",
+  "keywords": [
+    "postgres",
+    "database",
+    "client"
+  ],
+  "image": "dpage/pgadmin4:{{version}}",
+  "env": {
+    "PGADMIN_DEFAULT_EMAIL": "{{email}}",
+    "PGADMIN_DEFAULT_PASSWORD": "{{password}}",
+    "PGADMIN_LISTEN_PORT": "80",
+    "PGADMIN_CONFIG_SERVER_MODE": "True"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 80
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/var/lib/pgadmin"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "8",
+      "options": [
+        {
+          "value": "8",
+          "label": "8"
+        },
+        {
+          "value": "latest",
+          "label": "latest"
+        }
+      ]
+    },
+    {
+      "name": "email",
+      "label": "Login e-mail",
+      "type": "text",
+      "help": "pgAdmin uses this as the username.",
+      "required": true,
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    },
+    {
+      "name": "password",
+      "label": "Login password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "8083",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume",
+      "help": "Holds saved server connections — including any passwords you tell pgAdmin to remember."
+    }
+  ],
+  "notes": "Sign in as {{email}}. pgAdmin stores the connections you save, so treat its volume as sensitive."
+}

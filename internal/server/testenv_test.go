@@ -18,6 +18,7 @@ import (
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
+	"github.com/ibrahimhates/iskele/internal/templates"
 )
 
 // testPassword satisfies the password policy used across the suite.
@@ -53,6 +54,9 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 	// The whitelist has to be a real directory, because the guard resolves
 	// symlinks before deciding and a bind test needs a path that exists.
 	cfg.AllowedPaths = []string{allowedRoot(t)}
+	// The default points at /var/lib/iskele, which a test must not touch and
+	// cannot measure; the host metrics endpoint reports the free space here.
+	cfg.DataDir = t.TempDir()
 
 	secretBox, err := crypto.NewSecretBox(testMasterKey())
 	if err != nil {
@@ -71,6 +75,7 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 			SecretBox:  secretBox,
 			Builds:     db.Builds,
 			Stacks:     db.Stacks,
+			Catalog:    testCatalog(t),
 		}),
 		tokens: map[store.Role]string{},
 	}
@@ -217,4 +222,15 @@ func testMasterKey() crypto.Key {
 		key[i] = byte(i)
 	}
 	return key
+}
+
+// testCatalog loads the shipped app catalog, with no custom directory.
+func testCatalog(t *testing.T) *templates.Catalog {
+	t.Helper()
+
+	catalog, err := templates.Load("", nil)
+	if err != nil {
+		t.Fatalf("templates.Load() error = %v", err)
+	}
+	return catalog
 }

@@ -63,6 +63,12 @@ tags:
       that grants access to something outside this host.
   - name: tasks
     description: Long-running operations — image pulls and builds
+  - name: catalog
+    description: |
+      The app catalog: JSON descriptions of common applications that render
+      into the same container definition the create wizard produces. Twenty
+      ship inside the binary. The schema is documented in
+      `docs/template-schema.md`.
   - name: stacks
     description: |
       Compose stacks: parsing, deploying, scaling and reading back what is
@@ -332,6 +338,38 @@ paths:
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
+  /system/host:
+    get:
+      tags: [system]
+      summary: Host CPU, memory and disk usage
+      description: |
+        One reading of the machine iskeled runs on, plus the daemon's own
+        version and uptime.
+
+        Always answers 200. Host metrics do not come from Docker, so an
+        unreachable engine costs the report its `engine` object and nothing
+        else — a panel that goes blank because Docker is down is exactly the
+        panel an operator needs while Docker is down. Individual readings the
+        platform refused are listed in `errors` rather than failing the
+        request.
+
+        `cpu.percent` is measured between consecutive calls; the first call
+        after the daemon starts has nothing to compare against and reports
+        `-1`.
+      responses:
+        "200":
+          description: Host metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+
   /containers:
     get:
       tags: [containers]
@@ -415,14 +453,7 @@ paths:
             rather than removed, so the operator can inspect why.
           content:
             application/json:
-              schema:
-                type: object
-                required: [id, name, image, started]
-                properties:
-                  id: { type: string }
-                  name: { type: string }
-                  image: { type: string }
-                  started: { type: boolean }
+              schema: { $ref: "#/components/schemas/CreateResult" }
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -2515,6 +2546,154 @@ paths:
         "404":
           $ref: "#/components/responses/StackNotFound"
 
+  /templates:
+    get:
+      tags: [catalog]
+      summary: The app catalog
+      description: |
+        Twenty templates ship inside the binary; an operator's own are read
+        from `template_dir` alongside them, and one whose id matches a shipped
+        entry replaces it.
+
+        `problems` lists the custom files that would not load. They are
+        reported rather than swallowed — the operator who wrote one needs to
+        know why it is missing — and a broken file does not take the rest of
+        the catalog with it.
+      responses:
+        "200":
+          description: The catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, categories, problems]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Template" }
+                  total: { type: integer }
+                  categories:
+                    type: array
+                    items: { type: string }
+                  problems:
+                    type: array
+                    items: { $ref: "#/components/schemas/TemplateProblem" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /templates/secret:
+    post:
+      tags: [catalog]
+      summary: Generate a value for a password field
+      description: |
+        Generated on the server, not in the browser: the browser is where an
+        extension, or a machine with a poor entropy source, would quietly
+        produce something guessable. Letters and digits only — a password that
+        travels through a shell, a YAML file and a connection string is one
+        whose punctuation something will eventually mangle.
+      parameters:
+        - name: length
+          in: query
+          description: Clamped to 12–128; the default is 32.
+          schema: { type: integer, minimum: 12, maximum: 128, default: 32 }
+      responses:
+        "201":
+          description: The generated value
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret]
+                properties:
+                  secret: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /templates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [catalog]
+      summary: One template, with its questions
+      responses:
+        "200":
+          description: The template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Template" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /templates/{id}/deploy:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [catalog]
+      summary: Deploy a template
+      description: |
+        Renders the template with the operator's answers and creates the
+        container through the same service the create wizard uses — so the
+        path whitelist and the privileged-option permission apply exactly as
+        they would to a hand-filled form. A catalog entry is a shortcut through
+        the form, not around the checks.
+
+        Every rejected answer comes back at once under `details.fields`: a
+        nine-field form should not have to be submitted nine times.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TemplateDeploy" }
+      responses:
+        "201":
+          description: The container, with the template's after-deploy notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TemplateDeployResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The caller lacks `create`, a bind path is outside `allowed_paths`,
+            or the template sets an option needing the privileged permission.
+            The message names what stopped it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No such template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: One or more answers were rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3069,6 +3248,117 @@ components:
         containers: { $ref: "#/components/schemas/DiskUsageEntry" }
         volumes: { $ref: "#/components/schemas/DiskUsageEntry" }
         build_cache: { $ref: "#/components/schemas/DiskUsageEntry" }
+
+    HostReport:
+      type: object
+      required: [uptime, cpu, memory, swap, disks, daemon]
+      properties:
+        hostname: { type: string }
+        platform:
+          type: string
+          description: Distribution and version.
+          example: debian 12
+        kernel: { type: string, example: 6.1.0-18-amd64 }
+        uptime:
+          type: integer
+          description: Seconds since the host booted.
+        boot_time: { type: string, format: date-time }
+        cpu: { $ref: "#/components/schemas/HostCPU" }
+        memory: { $ref: "#/components/schemas/HostMemory" }
+        swap:
+          allOf: [{ $ref: "#/components/schemas/HostMemory" }]
+          description: All zeros on a host with no swap, which is not an error.
+        disks:
+          type: array
+          items: { $ref: "#/components/schemas/HostDisk" }
+        load:
+          allOf: [{ $ref: "#/components/schemas/HostLoad" }]
+          description: Absent on platforms without a load average.
+        errors:
+          type: array
+          items: { type: string }
+          description: |
+            Readings the platform refused, e.g. inside a container with no
+            access to the host's `/proc`. The rest of the report is still
+            valid.
+        daemon: { $ref: "#/components/schemas/DaemonInfo" }
+        engine:
+          allOf: [{ $ref: "#/components/schemas/EngineSummary" }]
+          description: Absent when the Docker daemon is unreachable.
+        engine_error:
+          type: string
+          description: Why `engine` is absent.
+
+    HostCPU:
+      type: object
+      required: [cores, percent]
+      properties:
+        cores: { type: integer, description: Logical CPUs. }
+        percent:
+          type: number
+          description: |
+            Busy time since the previous call, 0..100, or `-1` on the first
+            call after the daemon starts.
+        model: { type: string }
+
+    HostMemory:
+      type: object
+      required: [total, used, available, percent]
+      properties:
+        total: { type: integer, description: Bytes. }
+        used: { type: integer, description: Bytes. }
+        available: { type: integer, description: Bytes. }
+        percent: { type: number }
+
+    HostDisk:
+      type: object
+      required: [path, label, total, used, free, percent]
+      properties:
+        path:
+          type: string
+          description: The measured directory, not its mount point.
+          example: /var/lib/iskele
+        label:
+          type: string
+          description: What the directory is.
+          enum: [data, docker]
+        filesystem: { type: string, example: ext4 }
+        total: { type: integer, description: Bytes. }
+        used: { type: integer, description: Bytes. }
+        free: { type: integer, description: Bytes. }
+        percent: { type: number }
+
+    HostLoad:
+      type: object
+      required: [one, five, fifteen]
+      properties:
+        one: { type: number }
+        five: { type: number }
+        fifteen: { type: number }
+
+    DaemonInfo:
+      type: object
+      required: [version, go_version, started_at, uptime]
+      properties:
+        version: { type: string }
+        commit: { type: string }
+        go_version: { type: string }
+        started_at: { type: string, format: date-time }
+        uptime: { type: integer, description: Seconds since iskeled started. }
+
+    EngineSummary:
+      type: object
+      required: [version, api_version, containers, running, paused, stopped, images]
+      properties:
+        version: { type: string, example: 28.5.2 }
+        api_version: { type: string, example: "1.51" }
+        os_type: { type: string, example: linux }
+        root_dir: { type: string, example: /var/lib/docker }
+        containers: { type: integer }
+        running: { type: integer }
+        paused: { type: integer }
+        stopped: { type: integer }
+        images: { type: integer }
 
     BatchRequest:
       type: object
@@ -4034,3 +4324,132 @@ components:
           type: string
           description: Why an unimportable stack cannot be imported.
         created_at: { type: string, format: date-time }
+
+    TemplateField:
+      type: object
+      description: One question a template asks.
+      required: [name, label, type]
+      properties:
+        name:
+          type: string
+          description: What `{{name}}` substitutes in the template's strings.
+        label: { type: string }
+        type:
+          type: string
+          enum: [text, number, password, select, bool, port, path, volume]
+        help:
+          type: string
+          description: |
+            Shown under the input. This is where a template explains what a
+            value is for, which is most of what makes a catalog usable.
+        default:
+          type: string
+          description: Never set on a password field — a shipped default password is a password everybody has.
+        required: { type: boolean }
+        pattern: { type: string }
+        min: { type: integer }
+        max: { type: integer }
+        options:
+          type: array
+          items:
+            type: object
+            required: [value, label]
+            properties:
+              value: { type: string }
+              label: { type: string }
+        generate:
+          type: boolean
+          description: The UI offers to generate a value, from `POST /templates/secret`.
+        generate_length: { type: integer }
+
+    Template:
+      type: object
+      description: One catalog entry.
+      required: [id, title, category, image]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        category:
+          type: string
+          description: The shipped set uses database, networking and tools.
+        description: { type: string }
+        icon:
+          type: string
+          description: A lucide icon name — names rather than images, so the catalog works offline.
+        website: { type: string }
+        documentation: { type: string }
+        keywords:
+          type: array
+          items: { type: string }
+        image: { type: string }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/TemplateField" }
+        notes:
+          type: string
+          description: Shown after a successful deploy, with the answers substituted.
+        source:
+          type: string
+          enum: [builtin, custom]
+          description: Set by the loader, so a shipped entry is distinguishable from an operator's own.
+        deployed:
+          type: integer
+          description: How many containers this template has produced on this host.
+        needs_privileged:
+          type: boolean
+          description: |
+            The template sets capabilities, devices, sysctls or host
+            networking. Declaring them does not grant them — deploying still
+            requires the privileged permission — but the catalog says so in
+            advance rather than after the form is filled in.
+
+    TemplateProblem:
+      type: object
+      description: A custom template file that could not be loaded.
+      required: [path, message]
+      properties:
+        path: { type: string }
+        message: { type: string }
+
+    TemplateDeploy:
+      type: object
+      description: What the catalog form submits.
+      properties:
+        name:
+          type: string
+          description: The container's name. Empty falls back to the template's id.
+        values:
+          type: object
+          additionalProperties: { type: string }
+          description: The answers, keyed by field name.
+        network:
+          type: string
+          description: An existing network to attach to, which is how a deployed database is reached.
+        start:
+          type: boolean
+          description: Run it immediately. Default true.
+
+    TemplateDeployResult:
+      allOf:
+        - $ref: "#/components/schemas/CreateResult"
+        - type: object
+          required: [template]
+          properties:
+            template: { type: string }
+            notes:
+              type: string
+              description: The template's after-deploy instructions, with the operator's own answers substituted.
+
+    CreateResult:
+      type: object
+      description: What creating a container returns.
+      required: [id, name, image, started]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        image: { type: string }
+        started:
+          type: boolean
+          description: |
+            A container that was created but failed to start is left in place
+            rather than removed, so the operator can inspect why.

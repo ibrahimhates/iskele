@@ -1,0 +1,90 @@
+{
+  "id": "mongodb",
+  "title": "MongoDB",
+  "category": "database",
+  "description": "Document database, for data that does not want a fixed schema.",
+  "icon": "Database",
+  "website": "https://www.mongodb.com",
+  "keywords": [
+    "nosql",
+    "document"
+  ],
+  "image": "mongo:{{version}}",
+  "env": {
+    "MONGO_INITDB_ROOT_USERNAME": "{{username}}",
+    "MONGO_INITDB_ROOT_PASSWORD": "{{password}}",
+    "MONGO_INITDB_DATABASE": "{{database}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 27017
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/data/db"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "7",
+      "options": [
+        {
+          "value": "7",
+          "label": "7"
+        },
+        {
+          "value": "8",
+          "label": "8"
+        },
+        {
+          "value": "6",
+          "label": "6"
+        }
+      ]
+    },
+    {
+      "name": "username",
+      "label": "Root user",
+      "type": "text",
+      "default": "root",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    {
+      "name": "password",
+      "label": "Root password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "database",
+      "label": "Initial database",
+      "type": "text",
+      "default": "app",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "27017",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "Connect with mongodb://{{username}}@localhost:{{port}}/. The root credentials only take effect on an empty data volume — pointing this at an existing one leaves its users as they were."
+}

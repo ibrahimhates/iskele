@@ -14,6 +14,8 @@ import { ContainerDetailPage } from './features/containers/ContainerDetailPage';
 import { CreateContainerPage } from './features/create/CreateContainerPage';
 import { BuildPage } from './features/build/BuildPage';
 import { StacksPage } from './features/stacks/StacksPage';
+import { CatalogPage } from './features/catalog/CatalogPage';
+import { TemplateDeployPage } from './features/catalog/TemplateDeployPage';
 import { StackDetailPage } from './features/stacks/StackDetailPage';
 // The compose editor carries Monaco, which is most of a megabyte gzipped.
 // Loading it lazily keeps that out of the first paint for the many sessions
@@ -104,6 +106,8 @@ export default function App() {
         <Route path="/containers/new" element={<CreateContainerPage />} />
         <Route path="/containers/:id" element={<ContainerDetailPage />} />
         <Route path="/containers/:id/:tab" element={<ContainerDetailPage />} />
+        <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/catalog/:id" element={<TemplateDeployPage />} />
         <Route path="/stacks" element={<StacksPage />} />
         <Route
           path="/stacks/new"

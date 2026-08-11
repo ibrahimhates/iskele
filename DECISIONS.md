@@ -636,6 +636,41 @@ engine olmadan da bilinebilir. Docker'ı çökmüş bir operatörün, düzeltmek
 **Sonuç:** Arayüz sarı bir bant gösteriyor; `stack_test.go` bunu pinliyor. Uçtan uca doğrulamada da bu yoldan
 geçildi (bu ortamda Docker yok).
 
+### D-072 — Template'ler betik değil form
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Katalog girdilerinin "kurulum betiği" çalıştırması, panelin tüm güvenlik kapılarını atlatmanın en kısa yolu olurdu.
+**Karar:** Bir template JSON şemasıyla sınırlı bir sorular kümesi + bir container tarifi. Render sonucu sıradan bir
+`ContainerSpec`; oradan sonra `PathGuard`, privileged kapısı ve RBAC aynen işliyor. Şema `DisallowUnknownFields` ile
+okunuyor; bind mount dışında host'a değen bir alan yok.
+**Gerekçe:** Katalog, `/etc/iskele/templates` altına dosya bırakabilen herkesin panelin yetkilerini devralabildiği bir
+uzantı noktası olmamalı. Yanlış cevapların hepsi tek seferde `details.fields` altında dönüyor — formu üç kez
+göndertmek yerine.
+
+### D-073 — Host metrikleri tek pakette ve "elden geldiğince"
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** gopsutil platforma özel dosya/syscall okuyor; container içinde koşan bir daemon'da bunların bir kısmı yok
+(swap yok, load average yok, `/proc` kısıtlı).
+**Karar:** gopsutil'i yalnız `internal/hostinfo` içe aktarıyor — `internal/docker`'ın SDK için oynadığı rolün aynısı.
+Okumalar tek tek başarısız olabiliyor; başarısız olan `errors` listesine yazılıyor, istek yine 200 dönüyor.
+CPU yüzdesi paket-düzeyi global yerine `Collector` içinde tutulan önceki örneğe göre hesaplanıyor; ilk okuma
+karşılaştıracak bir şey bulamadığı için `-1` diyor.
+**Gerekçe:** Altı sayıdan biri okunamadı diye boş kalan bir panel, beş sayı gösterenden kötü. Global durum ise farklı
+hızlarda yoklayan iki sekmenin birbirinin ölçümünü bozması demekti.
+**Sonuç:** `GET /system/host` Docker kapalıyken de çalışıyor — `engine` alanı düşüyor, makinenin kendi sayıları
+duruyor. Panelin en çok işe yaradığı an tam olarak orası.
+
+### D-074 — Activity feed engine olaylarıdır, audit değil
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Dashboard'daki akış ya panelin kendi audit kaydından ya da engine'in olay akışından beslenebilirdi.
+**Karar:** `SSE /system/events` — yani makinede olan biten. SSH'tan durdurulan bir container, kendini yeniden
+başlatan bir servis ve panelden yapılan işlem aynı listede.
+**Gerekçe:** Dashboard "bu makine ne durumda?" sorusunu yanıtlıyor, "bu panelden kim ne yaptı?" sorusunu değil;
+ikincisi audit ekranının işi (M8-F). Akış aynı zamanda sayımların bayatladığını haber veriyor: her olay sonrası
+sorgular 1 sn'lik debounce ile tazeleniyor — `docker compose up` düzinelerce olay üretiyor, her biri için dört liste
+çekmek engine'i en meşgul anında dövmek olurdu.
+**Sonuç:** Ticket tek kullanımlık olduğu için tarayıcının kendi yeniden bağlanması yetmiyor; hook kopmayı görünce
+yeni ticket alıp üstel geri çekilmeyle yeniden bağlanıyor.
+
 ---
 
 ## Uygulama Sırasında Doğrulanacak Varsayımlar

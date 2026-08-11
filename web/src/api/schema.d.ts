@@ -536,6 +536,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Host CPU, memory and disk usage
+         * @description One reading of the machine iskeled runs on, plus the daemon's own
+         *     version and uptime.
+         *
+         *     Always answers 200. Host metrics do not come from Docker, so an
+         *     unreachable engine costs the report its `engine` object and nothing
+         *     else — a panel that goes blank because Docker is down is exactly the
+         *     panel an operator needs while Docker is down. Individual readings the
+         *     platform refused are listed in `errors` rather than failing the
+         *     request.
+         *
+         *     `cpu.percent` is measured between consecutive calls; the first call
+         *     after the daemon starts has nothing to compare against and reports
+         *     `-1`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Host metrics */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HostReport"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["NotInitialized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/containers": {
         parameters: {
             query?: never;
@@ -628,12 +682,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            id: string;
-                            name: string;
-                            image: string;
-                            started: boolean;
-                        };
+                        "application/json": components["schemas"]["CreateResult"];
                     };
                 };
                 400: components["responses"]["BadRequest"];
@@ -4424,6 +4473,249 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The app catalog
+         * @description Twenty templates ship inside the binary; an operator's own are read
+         *     from `template_dir` alongside them, and one whose id matches a shipped
+         *     entry replaces it.
+         *
+         *     `problems` lists the custom files that would not load. They are
+         *     reported rather than swallowed — the operator who wrote one needs to
+         *     know why it is missing — and a broken file does not take the rest of
+         *     the catalog with it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The catalog */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["Template"][];
+                            total: number;
+                            categories: string[];
+                            problems: components["schemas"]["TemplateProblem"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate a value for a password field
+         * @description Generated on the server, not in the browser: the browser is where an
+         *     extension, or a machine with a poor entropy source, would quietly
+         *     produce something guessable. Letters and digits only — a password that
+         *     travels through a shell, a YAML file and a connection string is one
+         *     whose punctuation something will eventually mangle.
+         */
+        post: {
+            parameters: {
+                query?: {
+                    /** @description Clamped to 12–128; the default is 32. */
+                    length?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The generated value */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            secret: string;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One template, with its questions */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The template */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Template"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                /** @description No such template */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/{id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy a template
+         * @description Renders the template with the operator's answers and creates the
+         *     container through the same service the create wizard uses — so the
+         *     path whitelist and the privileged-option permission apply exactly as
+         *     they would to a hand-filled form. A catalog entry is a shortcut through
+         *     the form, not around the checks.
+         *
+         *     Every rejected answer comes back at once under `details.fields`: a
+         *     nine-field form should not have to be submitted nine times.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TemplateDeploy"];
+                };
+            };
+            responses: {
+                /** @description The container, with the template's after-deploy notes */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TemplateDeployResult"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                /**
+                 * @description The caller lacks `create`, a bind path is outside `allowed_paths`,
+                 *     or the template sets an option needing the privileged permission.
+                 *     The message names what stopped it.
+                 */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such template */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                409: components["responses"]["Conflict"];
+                /** @description One or more answers were rejected */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4684,6 +4976,107 @@ export interface components {
             containers?: components["schemas"]["DiskUsageEntry"];
             volumes?: components["schemas"]["DiskUsageEntry"];
             build_cache?: components["schemas"]["DiskUsageEntry"];
+        };
+        HostReport: {
+            hostname?: string;
+            /**
+             * @description Distribution and version.
+             * @example debian 12
+             */
+            platform?: string;
+            /** @example 6.1.0-18-amd64 */
+            kernel?: string;
+            /** @description Seconds since the host booted. */
+            uptime: number;
+            /** Format: date-time */
+            boot_time?: string;
+            cpu: components["schemas"]["HostCPU"];
+            memory: components["schemas"]["HostMemory"];
+            /** @description All zeros on a host with no swap, which is not an error. */
+            swap: components["schemas"]["HostMemory"];
+            disks: components["schemas"]["HostDisk"][];
+            /** @description Absent on platforms without a load average. */
+            load?: components["schemas"]["HostLoad"];
+            /**
+             * @description Readings the platform refused, e.g. inside a container with no
+             *     access to the host's `/proc`. The rest of the report is still
+             *     valid.
+             */
+            errors?: string[];
+            daemon: components["schemas"]["DaemonInfo"];
+            /** @description Absent when the Docker daemon is unreachable. */
+            engine?: components["schemas"]["EngineSummary"];
+            /** @description Why `engine` is absent. */
+            engine_error?: string;
+        };
+        HostCPU: {
+            /** @description Logical CPUs. */
+            cores: number;
+            /**
+             * @description Busy time since the previous call, 0..100, or `-1` on the first
+             *     call after the daemon starts.
+             */
+            percent: number;
+            model?: string;
+        };
+        HostMemory: {
+            /** @description Bytes. */
+            total: number;
+            /** @description Bytes. */
+            used: number;
+            /** @description Bytes. */
+            available: number;
+            percent: number;
+        };
+        HostDisk: {
+            /**
+             * @description The measured directory, not its mount point.
+             * @example /var/lib/iskele
+             */
+            path: string;
+            /**
+             * @description What the directory is.
+             * @enum {string}
+             */
+            label: "data" | "docker";
+            /** @example ext4 */
+            filesystem?: string;
+            /** @description Bytes. */
+            total: number;
+            /** @description Bytes. */
+            used: number;
+            /** @description Bytes. */
+            free: number;
+            percent: number;
+        };
+        HostLoad: {
+            one: number;
+            five: number;
+            fifteen: number;
+        };
+        DaemonInfo: {
+            version: string;
+            commit?: string;
+            go_version: string;
+            /** Format: date-time */
+            started_at: string;
+            /** @description Seconds since iskeled started. */
+            uptime: number;
+        };
+        EngineSummary: {
+            /** @example 28.5.2 */
+            version: string;
+            /** @example 1.51 */
+            api_version: string;
+            /** @example linux */
+            os_type?: string;
+            /** @example /var/lib/docker */
+            root_dir?: string;
+            containers: number;
+            running: number;
+            paused: number;
+            stopped: number;
+            images: number;
         };
         BatchRequest: {
             /** @description Container IDs or names. */
@@ -5447,6 +5840,97 @@ export interface components {
             reason?: string;
             /** Format: date-time */
             created_at?: string;
+        };
+        /** @description One question a template asks. */
+        TemplateField: {
+            /** @description What `{{name}}` substitutes in the template's strings. */
+            name: string;
+            label: string;
+            /** @enum {string} */
+            type: "text" | "number" | "password" | "select" | "bool" | "port" | "path" | "volume";
+            /**
+             * @description Shown under the input. This is where a template explains what a
+             *     value is for, which is most of what makes a catalog usable.
+             */
+            help?: string;
+            /** @description Never set on a password field — a shipped default password is a password everybody has. */
+            default?: string;
+            required?: boolean;
+            pattern?: string;
+            min?: number;
+            max?: number;
+            options?: {
+                value: string;
+                label: string;
+            }[];
+            /** @description The UI offers to generate a value, from `POST /templates/secret`. */
+            generate?: boolean;
+            generate_length?: number;
+        };
+        /** @description One catalog entry. */
+        Template: {
+            id: string;
+            title: string;
+            /** @description The shipped set uses database, networking and tools. */
+            category: string;
+            description?: string;
+            /** @description A lucide icon name — names rather than images, so the catalog works offline. */
+            icon?: string;
+            website?: string;
+            documentation?: string;
+            keywords?: string[];
+            image: string;
+            fields?: components["schemas"]["TemplateField"][];
+            /** @description Shown after a successful deploy, with the answers substituted. */
+            notes?: string;
+            /**
+             * @description Set by the loader, so a shipped entry is distinguishable from an operator's own.
+             * @enum {string}
+             */
+            source?: "builtin" | "custom";
+            /** @description How many containers this template has produced on this host. */
+            deployed?: number;
+            /**
+             * @description The template sets capabilities, devices, sysctls or host
+             *     networking. Declaring them does not grant them — deploying still
+             *     requires the privileged permission — but the catalog says so in
+             *     advance rather than after the form is filled in.
+             */
+            needs_privileged?: boolean;
+        };
+        /** @description A custom template file that could not be loaded. */
+        TemplateProblem: {
+            path: string;
+            message: string;
+        };
+        /** @description What the catalog form submits. */
+        TemplateDeploy: {
+            /** @description The container's name. Empty falls back to the template's id. */
+            name?: string;
+            /** @description The answers, keyed by field name. */
+            values?: {
+                [key: string]: string;
+            };
+            /** @description An existing network to attach to, which is how a deployed database is reached. */
+            network?: string;
+            /** @description Run it immediately. Default true. */
+            start?: boolean;
+        };
+        TemplateDeployResult: components["schemas"]["CreateResult"] & {
+            template: string;
+            /** @description The template's after-deploy instructions, with the operator's own answers substituted. */
+            notes?: string;
+        };
+        /** @description What creating a container returns. */
+        CreateResult: {
+            id: string;
+            name: string;
+            image: string;
+            /**
+             * @description A container that was created but failed to start is left in place
+             *     rather than removed, so the operator can inspect why.
+             */
+            started: boolean;
         };
     };
     responses: {

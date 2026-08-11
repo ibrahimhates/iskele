@@ -108,25 +108,17 @@ type StackDetail struct {
 // encoding of this type would be the stack alone, silently dropping every
 // field below it.
 func (d StackDetail) MarshalJSON() ([]byte, error) {
-	encoded, err := json.Marshal(d.Stack)
-	if err != nil {
-		return nil, err
+	extra := map[string]any{
+		"services": d.Services,
+		"warnings": d.Warnings,
 	}
-
-	merged := map[string]any{}
-	if err := json.Unmarshal(encoded, &merged); err != nil {
-		return nil, err
-	}
-
-	merged["services"] = d.Services
-	merged["warnings"] = d.Warnings
 	if d.ParseError != "" {
-		merged["parse_error"] = d.ParseError
+		extra["parse_error"] = d.ParseError
 	}
 	if d.EngineError != "" {
-		merged["engine_error"] = d.EngineError
+		extra["engine_error"] = d.EngineError
 	}
-	return json.Marshal(merged)
+	return marshalMerged(d.Stack, extra)
 }
 
 // ServiceStatus is one service and the containers it currently has.

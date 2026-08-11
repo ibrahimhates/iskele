@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDuration, formatPort, formatRelative, shortID } from './format';
+import {
+  formatBytes,
+  formatDuration,
+  formatPort,
+  formatRelative,
+  formatUptime,
+  shortID,
+} from './format';
 
 describe('formatBytes', () => {
   it('renders human units', () => {
@@ -72,5 +79,23 @@ describe('formatDuration', () => {
 
   it('has nothing to say about a negative duration', () => {
     expect(formatDuration(-1)).toBe('—');
+  });
+});
+
+describe('formatUptime', () => {
+  it('coarsens as the machine stays up', () => {
+    expect(formatUptime(0)).toBe('0s');
+    expect(formatUptime(45)).toBe('45s');
+    expect(formatUptime(60)).toBe('1m');
+    expect(formatUptime(59 * 60)).toBe('59m');
+    expect(formatUptime(3600)).toBe('1h 0m');
+    expect(formatUptime(3600 * 5 + 60 * 13)).toBe('5h 13m');
+    expect(formatUptime(86_400)).toBe('1d 0h');
+    expect(formatUptime(86_400 * 26 + 3600 * 7)).toBe('26d 7h');
+  });
+
+  it('labels a reading it cannot make', () => {
+    expect(formatUptime(-1)).toBe('—');
+    expect(formatUptime(Number.NaN, 'unknown')).toBe('unknown');
   });
 });

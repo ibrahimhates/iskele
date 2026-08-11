@@ -12,6 +12,7 @@
 import type { components } from './schema';
 import type {
   BatchResponse,
+  CreateResult,
   BatchResult,
   Build,
   BuildFrame,
@@ -20,8 +21,15 @@ import type {
   DirEntry,
   DirListing,
   DiscoveredStack,
+  DaemonInfo,
   DiskUsage,
   DockerEvent,
+  EngineSummary,
+  HostCPU,
+  HostDisk,
+  HostLoad,
+  HostMemory,
+  HostReport,
   Image,
   LogFrame,
   NetworkResource,
@@ -34,6 +42,9 @@ import type {
   StackValidation,
   Stats,
   SystemInfo,
+  Template,
+  TemplateField,
+  TemplateProblem,
   User,
   Volume,
 } from './types';
@@ -57,6 +68,13 @@ export type VolumeConforms = Conforms<Volume, Schemas['Volume']>;
 export type NetworkConforms = Conforms<NetworkResource, Schemas['Network']>;
 export type SystemInfoConforms = Conforms<SystemInfo, Schemas['SystemInfo']>;
 export type DiskUsageConforms = Conforms<DiskUsage, Schemas['DiskUsage']>;
+export type HostReportConforms = Conforms<HostReport, Schemas['HostReport']>;
+export type HostCPUConforms = Conforms<HostCPU, Schemas['HostCPU']>;
+export type HostMemoryConforms = Conforms<HostMemory, Schemas['HostMemory']>;
+export type HostDiskConforms = Conforms<HostDisk, Schemas['HostDisk']>;
+export type HostLoadConforms = Conforms<HostLoad, Schemas['HostLoad']>;
+export type DaemonInfoConforms = Conforms<DaemonInfo, Schemas['DaemonInfo']>;
+export type EngineSummaryConforms = Conforms<EngineSummary, Schemas['EngineSummary']>;
 export type SessionConforms = Conforms<Session, Schemas['Session']>;
 export type UserConforms = Conforms<User, Schemas['User']>;
 export type BatchResultConforms = Conforms<BatchResult, Schemas['BatchResult']>;
@@ -75,3 +93,7 @@ export type StackDiffConforms = Conforms<StackDiff, Schemas['StackDiff']>;
 export type StackEventConforms = Conforms<StackEvent, Schemas['StackEvent']>;
 export type StackActionResultConforms = Conforms<StackActionResult, Schemas['StackActionResult']>;
 export type DiscoveredStackConforms = Conforms<DiscoveredStack, Schemas['DiscoveredStack']>;
+export type TemplateConforms = Conforms<Template, Schemas['Template']>;
+export type TemplateFieldConforms = Conforms<TemplateField, Schemas['TemplateField']>;
+export type TemplateProblemConforms = Conforms<TemplateProblem, Schemas['TemplateProblem']>;
+export type CreateResultConforms = Conforms<CreateResult, Schemas['CreateResult']>;

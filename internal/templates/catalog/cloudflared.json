@@ -1,0 +1,47 @@
+{
+  "id": "cloudflared",
+  "title": "Cloudflare Tunnel",
+  "category": "networking",
+  "description": "Publishes a local service through Cloudflare without opening a port.",
+  "icon": "Cloud",
+  "website": "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/",
+  "keywords": [
+    "tunnel",
+    "ingress",
+    "cloudflare"
+  ],
+  "image": "cloudflare/cloudflared:{{version}}",
+  "command": [
+    "tunnel",
+    "--no-autoupdate",
+    "run",
+    "--token",
+    "{{token}}"
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "latest",
+      "options": [
+        {
+          "value": "latest",
+          "label": "latest"
+        },
+        {
+          "value": "2024.10.0",
+          "label": "2024.10.0"
+        }
+      ]
+    },
+    {
+      "name": "token",
+      "label": "Tunnel token",
+      "type": "password",
+      "help": "From the Cloudflare Zero Trust dashboard. It is a credential: anyone with it can serve traffic as your tunnel.",
+      "required": true
+    }
+  ],
+  "notes": "The tunnel dials out to Cloudflare, so nothing needs to be published on this host. Routes are configured in the Cloudflare dashboard, not here."
+}

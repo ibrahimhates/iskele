@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-10 · **Aktif faz:** M8 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-11 · **Aktif faz:** M8 (devam ediyor) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -21,7 +21,7 @@
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
 | M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
 | M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
-| M8 | App Catalog + Dashboard + Ayarlar | ⬜ Bekliyor | 0/18 | |
+| M8 | App Catalog + Dashboard + Ayarlar | 🟡 Devam ediyor | 13/19 | Katalog + dashboard bitti; kullanıcı yönetimi, audit ekranı, ayarlar kaldı |
 | M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
@@ -313,21 +313,22 @@ engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konul
 
 ---
 
-## M8 — App Catalog + Dashboard + Ayarlar  ⬜
+## M8 — App Catalog + Dashboard + Ayarlar  🟡
 
-- [ ] Template JSON şeması + `internal/templates/schema.go` doğrulama
-- [ ] Template motoru (render → container/stack payload)
-- [ ] `docs/template-schema.md`
-- [ ] 20 template: redis, postgres, mysql, mariadb, mongodb
-- [ ] 20 template: cloudflared, nginx, caddy, traefik, portainer_agent
-- [ ] 20 template: uptime-kuma, n8n, vaultwarden, minio, rabbitmq
-- [ ] 20 template: adminer, pgadmin, watchtower, gitea, wg-easy
-- [ ] Custom katalog dizini `/etc/iskele/templates/` yükleme
-- [ ] Catalog UI: kategori/arama/ikon, dinamik form, parola "rastgele üret", deploy akışı
-- [ ] Dashboard: container/image/volume/network sayıları + `system df`
-- [ ] Dashboard: gopsutil host CPU/RAM/disk + engine sürümü + uptime
-- [ ] `SSE /system/events` — docker events akışı
-- [ ] Toast bildirimleri + activity feed
+- [x] Template JSON şeması + `internal/templates/schema.go` doğrulama
+- [x] Template motoru (render → container/stack payload)
+- [x] `docs/template-schema.md`
+- [x] 20 template: redis, postgres, mysql, mariadb, mongodb
+- [x] 20 template: cloudflared, nginx, caddy, traefik, portainer_agent
+- [x] 20 template: uptime-kuma, n8n, vaultwarden, minio, rabbitmq
+- [x] 20 template: adminer, pgadmin, watchtower, gitea, wg-easy
+- [x] Custom katalog dizini `/etc/iskele/templates/` yükleme
+- [x] Catalog UI: kategori/arama/ikon, dinamik form, parola "rastgele üret", deploy akışı
+- [x] Dashboard: container/image/volume/network sayıları + `system df`
+- [x] Dashboard: gopsutil host CPU/RAM/disk + engine sürümü + uptime
+- [x] `SSE /system/events` — docker events akışı (M4'te açılmıştı, dashboard'a bağlandı)
+- [x] Activity feed (dashboard, canlı engine olayları)
+- [ ] Toast bildirimleri
 - [ ] Prune araçları (dangling image, stopped container, unused volume/network) + onay
 - [ ] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
 - [ ] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma

@@ -41,6 +41,13 @@ allowed_paths:
   - "/opt/stacks"
   - "/srv"
 
+# Your own app-catalog entries, one JSON file per template. Twenty ship inside
+# the binary; these are read alongside them, and a file whose id matches a
+# shipped one replaces it — which is how you pin a version for a whole
+# installation without forking. The directory not existing is fine.
+# See docs/template-schema.md.
+template_dir: "/etc/iskele/templates"
+
 # debug, info, warn or error.
 log_level: "info"
 

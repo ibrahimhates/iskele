@@ -1,0 +1,103 @@
+{
+  "id": "postgres",
+  "title": "PostgreSQL",
+  "category": "database",
+  "description": "The relational database most applications reach for first.",
+  "icon": "Database",
+  "website": "https://www.postgresql.org",
+  "keywords": [
+    "sql",
+    "relational",
+    "pg"
+  ],
+  "image": "postgres:{{version}}",
+  "env": {
+    "POSTGRES_PASSWORD": "{{password}}",
+    "POSTGRES_USER": "{{username}}",
+    "POSTGRES_DB": "{{database}}",
+    "PGDATA": "/var/lib/postgresql/data/pgdata"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 5432
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/var/lib/postgresql/data"
+    }
+  ],
+  "health_check": {
+    "test": [
+      "CMD-SHELL",
+      "pg_isready -U {{username}} -d {{database}}"
+    ],
+    "interval": "10s",
+    "timeout": "5s",
+    "retries": 5,
+    "start_period": "30s"
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "16-alpine",
+      "options": [
+        {
+          "value": "16-alpine",
+          "label": "16-alpine"
+        },
+        {
+          "value": "17-alpine",
+          "label": "17-alpine"
+        },
+        {
+          "value": "15-alpine",
+          "label": "15-alpine"
+        }
+      ]
+    },
+    {
+      "name": "username",
+      "label": "Superuser name",
+      "type": "text",
+      "default": "postgres",
+      "required": true,
+      "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+    },
+    {
+      "name": "password",
+      "label": "Superuser password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "database",
+      "label": "Initial database",
+      "type": "text",
+      "default": "app",
+      "required": true,
+      "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "5432",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume",
+      "help": "Removing this volume destroys the database. Empty names one after the container."
+    }
+  ],
+  "notes": "Connect with postgresql://{{username}}@localhost:{{port}}/{{database}} and the password you set. The data lives in a named volume — deleting the container does not delete it."
+}

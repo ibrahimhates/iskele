@@ -22,6 +22,7 @@ import (
 	"github.com/ibrahimhates/iskele/internal/server"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
+	"github.com/ibrahimhates/iskele/internal/templates"
 	"github.com/ibrahimhates/iskele/internal/version"
 )
 
@@ -180,6 +181,18 @@ func run(args []string) error {
 
 	go housekeeping(ctx, log, db, limiter, builder)
 
+	// The catalog is read once at startup: twenty templates ship inside the
+	// binary, and an operator's own are read alongside them. A broken custom
+	// file is reported in the catalog rather than fatal here.
+	catalog, err := templates.Load(cfg.TemplateDir, log)
+	if err != nil {
+		return fmt.Errorf("load the app catalog: %w", err)
+	}
+	log.Info("app catalog loaded",
+		slog.Int("templates", catalog.Len()),
+		slog.Int("problems", len(catalog.Problems())),
+		slog.String("template_dir", cfg.TemplateDir))
+
 	router := server.NewRouter(server.Deps{
 		Config:   cfg,
 		Logger:   log,
@@ -192,6 +205,7 @@ func run(args []string) error {
 		SecretBox:  secretBox,
 		Builds:     db.Builds,
 		Stacks:     db.Stacks,
+		Catalog:    catalog,
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)

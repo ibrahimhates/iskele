@@ -1,0 +1,85 @@
+{
+  "id": "adminer",
+  "title": "Adminer",
+  "category": "tools",
+  "description": "Single-file database client in a browser tab. MySQL, Postgres, SQLite and more.",
+  "icon": "Table",
+  "website": "https://www.adminer.org",
+  "keywords": [
+    "database",
+    "sql",
+    "client"
+  ],
+  "image": "adminer:{{version}}",
+  "env": {
+    "ADMINER_DEFAULT_SERVER": "{{default_server}}",
+    "ADMINER_DESIGN": "{{design}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 8080
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "4",
+      "options": [
+        {
+          "value": "4",
+          "label": "4"
+        },
+        {
+          "value": "latest",
+          "label": "latest"
+        },
+        {
+          "value": "4-standalone",
+          "label": "4-standalone"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "8082",
+      "required": true
+    },
+    {
+      "name": "default_server",
+      "label": "Default server",
+      "type": "text",
+      "help": "Pre-fills the server box. Use the container name of the database on the same network.",
+      "default": "db"
+    },
+    {
+      "name": "design",
+      "label": "Theme",
+      "type": "select",
+      "default": "pepa-linha",
+      "options": [
+        {
+          "value": "pepa-linha",
+          "label": "pepa-linha"
+        },
+        {
+          "value": "dracula",
+          "label": "dracula"
+        },
+        {
+          "value": "hydra",
+          "label": "hydra"
+        },
+        {
+          "value": "nette",
+          "label": "nette"
+        }
+      ]
+    }
+  ],
+  "notes": "Adminer asks for database credentials on every visit and stores none. It still has to reach the database, so put both on the same Docker network. Do not publish {{port}} to the internet."
+}

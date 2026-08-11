@@ -1,0 +1,105 @@
+{
+  "id": "wg-easy",
+  "title": "WireGuard (wg-easy)",
+  "category": "networking",
+  "description": "WireGuard VPN with a web UI for handing out client configurations.",
+  "icon": "Lock",
+  "website": "https://github.com/wg-easy/wg-easy",
+  "keywords": [
+    "vpn",
+    "wireguard"
+  ],
+  "image": "ghcr.io/wg-easy/wg-easy:{{version}}",
+  "env": {
+    "WG_HOST": "{{host}}",
+    "PASSWORD_HASH": "{{password_hash}}",
+    "WG_PORT": "{{vpn_port}}",
+    "WG_DEFAULT_DNS": "{{dns}}"
+  },
+  "ports": [
+    {
+      "host": "{{vpn_port}}",
+      "container": 51820,
+      "protocol": "udp"
+    },
+    {
+      "host": "{{ui_port}}",
+      "container": 51821
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/etc/wireguard"
+    }
+  ],
+  "cap_add": [
+    "NET_ADMIN",
+    "SYS_MODULE"
+  ],
+  "sysctls": {
+    "net.ipv4.conf.all.src_valid_mark": "1",
+    "net.ipv4.ip_forward": "1"
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "14",
+      "options": [
+        {
+          "value": "14",
+          "label": "14"
+        },
+        {
+          "value": "13",
+          "label": "13"
+        }
+      ]
+    },
+    {
+      "name": "host",
+      "label": "Public hostname or IP",
+      "type": "text",
+      "help": "What clients dial. It must resolve from outside this network.",
+      "required": true
+    },
+    {
+      "name": "password_hash",
+      "label": "UI password hash",
+      "type": "password",
+      "help": "A bcrypt hash, not the password itself — wg-easy takes PASSWORD_HASH. Generate it with the project's own instructions.",
+      "required": true
+    },
+    {
+      "name": "vpn_port",
+      "label": "WireGuard port (UDP)",
+      "type": "port",
+      "default": "51820",
+      "required": true
+    },
+    {
+      "name": "ui_port",
+      "label": "Web UI port",
+      "type": "port",
+      "help": "Keep this off the public internet; it hands out VPN configurations.",
+      "default": "51821",
+      "required": true
+    },
+    {
+      "name": "dns",
+      "label": "DNS for clients",
+      "type": "text",
+      "default": "1.1.1.1"
+    },
+    {
+      "name": "data_volume",
+      "label": "Config volume",
+      "type": "volume",
+      "help": "Holds the server key and every client's configuration."
+    }
+  ],
+  "notes": "This needs NET_ADMIN and SYS_MODULE plus two sysctls, so it takes the privileged permission. Clients dial {{host}}:{{vpn_port}} over UDP; the UI is on {{ui_port}}."
+}

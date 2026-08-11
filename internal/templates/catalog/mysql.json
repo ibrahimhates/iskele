@@ -1,0 +1,113 @@
+{
+  "id": "mysql",
+  "title": "MySQL",
+  "category": "database",
+  "description": "Oracle's relational database, the one most PHP applications expect.",
+  "icon": "Database",
+  "website": "https://www.mysql.com",
+  "keywords": [
+    "sql",
+    "relational"
+  ],
+  "image": "mysql:{{version}}",
+  "env": {
+    "MYSQL_ROOT_PASSWORD": "{{root_password}}",
+    "MYSQL_DATABASE": "{{database}}",
+    "MYSQL_USER": "{{username}}",
+    "MYSQL_PASSWORD": "{{password}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 3306
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/var/lib/mysql"
+    }
+  ],
+  "health_check": {
+    "test": [
+      "CMD",
+      "mysqladmin",
+      "ping",
+      "-h",
+      "127.0.0.1",
+      "-p{{root_password}}"
+    ],
+    "interval": "10s",
+    "timeout": "5s",
+    "retries": 10,
+    "start_period": "60s"
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "8.4",
+      "options": [
+        {
+          "value": "8.4",
+          "label": "8.4"
+        },
+        {
+          "value": "8.0",
+          "label": "8.0"
+        },
+        {
+          "value": "9",
+          "label": "9"
+        }
+      ]
+    },
+    {
+      "name": "root_password",
+      "label": "Root password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "database",
+      "label": "Initial database",
+      "type": "text",
+      "default": "app",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    {
+      "name": "username",
+      "label": "Application user",
+      "type": "text",
+      "default": "app",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    {
+      "name": "password",
+      "label": "Application password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "3306",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "The application user {{username}} owns {{database}}. MySQL takes about a minute to initialize on first start; the health check will be red until it finishes."
+}

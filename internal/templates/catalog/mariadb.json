@@ -1,0 +1,112 @@
+{
+  "id": "mariadb",
+  "title": "MariaDB",
+  "category": "database",
+  "description": "The community fork of MySQL, drop-in compatible with it.",
+  "icon": "Database",
+  "website": "https://mariadb.org",
+  "keywords": [
+    "sql",
+    "relational",
+    "mysql"
+  ],
+  "image": "mariadb:{{version}}",
+  "env": {
+    "MARIADB_ROOT_PASSWORD": "{{root_password}}",
+    "MARIADB_DATABASE": "{{database}}",
+    "MARIADB_USER": "{{username}}",
+    "MARIADB_PASSWORD": "{{password}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 3306
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/var/lib/mysql"
+    }
+  ],
+  "health_check": {
+    "test": [
+      "CMD",
+      "healthcheck.sh",
+      "--connect",
+      "--innodb_initialized"
+    ],
+    "interval": "10s",
+    "timeout": "5s",
+    "retries": 10,
+    "start_period": "45s"
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "11",
+      "options": [
+        {
+          "value": "11",
+          "label": "11"
+        },
+        {
+          "value": "10.11",
+          "label": "10.11"
+        },
+        {
+          "value": "11.4",
+          "label": "11.4"
+        }
+      ]
+    },
+    {
+      "name": "root_password",
+      "label": "Root password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "database",
+      "label": "Initial database",
+      "type": "text",
+      "default": "app",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    {
+      "name": "username",
+      "label": "Application user",
+      "type": "text",
+      "default": "app",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_]+$"
+    },
+    {
+      "name": "password",
+      "label": "Application password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "3306",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "MariaDB is on port {{port}}. It ships its own healthcheck.sh, which is what the health check calls."
+}

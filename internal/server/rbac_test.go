@@ -37,6 +37,7 @@ func TestRBACMatrix(t *testing.T) {
 		{http.MethodGet, "/system/ping", readers},
 		{http.MethodGet, "/system/info", readers},
 		{http.MethodGet, "/system/df", readers},
+		{http.MethodGet, "/system/host", readers},
 		{http.MethodGet, "/auth/me", readers},
 
 		// Lifecycle: operator and admin only.

@@ -1,0 +1,77 @@
+{
+  "id": "nginx",
+  "title": "nginx",
+  "category": "networking",
+  "description": "Web server and reverse proxy. Here it serves a directory from this host.",
+  "icon": "Globe",
+  "website": "https://nginx.org",
+  "keywords": [
+    "web",
+    "proxy",
+    "static"
+  ],
+  "image": "nginx:{{version}}",
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 80
+    }
+  ],
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "{{site_dir}}",
+      "destination": "/usr/share/nginx/html",
+      "read_only": true
+    },
+    {
+      "type": "bind",
+      "source": "{{config_file}}",
+      "destination": "/etc/nginx/conf.d/default.conf",
+      "read_only": true
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "1.27-alpine",
+      "options": [
+        {
+          "value": "1.27-alpine",
+          "label": "1.27-alpine"
+        },
+        {
+          "value": "1.26-alpine",
+          "label": "1.26-alpine"
+        },
+        {
+          "value": "alpine",
+          "label": "alpine"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "8080",
+      "required": true
+    },
+    {
+      "name": "site_dir",
+      "label": "Site directory",
+      "type": "path",
+      "help": "The directory to serve, on this host. It must be inside allowed_paths.",
+      "required": true
+    },
+    {
+      "name": "config_file",
+      "label": "Config file",
+      "type": "path",
+      "help": "Optional. A server block to use instead of the default. Also inside allowed_paths."
+    }
+  ],
+  "notes": "Serving {{site_dir}} on port {{port}}, read-only. Editing files in that directory changes what is served immediately."
+}

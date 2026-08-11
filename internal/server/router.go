@@ -16,11 +16,13 @@ import (
 	"github.com/ibrahimhates/iskele/internal/config"
 	"github.com/ibrahimhates/iskele/internal/crypto"
 	"github.com/ibrahimhates/iskele/internal/docker"
+	"github.com/ibrahimhates/iskele/internal/hostinfo"
 	"github.com/ibrahimhates/iskele/internal/httpx"
 	"github.com/ibrahimhates/iskele/internal/server/handlers"
 	"github.com/ibrahimhates/iskele/internal/server/middleware"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
+	"github.com/ibrahimhates/iskele/internal/templates"
 )
 
 // APIPrefix is the version prefix every API route lives under.
@@ -58,6 +60,9 @@ type Deps struct {
 	Builds *store.BuildRepo
 	// Stacks stores compose stacks. Nil leaves the stack endpoints unmounted.
 	Stacks *store.StackRepo
+	// Catalog is the app catalog. Nil leaves the template endpoints unmounted,
+	// which is what a test that does not care about them wants.
+	Catalog *templates.Catalog
 }
 
 // isAPIPath reports whether a request belongs to the JSON API rather than the
@@ -95,7 +100,7 @@ func NewRouter(deps Deps) http.Handler {
 	images := handlers.NewImages(imageService)
 	volumes := handlers.NewVolumes(volumeService)
 	networks := handlers.NewNetworks(networkService)
-	systemService := service.NewSystem(dockerClient)
+	systemService := service.NewSystem(dockerClient, diskTargets(deps.Config))
 	engine := handlers.NewEngine(systemService)
 
 	tickets := deps.Tickets
@@ -146,6 +151,12 @@ func NewRouter(deps Deps) http.Handler {
 		stackService := service.NewStackService(dockerClient, deps.Stacks, registryService,
 			builder, pathGuard, taskRegistry, deps.Recorder, stackStateDir(deps))
 		stacks = handlers.NewStacks(stackService, tickets)
+	}
+
+	var catalog *handlers.Templates
+	if deps.Catalog != nil {
+		catalog = handlers.NewTemplates(
+			service.NewCatalog(deps.Catalog, creator, dockerClient, deps.Recorder))
 	}
 
 	generalLimiter := middleware.NewRateLimiter(middleware.GeneralRate, middleware.GeneralBurst)
@@ -372,10 +383,23 @@ func NewRouter(deps Deps) http.Handler {
 				})
 			}
 
+			if catalog != nil {
+				r.Route("/templates", func(r chi.Router) {
+					r.With(read()).Method(http.MethodGet, "/", httpx.Handler(catalog.List))
+					// Generating a secret creates nothing and reveals nothing;
+					// it is a random string, and the operator filling in a
+					// catalog form is the one who needs it.
+					r.With(read()).Method(http.MethodPost, "/secret", httpx.Handler(catalog.GenerateSecret))
+					r.With(read()).Method(http.MethodGet, "/{id}", httpx.Handler(catalog.Get))
+					r.With(create_()).Method(http.MethodPost, "/{id}/deploy", httpx.Handler(catalog.Deploy))
+				})
+			}
+
 			r.Route("/system", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/ping", httpx.Handler(engine.Ping))
 				r.With(read()).Method(http.MethodGet, "/info", httpx.Handler(engine.Info))
 				r.With(read()).Method(http.MethodGet, "/df", httpx.Handler(engine.DiskUsage))
+				r.With(read()).Method(http.MethodGet, "/host", httpx.Handler(engine.Host))
 				r.With(read()).Method(http.MethodGet, "/allowed-paths", httpx.Handler(create.AllowedPaths))
 			})
 		})
@@ -510,6 +534,18 @@ func denyRateLimited(w http.ResponseWriter, r *http.Request, retryAfter time.Dur
 // denyCSRF renders a rejected cross-origin write.
 func denyCSRF(w http.ResponseWriter, r *http.Request, reason string) {
 	httpx.WriteError(w, r, httpx.NewError(http.StatusForbidden, httpx.CodeCSRFInvalid, "%s", reason))
+}
+
+// diskTargets are the directories whose free space the dashboard reports.
+//
+// The daemon's own data directory is the one it can run out of: a full disk
+// there stops builds, stack checkouts and the audit trail alike. The engine's
+// root directory is added at read time, once the engine says where it is.
+func diskTargets(cfg *config.Config) []hostinfo.Target {
+	if cfg == nil || cfg.DataDir == "" {
+		return nil
+	}
+	return []hostinfo.Target{{Label: "data", Path: cfg.DataDir}}
 }
 
 // offlineReason explains, in the error every Docker route returns, which

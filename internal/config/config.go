@@ -41,6 +41,10 @@ type Config struct {
 	// AllowedPaths restricts which host directories may be used for bind
 	// mounts and build contexts. Everything outside is rejected.
 	AllowedPaths []string `yaml:"allowed_paths"`
+	// TemplateDir is where an operator's own catalog entries live. Twenty
+	// templates ship inside the binary; these are read alongside them, and one
+	// whose id matches a shipped entry replaces it.
+	TemplateDir string `yaml:"template_dir"`
 	// LogLevel is one of debug, info, warn, error.
 	LogLevel string `yaml:"log_level"`
 	// LogFormat is one of auto, text, json. "auto" picks text on a TTY.
@@ -73,6 +77,7 @@ func Default() Config {
 		DockerHost:    "unix:///var/run/docker.sock",
 		DataDir:       "/var/lib/iskele",
 		SecretKeyFile: "/etc/iskele/secret.key",
+		TemplateDir:   "/etc/iskele/templates",
 		AllowedPaths:  []string{"/opt/stacks", "/srv"},
 		LogLevel:      "info",
 		LogFormat:     "auto",

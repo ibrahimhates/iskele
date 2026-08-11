@@ -1,0 +1,62 @@
+{
+  "id": "uptime-kuma",
+  "title": "Uptime Kuma",
+  "category": "tools",
+  "description": "Self-hosted uptime monitor with notifications and status pages.",
+  "icon": "Activity",
+  "website": "https://github.com/louislam/uptime-kuma",
+  "keywords": [
+    "monitoring",
+    "status",
+    "uptime"
+  ],
+  "image": "louislam/uptime-kuma:{{version}}",
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 3001
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/app/data"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "1",
+      "options": [
+        {
+          "value": "1",
+          "label": "1"
+        },
+        {
+          "value": "1-alpine",
+          "label": "1-alpine"
+        },
+        {
+          "value": "beta",
+          "label": "beta"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "3001",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "Open http://localhost:{{port}} and create the admin account on first visit — until you do, anyone who reaches the port can create it instead."
+}

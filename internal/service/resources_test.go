@@ -6,6 +6,7 @@ import (
 
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/docker/fake"
+	"github.com/ibrahimhates/iskele/internal/hostinfo"
 )
 
 func TestImageListForwardsFilters(t *testing.T) {
@@ -59,7 +60,7 @@ func TestVolumeAndNetworkList(t *testing.T) {
 
 func TestSystemServiceReadsEngineState(t *testing.T) {
 	f := fake.New()
-	svc := NewSystem(f)
+	svc := NewSystem(f, nil)
 	ctx := context.Background()
 
 	info, err := svc.Info(ctx)
@@ -100,9 +101,9 @@ func TestResourceServicesPropagateEngineFailures(t *testing.T) {
 		"images":   func() error { _, err := NewImage(f, nil, nil).List(ctx, ImageListOptions{}); return err },
 		"volumes":  func() error { _, err := NewVolume(f, nil).List(ctx); return err },
 		"networks": func() error { _, err := NewNetwork(f, nil).List(ctx); return err },
-		"info":     func() error { _, err := NewSystem(f).Info(ctx); return err },
-		"df":       func() error { _, err := NewSystem(f).DiskUsage(ctx); return err },
-		"ping":     func() error { _, err := NewSystem(f).Ping(ctx); return err },
+		"info":     func() error { _, err := NewSystem(f, nil).Info(ctx); return err },
+		"df":       func() error { _, err := NewSystem(f, nil).DiskUsage(ctx); return err },
+		"ping":     func() error { _, err := NewSystem(f, nil).Ping(ctx); return err },
 	}
 
 	for name, check := range checks {
@@ -111,5 +112,58 @@ func TestResourceServicesPropagateEngineFailures(t *testing.T) {
 				t.Errorf("error = %v, want KindUnavailable", err)
 			}
 		})
+	}
+}
+
+func TestHostReportsTheMachineAndTheDaemon(t *testing.T) {
+	f := fake.New()
+	svc := NewSystem(f, []hostinfo.Target{{Label: "data", Path: t.TempDir()}})
+
+	report := svc.Host(context.Background())
+
+	if report.Engine == nil {
+		t.Fatalf("no engine summary: %s", report.EngineError)
+	}
+	if report.Engine.Version != "28.5.2" || report.Engine.Running != 1 {
+		t.Errorf("engine = %+v", report.Engine)
+	}
+	if report.Daemon.Version == "" || report.Daemon.GoVersion == "" {
+		t.Errorf("daemon = %+v", report.Daemon)
+	}
+	if report.Daemon.StartedAt.IsZero() {
+		t.Error("the daemon start time was not reported")
+	}
+	if report.Memory.Total == 0 {
+		t.Error("no memory reading")
+	}
+	if len(report.Disks) == 0 {
+		t.Error("no disk reading for the data directory")
+	}
+	// The very first reading has no previous sample to measure against, and
+	// says so rather than reporting usage since boot.
+	if report.CPU.Percent != -1 {
+		t.Errorf("first CPU reading = %v, want -1", report.CPU.Percent)
+	}
+	if second := svc.Host(context.Background()); second.CPU.Percent < 0 {
+		t.Errorf("second CPU reading = %v, want a real percentage", second.CPU.Percent)
+	}
+}
+
+// Host metrics do not come from Docker, so they must survive Docker being
+// down: this panel is most useful exactly then.
+func TestHostReportsTheMachineWhenTheEngineIsDown(t *testing.T) {
+	f := fake.New()
+	f.Fail(fake.OpInfo, docker.NewError(docker.KindUnavailable, "info", "system", "", "daemon is gone"))
+
+	report := NewSystem(f, []hostinfo.Target{{Label: "data", Path: t.TempDir()}}).Host(context.Background())
+
+	if report.Engine != nil {
+		t.Errorf("engine = %+v, want nil", report.Engine)
+	}
+	if report.EngineError == "" {
+		t.Error("the engine failure was not explained")
+	}
+	if report.Memory.Total == 0 || len(report.Disks) == 0 {
+		t.Error("the host reading was lost along with the engine")
 	}
 }

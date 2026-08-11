@@ -1,0 +1,92 @@
+{
+  "id": "redis",
+  "title": "Redis",
+  "category": "database",
+  "description": "In-memory key/value store, used as a cache, a session store and a queue.",
+  "icon": "Database",
+  "website": "https://redis.io",
+  "keywords": [
+    "cache",
+    "kv",
+    "queue"
+  ],
+  "image": "redis:{{version}}",
+  "command": [
+    "redis-server",
+    "--appendonly",
+    "yes",
+    "--requirepass",
+    "{{password}}"
+  ],
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 6379
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/data"
+    }
+  ],
+  "health_check": {
+    "test": [
+      "CMD",
+      "redis-cli",
+      "--pass",
+      "{{password}}",
+      "ping"
+    ],
+    "interval": "10s",
+    "timeout": "3s",
+    "retries": 5
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "7-alpine",
+      "options": [
+        {
+          "value": "7-alpine",
+          "label": "7-alpine"
+        },
+        {
+          "value": "7.4-alpine",
+          "label": "7.4-alpine"
+        },
+        {
+          "value": "6-alpine",
+          "label": "6-alpine"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "help": "The port Redis is published on. Leave it closed to the internet: Redis has no user accounts.",
+      "default": "6379",
+      "required": true
+    },
+    {
+      "name": "password",
+      "label": "Password",
+      "type": "password",
+      "help": "Redis only has this one credential. Anything that reaches the port and knows it has full access.",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume",
+      "help": "Where the append-only file lives. Empty names one after the container."
+    }
+  ],
+  "notes": "Redis is listening on port {{port}} with the password you set. It has no user accounts and no TLS — keep the port on a private network or behind a proxy."
+}

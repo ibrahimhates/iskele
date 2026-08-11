@@ -1,0 +1,103 @@
+{
+  "id": "vaultwarden",
+  "title": "Vaultwarden",
+  "category": "tools",
+  "description": "Bitwarden-compatible password manager server, light enough for one host.",
+  "icon": "KeyRound",
+  "website": "https://github.com/dani-garcia/vaultwarden",
+  "keywords": [
+    "passwords",
+    "bitwarden",
+    "vault"
+  ],
+  "image": "vaultwarden/server:{{version}}",
+  "env": {
+    "DOMAIN": "{{domain}}",
+    "ADMIN_TOKEN": "{{admin_token}}",
+    "SIGNUPS_ALLOWED": "{{signups_allowed}}",
+    "WEBSOCKET_ENABLED": "true"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 80
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/data"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "1.32.7",
+      "options": [
+        {
+          "value": "1.32.7",
+          "label": "1.32.7"
+        },
+        {
+          "value": "latest",
+          "label": "latest"
+        },
+        {
+          "value": "alpine",
+          "label": "alpine"
+        }
+      ]
+    },
+    {
+      "name": "domain",
+      "label": "Public URL",
+      "type": "text",
+      "help": "The URL clients will use, including the scheme. Vaultwarden refuses some features when this is wrong.",
+      "default": "http://localhost",
+      "required": true
+    },
+    {
+      "name": "admin_token",
+      "label": "Admin token",
+      "type": "password",
+      "help": "Opens /admin. Treat it as a root password for every vault on this server.",
+      "required": true,
+      "generate": true,
+      "generate_length": 48
+    },
+    {
+      "name": "signups_allowed",
+      "label": "Allow sign-ups",
+      "type": "select",
+      "help": "Leave this off once your own account exists, or anyone who finds the URL can register.",
+      "default": "false",
+      "options": [
+        {
+          "value": "true",
+          "label": "true"
+        },
+        {
+          "value": "false",
+          "label": "false"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "8081",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume",
+      "help": "Every vault lives here. Back it up."
+    }
+  ],
+  "notes": "Vaultwarden must be behind HTTPS for browser clients to work; put it behind Caddy or Traefik. Sign-ups are {{signups_allowed}} — create your account, then turn them off."
+}

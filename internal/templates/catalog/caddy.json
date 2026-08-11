@@ -1,0 +1,95 @@
+{
+  "id": "caddy",
+  "title": "Caddy",
+  "category": "networking",
+  "description": "Web server that obtains and renews HTTPS certificates on its own.",
+  "icon": "ShieldCheck",
+  "website": "https://caddyserver.com",
+  "keywords": [
+    "web",
+    "proxy",
+    "https",
+    "tls"
+  ],
+  "image": "caddy:{{version}}",
+  "ports": [
+    {
+      "host": "{{http_port}}",
+      "container": 80
+    },
+    {
+      "host": "{{https_port}}",
+      "container": 443
+    }
+  ],
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "{{caddyfile}}",
+      "destination": "/etc/caddy/Caddyfile",
+      "read_only": true
+    },
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/data"
+    },
+    {
+      "type": "volume",
+      "source": "{{config_volume}}",
+      "destination": "/config"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "2-alpine",
+      "options": [
+        {
+          "value": "2-alpine",
+          "label": "2-alpine"
+        },
+        {
+          "value": "2",
+          "label": "2"
+        }
+      ]
+    },
+    {
+      "name": "caddyfile",
+      "label": "Caddyfile",
+      "type": "path",
+      "help": "Your Caddyfile on this host, inside allowed_paths.",
+      "required": true
+    },
+    {
+      "name": "http_port",
+      "label": "HTTP port",
+      "type": "port",
+      "help": "Must be reachable from the internet for certificate issuance to work.",
+      "default": "80",
+      "required": true
+    },
+    {
+      "name": "https_port",
+      "label": "HTTPS port",
+      "type": "port",
+      "default": "443",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Certificate volume",
+      "type": "volume",
+      "help": "Keep this. Losing it means re-issuing every certificate, and issuers rate-limit that."
+    },
+    {
+      "name": "config_volume",
+      "label": "Config volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "Caddy needs ports 80 and 443 reachable from the internet to issue certificates. The certificates live in the data volume — keep it across redeploys or you will hit the issuer's rate limit."
+}

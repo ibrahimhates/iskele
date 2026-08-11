@@ -1,0 +1,105 @@
+{
+  "id": "n8n",
+  "title": "n8n",
+  "category": "tools",
+  "description": "Workflow automation: connect APIs and services without writing glue code.",
+  "icon": "Workflow",
+  "website": "https://n8n.io",
+  "keywords": [
+    "automation",
+    "workflow",
+    "integration"
+  ],
+  "image": "n8nio/n8n:{{version}}",
+  "env": {
+    "N8N_HOST": "{{host}}",
+    "N8N_PORT": "5678",
+    "N8N_PROTOCOL": "{{protocol}}",
+    "WEBHOOK_URL": "{{protocol}}://{{host}}:{{port}}/",
+    "GENERIC_TIMEZONE": "{{timezone}}",
+    "N8N_ENCRYPTION_KEY": "{{encryption_key}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 5678
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/home/node/.n8n"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "latest",
+      "options": [
+        {
+          "value": "latest",
+          "label": "latest"
+        },
+        {
+          "value": "1.68.0",
+          "label": "1.68.0"
+        }
+      ]
+    },
+    {
+      "name": "host",
+      "label": "Hostname",
+      "type": "text",
+      "help": "What n8n builds its webhook URLs from. A wrong value here produces webhooks nobody can call.",
+      "default": "localhost",
+      "required": true
+    },
+    {
+      "name": "protocol",
+      "label": "Protocol",
+      "type": "select",
+      "default": "http",
+      "options": [
+        {
+          "value": "http",
+          "label": "http"
+        },
+        {
+          "value": "https",
+          "label": "https"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Host port",
+      "type": "port",
+      "default": "5678",
+      "required": true
+    },
+    {
+      "name": "encryption_key",
+      "label": "Encryption key",
+      "type": "password",
+      "help": "Encrypts stored credentials. Losing it means every saved credential has to be re-entered.",
+      "required": true,
+      "generate": true,
+      "generate_length": 48
+    },
+    {
+      "name": "timezone",
+      "label": "Timezone",
+      "type": "text",
+      "default": "UTC"
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "n8n is on {{protocol}}://{{host}}:{{port}}. Keep the encryption key: without it the credentials in the data volume cannot be decrypted."
+}

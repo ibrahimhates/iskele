@@ -1,0 +1,108 @@
+{
+  "id": "minio",
+  "title": "MinIO",
+  "category": "tools",
+  "description": "S3-compatible object storage, for backups and application uploads.",
+  "icon": "HardDrive",
+  "website": "https://min.io",
+  "keywords": [
+    "s3",
+    "storage",
+    "objects"
+  ],
+  "image": "minio/minio:{{version}}",
+  "command": [
+    "server",
+    "/data",
+    "--console-address",
+    ":9001"
+  ],
+  "env": {
+    "MINIO_ROOT_USER": "{{username}}",
+    "MINIO_ROOT_PASSWORD": "{{password}}"
+  },
+  "ports": [
+    {
+      "host": "{{api_port}}",
+      "container": 9000
+    },
+    {
+      "host": "{{console_port}}",
+      "container": 9001
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/data"
+    }
+  ],
+  "health_check": {
+    "test": [
+      "CMD",
+      "mc",
+      "ready",
+      "local"
+    ],
+    "interval": "15s",
+    "timeout": "10s",
+    "retries": 5,
+    "start_period": "30s"
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "latest",
+      "options": [
+        {
+          "value": "latest",
+          "label": "latest"
+        },
+        {
+          "value": "RELEASE.2024-10-13T13-34-11Z",
+          "label": "RELEASE.2024-10-13T13-34-11Z"
+        }
+      ]
+    },
+    {
+      "name": "username",
+      "label": "Root user",
+      "type": "text",
+      "default": "minioadmin",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_-]{3,}$"
+    },
+    {
+      "name": "password",
+      "label": "Root password",
+      "type": "password",
+      "help": "At least 8 characters; MinIO refuses to start with a shorter one.",
+      "required": true,
+      "generate": true,
+      "generate_length": 40
+    },
+    {
+      "name": "api_port",
+      "label": "S3 API port",
+      "type": "port",
+      "default": "9000",
+      "required": true
+    },
+    {
+      "name": "console_port",
+      "label": "Console port",
+      "type": "port",
+      "default": "9001",
+      "required": true
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "The S3 API is on {{api_port}} and the web console on {{console_port}}. The root credentials are full access to every bucket — make an application-scoped key in the console and use that."
+}

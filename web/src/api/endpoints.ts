@@ -12,6 +12,7 @@ import type {
   DiscoveredStack,
   DiskUsage,
   EngineStatus,
+  HostReport,
   Image,
   ImageDeleted,
   ImageHistoryEntry,
@@ -22,6 +23,7 @@ import type {
   RedeployResult,
   Registry,
   RegistryInput,
+  CatalogResponse,
   Session,
   Stack,
   StackActionResult,
@@ -31,6 +33,9 @@ import type {
   StackValidation,
   SystemInfo,
   Task,
+  Template,
+  TemplateDeploy,
+  TemplateDeployResult,
   User,
   Volume,
   VolumeSpec,
@@ -194,10 +199,24 @@ export const stacks = {
   import: (name: string) => api.post<Stack>('/stacks/import', { name }),
 };
 
+export const catalog = {
+  list: () => api.get<CatalogResponse>('/templates'),
+  get: (id: string) => api.get<Template>(`/templates/${encodeURIComponent(id)}`),
+  deploy: (id: string, input: TemplateDeploy) =>
+    api.post<TemplateDeployResult>(`/templates/${encodeURIComponent(id)}/deploy`, input),
+  /** Generated on the server: the browser is the wrong place to make a secret. */
+  secret: (length?: number) =>
+    api.post<{ secret: string }>(
+      `/templates/secret${query({ length: length ? String(length) : undefined })}`,
+    ),
+};
+
 export const system = {
   ping: () => api.get<EngineStatus>('/system/ping'),
   info: () => api.get<SystemInfo>('/system/info'),
   diskUsage: () => api.get<DiskUsage>('/system/df'),
+  /** Host CPU/RAM/disk plus the daemon's own uptime. Never fails on a down engine. */
+  host: () => api.get<HostReport>('/system/host'),
   allowedPaths: () => api.get<{ paths: string[] }>('/system/allowed-paths'),
   version: () =>
     api.get<{

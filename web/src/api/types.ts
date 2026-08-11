@@ -206,6 +206,79 @@ export interface EngineStatus {
   error?: string;
 }
 
+export interface HostCPU {
+  cores: number;
+  /** Busy time since the previous reading, or -1 on the daemon's first one. */
+  percent: number;
+  model?: string;
+}
+
+/** A total/used pair, in bytes. Describes RAM and swap alike. */
+export interface HostMemory {
+  total: number;
+  used: number;
+  available: number;
+  percent: number;
+}
+
+export interface HostDisk {
+  path: string;
+  /** What the directory is; the UI translates it. */
+  label: 'data' | 'docker';
+  filesystem?: string;
+  total: number;
+  used: number;
+  free: number;
+  percent: number;
+}
+
+export interface HostLoad {
+  one: number;
+  five: number;
+  fifteen: number;
+}
+
+export interface DaemonInfo {
+  version: string;
+  commit?: string;
+  go_version: string;
+  started_at: string;
+  /** Seconds since iskeled started. */
+  uptime: number;
+}
+
+export interface EngineSummary {
+  version: string;
+  api_version: string;
+  os_type?: string;
+  root_dir?: string;
+  containers: number;
+  running: number;
+  paused: number;
+  stopped: number;
+  images: number;
+}
+
+export interface HostReport {
+  hostname?: string;
+  platform?: string;
+  kernel?: string;
+  /** Seconds since the host booted. */
+  uptime: number;
+  boot_time?: string;
+  cpu: HostCPU;
+  memory: HostMemory;
+  swap: HostMemory;
+  disks: HostDisk[];
+  load?: HostLoad;
+  /** Readings the platform refused; the rest of the report is still valid. */
+  errors?: string[];
+  daemon: DaemonInfo;
+  /** Absent when the Docker daemon is unreachable. */
+  engine?: EngineSummary;
+  engine_error?: string;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;
@@ -708,4 +781,80 @@ export interface DiscoveredStack {
   importable: boolean;
   reason?: string;
   created_at?: string;
+}
+
+export type TemplateFieldType =
+  'text' | 'number' | 'password' | 'select' | 'bool' | 'port' | 'path' | 'volume';
+
+/** One question a template asks. */
+export interface TemplateField {
+  /** What `{{name}}` substitutes in the template's strings. */
+  name: string;
+  label: string;
+  type: TemplateFieldType;
+  help?: string;
+  /** Never set on a password field. */
+  default?: string;
+  required?: boolean;
+  pattern?: string;
+  min?: number;
+  max?: number;
+  options?: { value: string; label: string }[];
+  /** The UI offers to generate a value. */
+  generate?: boolean;
+  generate_length?: number;
+}
+
+/** One catalog entry. */
+export interface Template {
+  id: string;
+  title: string;
+  category: string;
+  description?: string;
+  /** A lucide icon name — names rather than images, so the catalog works offline. */
+  icon?: string;
+  website?: string;
+  documentation?: string;
+  keywords?: string[];
+  image: string;
+  fields?: TemplateField[];
+  notes?: string;
+  source?: 'builtin' | 'custom';
+  /** How many containers this template has produced on this host. */
+  deployed?: number;
+  /** The template needs the privileged permission; said in advance. */
+  needs_privileged?: boolean;
+}
+
+/** A custom template file that could not be loaded. */
+export interface TemplateProblem {
+  path: string;
+  message: string;
+}
+
+export interface CatalogResponse {
+  items: Template[];
+  total: number;
+  categories: string[];
+  problems: TemplateProblem[];
+}
+
+export interface TemplateDeploy {
+  name?: string;
+  values?: Record<string, string>;
+  network?: string;
+  start?: boolean;
+}
+
+export interface CreateResult {
+  id: string;
+  name: string;
+  image: string;
+  started: boolean;
+}
+
+export interface TemplateDeployResult extends CreateResult {
+  template: string;
+  /** The template's after-deploy instructions, with the answers substituted. */
+  notes?: string;
 }
