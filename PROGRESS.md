@@ -21,7 +21,7 @@
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
 | M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
 | M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
-| M8 | App Catalog + Dashboard + Ayarlar | 🟡 Devam ediyor | 13/19 | Katalog + dashboard bitti; kullanıcı yönetimi, audit ekranı, ayarlar kaldı |
+| M8 | App Catalog + Dashboard + Ayarlar | 🟡 Devam ediyor | 15/19 | Katalog, dashboard ve hesap yönetimi bitti; audit ekranı, prune, toast, ayarlar kaldı |
 | M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
@@ -331,8 +331,8 @@ engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konul
 - [ ] Toast bildirimleri
 - [ ] Prune araçları (dangling image, stopped container, unused volume/network) + onay
 - [ ] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
-- [ ] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma
-- [ ] TOTP 2FA: setup (QR), verify, disable, login akışına entegrasyon
+- [x] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma
+- [x] TOTP 2FA: setup (QR), verify, disable, login akışına entegrasyon
 - [ ] Ayarlar sayfası: socket yolu, whitelist, retention, tema, dil, bind uyarısı
 
 **Testler:** her template için geçerli payload · şema negatif testleri · dashboard aggregate · TOTP

@@ -15,6 +15,7 @@ import { CreateContainerPage } from './features/create/CreateContainerPage';
 import { BuildPage } from './features/build/BuildPage';
 import { StacksPage } from './features/stacks/StacksPage';
 import { CatalogPage } from './features/catalog/CatalogPage';
+import { UsersPage } from './features/users/UsersPage';
 import { TemplateDeployPage } from './features/catalog/TemplateDeployPage';
 import { StackDetailPage } from './features/stacks/StackDetailPage';
 // The compose editor carries Monaco, which is most of a megabyte gzipped.
@@ -130,6 +131,7 @@ export default function App() {
         <Route path="/build" element={<BuildPage />} />
         <Route path="/volumes" element={<VolumesPage />} />
         <Route path="/networks" element={<NetworksPage />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
 

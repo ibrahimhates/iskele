@@ -211,7 +211,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["Credentials"];
+                    "application/json": components["schemas"]["LoginRequest"];
                 };
             };
             responses: {
@@ -225,7 +225,17 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
-                /** @description Invalid username or password */
+                /**
+                 * @description Invalid credentials, or a missing second factor.
+                 *
+                 *     `TOTP_REQUIRED` means the password was correct and the account has
+                 *     two-factor enabled: send the request again with `totp`. It is the
+                 *     one login outcome that is not deliberately vague, because the form
+                 *     has to know to ask, and it tells an attacker who already guessed
+                 *     the password nothing new. A *wrong* code is `INVALID_CREDENTIALS`,
+                 *     indistinguishable from a wrong password, and counts against the
+                 *     per-IP lockout.
+                 */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -411,6 +421,447 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin two-factor enrollment for the caller's own account
+         * @description Generates a secret and stores it disabled, so the code the browser is
+         *     about to send can be checked against it. An enrollment abandoned
+         *     halfway leaves the account exactly as it was, able to sign in with a
+         *     password alone.
+         *
+         *     No permission is required: these endpoints act on the caller's own
+         *     account and nobody else's, and a second factor only its owner controls
+         *     is the only kind worth having.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The secret to scan or type in */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TOTPSetup"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Two-factor is already enabled for this account */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The secret key is not configured, so a secret cannot be stored encrypted */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm and enable two-factor */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TOTPCode"];
+                };
+            };
+            responses: {
+                /** @description Enabled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            totp_enabled?: boolean;
+                        };
+                    };
+                };
+                /** @description The code is not valid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Already enabled, or no enrollment is in progress */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/totp/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn off two-factor for the caller's own account
+         * @description A current code is required: an unattended browser must not be enough to
+         *     remove the factor that protects the account from an unattended browser.
+         *     An operator who lost the device asks an admin to clear it with
+         *     `DELETE /users/{id}/totp`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TOTPCode"];
+                };
+            };
+            responses: {
+                /** @description Disabled */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            totp_enabled?: boolean;
+                        };
+                    };
+                };
+                /** @description The code is not valid */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List accounts
+         * @description Admin only, like everything under `/users`: each of these endpoints
+         *     either grants access to this panel or takes it away.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Every account */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items?: components["schemas"]["User"][];
+                            total?: number;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /** Create an account */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UserCreate"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                /** @description That username is taken */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One account */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The account */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        /** Change a role, a password, or an account's disabled state */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UserUpdate"];
+                };
+            };
+            responses: {
+                /** @description The updated account */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                /**
+                 * @description `LAST_ADMIN`: the change would leave the panel with no account able
+                 *     to administer it. Stepping down is allowed — once somebody else can
+                 *     take over. A disabled admin does not count.
+                 */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        post?: never;
+        /**
+         * Delete an account
+         * @description Ends every session the account holds. The account the request came from
+         *     cannot be deleted: unlike a demotion, that is not a step anybody takes
+         *     on purpose, and there is always another admin who can do it.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description That is the account this request came from */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                /** @description That is the last account able to administer the panel */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear another account's second factor
+         * @description The locked-out case: a device was lost, and somebody with admin rights
+         *     has to let its owner back in. It ends that account's sessions, which
+         *     were opened with the factor being removed.
+         *
+         *     It cannot be used on one's own account — that is
+         *     `POST /auth/totp/disable`, which asks for a code.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cleared */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description That is the caller's own account */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -4737,6 +5188,58 @@ export interface components {
                 };
             };
         };
+        LoginRequest: components["schemas"]["Credentials"] & {
+            /**
+             * @description The six-digit code, for an account with two-factor enabled.
+             *     Spaces are tolerated, so a code pasted as displayed works.
+             * @example 492039
+             */
+            totp?: string;
+        };
+        UserCreate: {
+            username: string;
+            /** Format: password */
+            password: string;
+            /** @enum {string} */
+            role: "admin" | "operator" | "viewer";
+        };
+        /**
+         * @description Every field is optional, and an absent field is left alone: one form
+         *     can change a role without also resetting a password.
+         */
+        UserUpdate: {
+            /** @enum {string} */
+            role?: "admin" | "operator" | "viewer";
+            /**
+             * Format: password
+             * @description Setting this ends every session the account holds. An admin
+             *     resetting a password is either handing the account back to its
+             *     owner or taking it away, and both mean the tokens issued before
+             *     now must stop working.
+             */
+            password?: string;
+            /** @description Disabling an account also ends its sessions. */
+            disabled?: boolean;
+        };
+        TOTPSetup: {
+            /**
+             * @description The base32 secret, grouped in fours for manual entry.
+             * @example JBSW Y3DP EHPK 3PXP
+             */
+            secret: string;
+            /**
+             * @description The otpauth:// URI the QR code encodes.
+             * @example otpauth://totp/iskele:admin?algorithm=SHA1&digits=6&issuer=iskele&period=30&secret=JBSWY3DPEHPK3PXP
+             */
+            uri: string;
+        };
+        TOTPCode: {
+            /**
+             * @description The six-digit code from an authenticator app.
+             * @example 492039
+             */
+            code: string;
+        };
         Credentials: {
             /** @description Case-insensitive; the casing given is preserved for display. */
             username: string;
@@ -6087,6 +6590,15 @@ export interface components {
          *     engine's own guidance is passed through in `message`.
          */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description No such resource */
+        NotFound: {
             headers: {
                 [name: string]: unknown;
             };

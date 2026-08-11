@@ -671,6 +671,33 @@ sorgular 1 sn'lik debounce ile tazeleniyor — `docker compose up` düzinelerce 
 **Sonuç:** Ticket tek kullanımlık olduğu için tarayıcının kendi yeniden bağlanması yetmiyor; hook kopmayı görünce
 yeni ticket alıp üstel geri çekilmeyle yeniden bağlanıyor.
 
+### D-075 — TOTP elde yazıldı, RFC vektörleriyle sabitlendi
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** İki adımlı doğrulama için bir kütüphane çekmek ya da RFC 6238'i uygulamak arasında seçim vardı.
+**Karar:** `internal/auth/totp.go` (~150 satır) elde yazıldı; testler RFC 6238'in kendi test vektörlerini koşuyor.
+Parametreler seçim değil, dayatma: SHA-1, 6 hane, 30 sn. Doğrulayıcı uygulamaların tamamı bunu varsayıyor, başka
+bir şey seçen sunucu kodları çalışmayan sunucu olur. Kod karşılaştırması `subtle.ConstantTimeCompare` ile ve
+erken çıkışsız — hangi adımın tuttuğu zamanlamadan okunamıyor.
+**Gerekçe:** Kendi çıktısını kendisiyle karşılaştıran bir test, yanlış ama tutarlı bir algoritmayı da geçirirdi;
+RFC vektörleri bunun TOTP olduğunu kanıtlıyor. Bağımlılık yüzeyi de artmıyor.
+**Sonuç:** Gizli anahtar AES-GCM ile şifreli saklanıyor (registry parolalarıyla aynı kutu). Secret key yoksa
+iki adımlı "kullanılamaz" diyor — açık olan bir hesap giriş yapamıyor. Ters yönde başarısız olmak, anahtarı
+kaybetmeyi ikinci faktörü atlamanın yoluna çevirirdi.
+
+### D-076 — Son yönetici koruması, "kendi hesabına dokunma" kuralının yerini aldı
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** İlk yazımda iki ayrı kapı vardı: kendi rolünü/etkinliğini değiştirememek ve son admin'i düşürememek.
+İkincisi hiç tetiklenemiyordu — değişikliği yapan zaten bir admin olduğuna göre, hedef kendisi değilse başka bir
+admin her zaman var demektir; hedef kendisiyse ilk kapı önce kapanıyordu.
+**Karar:** Korunan değişmez tek: **paneli yönetebilecek etkin hesapsız bırakma**. Kendi hesabı da bu kapsamda —
+devretmek meşru bir iş, ama ancak devralacak biri varken. Ayrıca kendi hesabını *silmek* yasak (`SelfDelete`):
+demote'un aksine kimsenin kasten yaptığı bir hamle değil ve yapacak başka admin hep var.
+**Gerekçe:** Ulaşılamayan bir kontrol, kontrol değil; test edilemeyen bir garanti de garanti değil. Devredemeyen
+bir admin ise gerçek bir kısıt: yerine birini atayıp çekilmek isteyen operatörün önü kapalıydı.
+**Sonuç:** Devre dışı bir admin sayıma girmiyor — giriş yapamayan hesap kimseyi yönetemez. Parola sıfırlama ve
+devre dışı bırakma o hesabın tüm oturumlarını kapatıyor; tarayıcısında geçerli token duran devre dışı hesap
+devre dışı değildir.
+
 ---
 
 ## Uygulama Sırasında Doğrulanacak Varsayımlar

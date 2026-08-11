@@ -21,6 +21,26 @@ export interface User {
   scopes?: string[];
 }
 
+export interface UserCreate {
+  username: string;
+  password: string;
+  role: Role;
+}
+
+/** Every field is optional; an absent field is left alone. */
+export interface UserUpdate {
+  role?: Role;
+  password?: string;
+  disabled?: boolean;
+}
+
+export interface TOTPSetup {
+  /** The base32 secret, grouped in fours for manual entry. */
+  secret: string;
+  /** The otpauth:// URI the QR code encodes. */
+  uri: string;
+}
+
 export interface Session {
   access_token: string;
   token_type: 'Bearer';

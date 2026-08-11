@@ -71,6 +71,8 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 			Docker:     dockerClient,
 			Auth:       authService,
 			Recorder:   audit.New(db.Audit, log),
+			Users:      db.Users,
+			Sessions:   db.Sessions,
 			Registries: db.Registries,
 			SecretBox:  secretBox,
 			Builds:     db.Builds,
@@ -121,7 +123,8 @@ func (e *testEnv) login(t *testing.T, username, password string) string {
 	t.Helper()
 
 	svc := newAuthService(e.db, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	pair, err := svc.Login(context.Background(), username, password,
+	pair, err := svc.Login(context.Background(),
+		service.LoginInput{Username: username, Password: password},
 		service.RequestMeta{IP: "192.0.2.1", UserAgent: "test"})
 	if err != nil {
 		t.Fatalf("Login(%s) error = %v", username, err)
@@ -164,6 +167,7 @@ func newAuthService(db *store.DB, log *slog.Logger) *service.Auth {
 		Limiter:    auth.NewLimiter(db.Logins, auth.LimiterOptions{}),
 		Issuer:     auth.NewTokenIssuer(testSigningKey, 15*time.Minute),
 		Recorder:   audit.New(db.Audit, log),
+		Secrets:    testSecretBox(),
 		RefreshTTL: 168 * time.Hour,
 	})
 }
@@ -234,3 +238,13 @@ func testCatalog(t *testing.T) *templates.Catalog {
 	}
 	return catalog
 }
+
+// testSecretBox is the box the whole suite shares, so a TOTP secret written by
+// one auth service instance is readable by another in the same test.
+var testSecretBox = sync.OnceValue(func() *crypto.SecretBox {
+	box, err := crypto.NewSecretBox(testMasterKey())
+	if err != nil {
+		panic("test: cannot build the secret box: " + err.Error())
+	}
+	return box
+})

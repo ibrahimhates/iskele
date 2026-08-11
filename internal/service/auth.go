@@ -9,6 +9,7 @@ import (
 
 	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/auth"
+	"github.com/ibrahimhates/iskele/internal/crypto"
 	"github.com/ibrahimhates/iskele/internal/store"
 )
 
@@ -23,6 +24,11 @@ var (
 	ErrSessionInvalid      = errors.New("invalid or expired session")
 	ErrUsernameRequired    = errors.New("username is required")
 	ErrUsernameUnavailable = errors.New("that username is already taken")
+	// ErrTOTPRequired tells the login form to ask for the second factor. It is
+	// the one login outcome that is not deliberately vague: the password was
+	// right, and saying so costs nothing an attacker who guessed it does not
+	// already know.
+	ErrTOTPRequired = errors.New("a two-factor code is required")
 )
 
 // LockedOutError reports that an IP is temporarily refused after too many
@@ -68,12 +74,16 @@ type TokenPair struct {
 
 // Auth implements the authentication flows.
 type Auth struct {
-	users      *store.UserRepo
-	sessions   *store.SessionRepo
-	tokens     *store.TokenRepo
-	limiter    *auth.Limiter
-	issuer     *auth.TokenIssuer
-	recorder   *audit.Recorder
+	users    *store.UserRepo
+	sessions *store.SessionRepo
+	tokens   *store.TokenRepo
+	limiter  *auth.Limiter
+	issuer   *auth.TokenIssuer
+	recorder *audit.Recorder
+	// secrets decrypts stored TOTP secrets. Nil leaves two-factor unavailable;
+	// an account that has it enabled then cannot sign in at all, which is the
+	// safe direction to fail.
+	secrets    *crypto.SecretBox
 	refreshTTL time.Duration
 	now        func() time.Time
 }
@@ -86,6 +96,7 @@ type AuthDeps struct {
 	Limiter    *auth.Limiter
 	Issuer     *auth.TokenIssuer
 	Recorder   *audit.Recorder
+	Secrets    *crypto.SecretBox
 	RefreshTTL time.Duration
 }
 
@@ -98,6 +109,7 @@ func NewAuth(deps AuthDeps) *Auth {
 		limiter:    deps.Limiter,
 		issuer:     deps.Issuer,
 		recorder:   deps.Recorder,
+		secrets:    deps.Secrets,
 		refreshTTL: deps.RefreshTTL,
 		now:        time.Now,
 	}
@@ -185,8 +197,20 @@ func (s *Auth) createUser(ctx context.Context, username, password string, role s
 	return user, nil
 }
 
+// LoginInput is what the login form sends.
+type LoginInput struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	// TOTP is the six-digit code, sent only by accounts that have two-factor
+	// enabled. An empty code on such an account yields ErrTOTPRequired, which
+	// is how the form learns to ask for one.
+	TOTP string `json:"totp,omitempty"`
+}
+
 // Login verifies credentials and starts a session.
-func (s *Auth) Login(ctx context.Context, username, password string, meta RequestMeta) (TokenPair, error) {
+func (s *Auth) Login(ctx context.Context, in LoginInput, meta RequestMeta) (TokenPair, error) {
+	username, password := in.Username, in.Password
+
 	initialized, err := s.Initialized(ctx)
 	if err != nil {
 		return TokenPair{}, err
@@ -227,6 +251,15 @@ func (s *Auth) Login(ctx context.Context, username, password string, meta Reques
 		return TokenPair{}, s.failLogin(ctx, username, meta, ErrAccountDisabled)
 	}
 
+	if user.TOTPEnabled {
+		// A wrong or missing code is a failed login like any other: it counts
+		// against the brute-force limiter, so the second factor cannot be
+		// ground down by a million guesses.
+		if factorErr := s.verifySecondFactor(user, in.TOTP); factorErr != nil {
+			return TokenPair{}, s.failLogin(ctx, username, meta, factorErr)
+		}
+	}
+
 	if recordErr := s.limiter.RecordSuccess(ctx, meta.IP, username); recordErr != nil {
 		return TokenPair{}, recordErr
 	}
@@ -256,6 +289,29 @@ func (s *Auth) Login(ctx context.Context, username, password string, meta Reques
 		UserAgent: meta.UserAgent,
 	})
 	return pair, nil
+}
+
+// verifySecondFactor checks the TOTP code of an account that has one.
+//
+// An account with two-factor enabled and no way to check it cannot sign in.
+// Treating an undecryptable secret as "no second factor" would turn losing the
+// secret key into a way past the second factor, which is exactly backwards.
+func (s *Auth) verifySecondFactor(user store.User, code string) error {
+	if s.secrets == nil || user.TOTPSecretEnc == "" {
+		return ErrTOTPUnavailable
+	}
+	if strings.TrimSpace(code) == "" {
+		return ErrTOTPRequired
+	}
+
+	secret, err := s.secrets.Decrypt(user.TOTPSecretEnc)
+	if err != nil {
+		return ErrTOTPUnavailable
+	}
+	if err := auth.VerifyTOTP(secret, code, s.now()); err != nil {
+		return ErrInvalidCredentials
+	}
+	return nil
 }
 
 // dummyHash is a valid argon2id hash of an unguessable value. Verifying

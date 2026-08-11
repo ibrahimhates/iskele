@@ -40,6 +40,16 @@ const (
 	CodeTokenExpired       Code = "TOKEN_EXPIRED"
 	CodeAccountDisabled    Code = "ACCOUNT_DISABLED"
 	CodeCSRFInvalid        Code = "CSRF_INVALID"
+	// CodeTOTPRequired tells the login form the password was right and a
+	// second factor is still needed.
+	CodeTOTPRequired Code = "TOTP_REQUIRED"
+	// CodeTOTPUnavailable marks an account that cannot complete two-factor —
+	// the secret key is missing or unreadable — which is a server fault, not a
+	// wrong code.
+	CodeTOTPUnavailable Code = "TOTP_UNAVAILABLE"
+	// CodeLastAdmin refuses the change that would leave the panel with nobody
+	// able to administer it.
+	CodeLastAdmin Code = "LAST_ADMIN"
 )
 
 // Docker-specific error codes. The frontend switches on these to offer the

@@ -41,6 +41,11 @@ type Deps struct {
 	Auth *service.Auth
 	// Recorder writes the audit trail. A nil recorder is tolerated.
 	Recorder *audit.Recorder
+	// Users and Sessions back account administration. Nil leaves /users
+	// unmounted; two-factor enrollment goes with them, since it writes to the
+	// same table.
+	Users    *store.UserRepo
+	Sessions *store.SessionRepo
 	// Tickets issues the short-lived credentials WebSocket and SSE endpoints
 	// use. The router creates one when this is nil.
 	Tickets *auth.TicketStore
@@ -112,6 +117,15 @@ func NewRouter(deps Deps) http.Handler {
 		taskRegistry = service.NewTaskRegistry()
 	}
 	tasks := handlers.NewTasks(taskRegistry)
+
+	// Account administration and two-factor enrollment. The secret box may be
+	// nil in a test that does not care; two-factor then reports itself
+	// unavailable rather than running without encryption.
+	var users *handlers.Users
+	if deps.Users != nil {
+		users = handlers.NewUsers(
+			service.NewUsers(deps.Users, deps.Sessions, deps.SecretBox, deps.Recorder))
+	}
 	containerService := service.NewContainer(dockerClient, deps.Recorder)
 	containers := handlers.NewContainers(containerService)
 	streams := handlers.NewStream(containerService, systemService, imageService, tickets, taskRegistry)
@@ -265,6 +279,28 @@ func NewRouter(deps Deps) http.Handler {
 			r.Method(http.MethodGet, "/auth/me", httpx.Handler(authHandlers.Me))
 			r.Method(http.MethodPost, "/auth/logout", httpx.Handler(authHandlers.Logout))
 			r.Method(http.MethodPost, "/auth/ws-ticket", httpx.Handler(streams.Ticket))
+
+			if users != nil {
+				// Two-factor enrollment is nobody's business but the account
+				// holder's: no permission gate, because these three endpoints
+				// only ever act on the caller's own account.
+				r.Method(http.MethodPost, "/auth/totp/setup", httpx.Handler(users.BeginTOTP))
+				r.Method(http.MethodPost, "/auth/totp/verify", httpx.Handler(users.ConfirmTOTP))
+				r.Method(http.MethodPost, "/auth/totp/disable", httpx.Handler(users.DisableTOTP))
+
+				// Accounts are admin-only: everything here either grants access
+				// to this panel or takes it away.
+				r.Route("/users", func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermAdmin, denyAuth))
+
+					r.Method(http.MethodGet, "/", httpx.Handler(users.List))
+					r.Method(http.MethodPost, "/", httpx.Handler(users.Create))
+					r.Method(http.MethodGet, "/{id}", httpx.Handler(users.Get))
+					r.Method(http.MethodPut, "/{id}", httpx.Handler(users.Update))
+					r.Method(http.MethodDelete, "/{id}", httpx.Handler(users.Delete))
+					r.Method(http.MethodDelete, "/{id}/totp", httpx.Handler(users.ResetTOTP))
+				})
+			}
 
 			r.Route("/containers", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(containers.List))

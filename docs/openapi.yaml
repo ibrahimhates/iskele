@@ -57,6 +57,11 @@ tags:
     description: Volume listing and lifecycle
   - name: networks
     description: Network listing, lifecycle and container attachment
+  - name: users
+    description: |
+      Account administration. Admin-only: every endpoint here either grants
+      access to this panel or takes it away. Two-factor enrollment is under
+      `auth` instead, because it acts on the caller's own account.
   - name: registries
     description: |
       Private registry credentials. Admin-only: they are the one resource here
@@ -187,7 +192,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/Credentials" }
+            schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "200":
           description: Signed in
@@ -197,7 +202,16 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          description: Invalid username or password
+          description: |
+            Invalid credentials, or a missing second factor.
+
+            `TOTP_REQUIRED` means the password was correct and the account has
+            two-factor enabled: send the request again with `totp`. It is the
+            one login outcome that is not deliberately vague, because the form
+            has to know to ask, and it tells an attacker who already guessed
+            the password nothing new. A *wrong* code is `INVALID_CREDENTIALS`,
+            indistinguishable from a wrong password, and counts against the
+            per-IP lockout.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -282,6 +296,234 @@ paths:
               schema: { $ref: "#/components/schemas/CurrentUser" }
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /auth/totp/setup:
+    post:
+      tags: [auth]
+      summary: Begin two-factor enrollment for the caller's own account
+      description: |
+        Generates a secret and stores it disabled, so the code the browser is
+        about to send can be checked against it. An enrollment abandoned
+        halfway leaves the account exactly as it was, able to sign in with a
+        password alone.
+
+        No permission is required: these endpoints act on the caller's own
+        account and nobody else's, and a second factor only its owner controls
+        is the only kind worth having.
+      responses:
+        "201":
+          description: The secret to scan or type in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TOTPSetup" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Two-factor is already enabled for this account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The secret key is not configured, so a secret cannot be stored encrypted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/totp/verify:
+    post:
+      tags: [auth]
+      summary: Confirm and enable two-factor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TOTPCode" }
+      responses:
+        "200":
+          description: Enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totp_enabled: { type: boolean }
+        "401":
+          description: The code is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Already enabled, or no enrollment is in progress
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/totp/disable:
+    post:
+      tags: [auth]
+      summary: Turn off two-factor for the caller's own account
+      description: |
+        A current code is required: an unattended browser must not be enough to
+        remove the factor that protects the account from an unattended browser.
+        An operator who lost the device asks an admin to clear it with
+        `DELETE /users/{id}/totp`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TOTPCode" }
+      responses:
+        "200":
+          description: Disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totp_enabled: { type: boolean }
+        "401":
+          description: The code is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users:
+    get:
+      tags: [users]
+      summary: List accounts
+      description: |
+        Admin only, like everything under `/users`: each of these endpoints
+        either grants access to this panel or takes it away.
+      responses:
+        "200":
+          description: Every account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [users]
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "409":
+          description: That username is taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [users]
+      summary: One account
+      responses:
+        "200":
+          description: The account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [users]
+      summary: Change a role, a password, or an account's disabled state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserUpdate" }
+      responses:
+        "200":
+          description: The updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `LAST_ADMIN`: the change would leave the panel with no account able
+            to administer it. Stepping down is allowed — once somebody else can
+            take over. A disabled admin does not count.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [users]
+      summary: Delete an account
+      description: |
+        Ends every session the account holds. The account the request came from
+        cannot be deleted: unlike a demotion, that is not a step anybody takes
+        on purpose, and there is always another admin who can do it.
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: That is the account this request came from
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: That is the last account able to administer the panel
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users/{id}/totp:
+    delete:
+      tags: [users]
+      summary: Clear another account's second factor
+      description: |
+        The locked-out case: a device was lost, and somebody with admin rights
+        has to let its owner back in. It ends that account's sessions, which
+        were opened with the factor being removed.
+
+        It cannot be used on one's own account — that is
+        `POST /auth/totp/disable`, which asks for a code.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Cleared
+        "403":
+          description: That is the caller's own account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /system/ping:
     get:
@@ -2870,6 +3112,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
 
+    NotFound:
+      description: No such resource
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
     ValidationFailed:
       description: The request body failed validation
       content:
@@ -2963,6 +3211,77 @@ components:
             details:
               type: object
               additionalProperties: true
+
+    LoginRequest:
+      allOf:
+        - $ref: "#/components/schemas/Credentials"
+        - type: object
+          properties:
+            totp:
+              type: string
+              description: |
+                The six-digit code, for an account with two-factor enabled.
+                Spaces are tolerated, so a code pasted as displayed works.
+              example: "492039"
+
+    UserCreate:
+      type: object
+      required: [username, password, role]
+      properties:
+        username: { type: string }
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 1024
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+
+    UserUpdate:
+      type: object
+      description: |
+        Every field is optional, and an absent field is left alone: one form
+        can change a role without also resetting a password.
+      properties:
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 1024
+          description: |
+            Setting this ends every session the account holds. An admin
+            resetting a password is either handing the account back to its
+            owner or taking it away, and both mean the tokens issued before
+            now must stop working.
+        disabled:
+          type: boolean
+          description: Disabling an account also ends its sessions.
+
+    TOTPSetup:
+      type: object
+      required: [secret, uri]
+      properties:
+        secret:
+          type: string
+          description: The base32 secret, grouped in fours for manual entry.
+          example: JBSW Y3DP EHPK 3PXP
+        uri:
+          type: string
+          description: The otpauth:// URI the QR code encodes.
+          example: otpauth://totp/iskele:admin?algorithm=SHA1&digits=6&issuer=iskele&period=30&secret=JBSWY3DPEHPK3PXP
+
+    TOTPCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: The six-digit code from an authenticator app.
+          example: "492039"
 
     Credentials:
       type: object

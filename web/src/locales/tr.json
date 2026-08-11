@@ -12,7 +12,8 @@
     "settings": "Ayarlar",
     "build": "Derle",
     "stacks": "Stackler",
-    "catalog": "Katalog"
+    "catalog": "Katalog",
+    "users": "Kullanıcılar"
   },
   "dashboard": {
     "activity": "Etkinlik",
@@ -55,7 +56,10 @@
     "create": "Hesabı oluştur",
     "passwordRules": "En az 12 karakter; küçük harf, büyük harf, rakam ve sembolden en az ikisi.",
     "passwordMismatch": "Parolalar eşleşmiyor.",
-    "socketWarning": "Iskele'ye erişim, bu sunucuda root yetkisine eşdeğerdir."
+    "socketWarning": "Iskele'ye erişim, bu sunucuda root yetkisine eşdeğerdir.",
+    "totp": "İki adımlı kod",
+    "totpHint": "Doğrulayıcı uygulamanızdaki altı haneli kod.",
+    "retryIn": "{{seconds}} sn sonra tekrar deneyin."
   },
   "common": {
     "search": "Ara",
@@ -199,7 +203,18 @@
     "themeLight": "Açık",
     "themeSystem": "Sistemi izle",
     "language": "Dil",
-    "about": "Hakkında"
+    "about": "Hakkında",
+    "two_factor": "İki adımlı doğrulama",
+    "two_factor_on": "Açık. Girişte doğrulayıcı uygulamanızdaki kod sorulur.",
+    "two_factor_off": "Kapalı. Parolanızı bilen herkes sizin adınıza girebilir.",
+    "two_factor_start": "İki adımlıyı kur",
+    "two_factor_scan": "Bunu bir doğrulayıcı uygulamayla okutun, ardından gösterdiği kodu girin.",
+    "two_factor_manual": "Ya da bu gizli anahtarı elle yazın",
+    "two_factor_qr_alt": "İki adımlı gizli anahtarın QR kodu",
+    "two_factor_confirm": "Uygulamadaki kod",
+    "two_factor_enable": "Aç",
+    "two_factor_disable": "Kapat",
+    "two_factor_confirm_disable": "Geçerli bir kodla onaylayın"
   },
   "errors": {
     "generic": "Bir şeyler ters gitti",
@@ -394,6 +409,35 @@
     "succeeded": "Başarılı",
     "failed": "Başarısız",
     "canceled": "İptal edildi"
+  },
+  "users": {
+    "add": "Kullanıcı ekle",
+    "count": "{{count}} hesap",
+    "count_plural": "{{count}} hesap",
+    "delete_message": "{{username}} hesabını ve tüm oturumlarını siler. Geri alınamaz.",
+    "delete_title": "Bu hesap silinsin mi?",
+    "enabled": "Etkin",
+    "last_login": "Son giriş",
+    "never": "hiç",
+    "new_password": "Yeni parola",
+    "none": "Hesap yok",
+    "none_hint": "Buradaki her hesap bu panele giriş yapabilir.",
+    "password_hint": "En az 12 karakter; küçük harf, büyük harf, rakam ve simgeden en az ikisi.",
+    "reset_password": "Yeni parola belirle",
+    "reset_totp": "İki adımlıyı sıfırla",
+    "reset_totp_message": "{{username}} için iki adımlı doğrulamayı kaldırır ve oturumlarını kapatır. Kod üreten cihaz kaybolduğunda kullanın.",
+    "role": "Rol",
+    "role_admin": "Yönetici",
+    "role_admin_hint": "Her şey: hesaplar, ayarlar ve ayrıcalıklı container seçenekleri dahil.",
+    "role_operator": "Operatör",
+    "role_operator_hint": "Container oluşturur, başlatır, durdurur, siler; hesaplara ve ayrıcalıklı seçeneklere dokunamaz.",
+    "role_viewer": "İzleyici",
+    "role_viewer_hint": "Yalnız okuma. Her şeyi görür, hiçbir şeyi değiştiremez.",
+    "title": "Kullanıcılar",
+    "two_factor": "İki adımlı",
+    "two_factor_off": "kapalı",
+    "two_factor_on": "açık",
+    "you": "siz"
   },
   "build": {
     "add_arg": "Argüman ekle",

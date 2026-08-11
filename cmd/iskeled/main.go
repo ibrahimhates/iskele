@@ -119,6 +119,7 @@ func run(args []string) error {
 		Limiter:    limiter,
 		Issuer:     issuer,
 		Recorder:   recorder,
+		Secrets:    secretBox,
 		RefreshTTL: cfg.Session.RefreshTTL.Duration(),
 	})
 
@@ -201,6 +202,8 @@ func run(args []string) error {
 		Recorder: recorder,
 		Tickets:  auth.NewTicketStore(auth.TicketTTL),
 
+		Users:      db.Users,
+		Sessions:   db.Sessions,
 		Registries: db.Registries,
 		SecretBox:  secretBox,
 		Builds:     db.Builds,

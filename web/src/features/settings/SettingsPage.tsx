@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { system } from '../../api/endpoints';
 import { PageHeader } from '../../components/PageHeader';
 import { RegistriesPanel } from './RegistriesPanel';
+import { TwoFactorPanel } from './TwoFactorPanel';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { setLanguage } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
@@ -42,6 +43,8 @@ export function SettingsPage() {
             </select>
           </div>
         </section>
+
+        <TwoFactorPanel />
 
         {/* Registry credentials reach outside this host, so only an admin
             sees them at all. */}

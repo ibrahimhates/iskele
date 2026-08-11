@@ -12,7 +12,8 @@
     "settings": "Settings",
     "build": "Build",
     "stacks": "Stacks",
-    "catalog": "Catalog"
+    "catalog": "Catalog",
+    "users": "Users"
   },
   "dashboard": {
     "activity": "Activity",
@@ -55,7 +56,10 @@
     "create": "Create account",
     "passwordRules": "At least 12 characters, using at least two of: lowercase, uppercase, digits, symbols.",
     "passwordMismatch": "The passwords do not match.",
-    "socketWarning": "Access to Iskele is equivalent to root on this host."
+    "socketWarning": "Access to Iskele is equivalent to root on this host.",
+    "totp": "Two-factor code",
+    "totpHint": "The six-digit code from your authenticator app.",
+    "retryIn": "Retry in {{seconds}}s."
   },
   "common": {
     "search": "Search",
@@ -199,7 +203,18 @@
     "themeLight": "Light",
     "themeSystem": "Match the system",
     "language": "Language",
-    "about": "About"
+    "about": "About",
+    "two_factor": "Two-factor authentication",
+    "two_factor_on": "Enabled. Signing in asks for a code from your authenticator app.",
+    "two_factor_off": "Off. Anyone with your password can sign in as you.",
+    "two_factor_start": "Set up two-factor",
+    "two_factor_scan": "Scan this with an authenticator app, then enter the code it shows.",
+    "two_factor_manual": "Or type this secret in by hand",
+    "two_factor_qr_alt": "QR code for the two-factor secret",
+    "two_factor_confirm": "Code from the app",
+    "two_factor_enable": "Turn on",
+    "two_factor_disable": "Turn off",
+    "two_factor_confirm_disable": "Confirm with a current code"
   },
   "errors": {
     "generic": "Something went wrong",
@@ -394,6 +409,35 @@
     "succeeded": "Succeeded",
     "failed": "Failed",
     "canceled": "Canceled"
+  },
+  "users": {
+    "add": "Add user",
+    "count": "{{count}} account",
+    "count_plural": "{{count}} accounts",
+    "delete_message": "Deletes {{username}} and ends every session it holds. This cannot be undone.",
+    "delete_title": "Delete this account?",
+    "enabled": "Enabled",
+    "last_login": "Last sign-in",
+    "never": "never",
+    "new_password": "New password",
+    "none": "No accounts",
+    "none_hint": "Every account here can sign in to this panel.",
+    "password_hint": "At least 12 characters, with at least two of: lowercase, uppercase, digit, symbol.",
+    "reset_password": "Set a new password",
+    "reset_totp": "Clear two-factor",
+    "reset_totp_message": "Clears two-factor for {{username}} and ends their sessions. Use this when the device that produces their codes is gone.",
+    "role": "Role",
+    "role_admin": "Admin",
+    "role_admin_hint": "Everything, including accounts, settings and privileged container options.",
+    "role_operator": "Operator",
+    "role_operator_hint": "Create, start, stop and remove containers; no accounts, no privileged options.",
+    "role_viewer": "Viewer",
+    "role_viewer_hint": "Read-only. Can look at everything and change nothing.",
+    "title": "Users",
+    "two_factor": "Two-factor",
+    "two_factor_off": "off",
+    "two_factor_on": "on",
+    "you": "you"
   },
   "build": {
     "add_arg": "Add argument",

@@ -42,10 +42,13 @@ import type {
   StackValidation,
   Stats,
   SystemInfo,
+  TOTPSetup,
   Template,
   TemplateField,
   TemplateProblem,
   User,
+  UserCreate,
+  UserUpdate,
   Volume,
 } from './types';
 
@@ -77,6 +80,9 @@ export type DaemonInfoConforms = Conforms<DaemonInfo, Schemas['DaemonInfo']>;
 export type EngineSummaryConforms = Conforms<EngineSummary, Schemas['EngineSummary']>;
 export type SessionConforms = Conforms<Session, Schemas['Session']>;
 export type UserConforms = Conforms<User, Schemas['User']>;
+export type UserCreateConforms = Conforms<UserCreate, Schemas['UserCreate']>;
+export type UserUpdateConforms = Conforms<UserUpdate, Schemas['UserUpdate']>;
+export type TOTPSetupConforms = Conforms<TOTPSetup, Schemas['TOTPSetup']>;
 export type BatchResultConforms = Conforms<BatchResult, Schemas['BatchResult']>;
 export type BatchResponseConforms = Conforms<BatchResponse, Schemas['BatchResponse']>;
 export type RedeployResultConforms = Conforms<RedeployResult, Schemas['RedeployResult']>;

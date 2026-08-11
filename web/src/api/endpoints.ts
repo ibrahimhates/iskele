@@ -33,10 +33,13 @@ import type {
   StackValidation,
   SystemInfo,
   Task,
+  TOTPSetup,
   Template,
   TemplateDeploy,
   TemplateDeployResult,
   User,
+  UserCreate,
+  UserUpdate,
   Volume,
   VolumeSpec,
 } from './types';
@@ -66,10 +69,28 @@ export const auth = {
   status: () => api.get<{ initialized: boolean }>('/auth/status', { anonymous: true }),
   bootstrap: (username: string, password: string) =>
     api.post<Session>('/auth/bootstrap', { username, password }, { anonymous: true }),
-  login: (username: string, password: string) =>
-    api.post<Session>('/auth/login', { username, password }, { anonymous: true }),
+  /** A `TOTP_REQUIRED` failure means the password was right; send `totp` too. */
+  login: (username: string, password: string, totp?: string) =>
+    api.post<Session>('/auth/login', { username, password, totp }, { anonymous: true }),
   logout: (refreshToken: string) => api.post<void>('/auth/logout', { refresh_token: refreshToken }),
   me: () => api.get<User>('/auth/me'),
+
+  /** Two-factor enrollment, always for the caller's own account. */
+  totpSetup: () => api.post<TOTPSetup>('/auth/totp/setup'),
+  totpVerify: (code: string) => api.post<{ totp_enabled: boolean }>('/auth/totp/verify', { code }),
+  totpDisable: (code: string) =>
+    api.post<{ totp_enabled: boolean }>('/auth/totp/disable', { code }),
+};
+
+export const users = {
+  list: () => api.get<ListResponse<User>>('/users'),
+  get: (id: string) => api.get<User>(`/users/${encodeURIComponent(id)}`),
+  create: (input: UserCreate) => api.post<User>('/users', input),
+  update: (id: string, input: UserUpdate) =>
+    api.put<User>(`/users/${encodeURIComponent(id)}`, input),
+  remove: (id: string) => api.delete<void>(`/users/${encodeURIComponent(id)}`),
+  /** Clears somebody else's second factor after they lost the device. */
+  resetTOTP: (id: string) => api.delete<void>(`/users/${encodeURIComponent(id)}/totp`),
 };
 
 export const containers = {

@@ -17,6 +17,11 @@ export function LoginPage() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totp, setTOTP] = useState('');
+  // Set once the server says the password was right and a code is still
+  // needed. The form then asks for one rather than guessing in advance who has
+  // two-factor enabled — which it has no way of knowing before signing in.
+  const [needsCode, setNeedsCode] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,12 +30,20 @@ export function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      const session = await authApi.login(username, password);
+      const session = await authApi.login(username, password, totp || undefined);
       signIn(session);
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from ?? '/dashboard', { replace: true });
     } catch (err) {
-      setError(err);
+      if (err instanceof ApiError && err.code === 'TOTP_REQUIRED') {
+        // Not an error the operator needs to read: it is the next step.
+        setNeedsCode(true);
+        setError(null);
+      } else {
+        setError(err);
+        // A rejected code is retyped, not reused: it has expired by now.
+        setTOTP('');
+      }
     } finally {
       setBusy(false);
     }
@@ -74,8 +87,31 @@ export function LoginPage() {
           />
         </div>
 
+        {needsCode && (
+          <div>
+            <label htmlFor="totp" className="mb-1.5 block text-sm font-medium">
+              {t('auth.totp')}
+            </label>
+            <input
+              id="totp"
+              className="input text-center font-mono tracking-[0.3em]"
+              value={totp}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              autoFocus
+              onChange={(e) => setTOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              required
+            />
+            <p className="mt-1.5 text-xs text-muted">{t('auth.totpHint')}</p>
+          </div>
+        )}
+
         {error != null && <ErrorPanel error={error} />}
-        {retryAfter !== null && <p className="text-xs text-muted">Retry in {retryAfter}s.</p>}
+        {retryAfter !== null && (
+          <p className="text-xs text-muted">{t('auth.retryIn', { seconds: retryAfter })}</p>
+        )}
 
         <button type="submit" className="btn-primary w-full" disabled={busy}>
           {busy ? <Spinner className="h-4 w-4" /> : t('auth.signIn')}

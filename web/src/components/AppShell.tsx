@@ -13,6 +13,7 @@ import {
   Network,
   Settings,
   HardDrive,
+  Users,
 } from 'lucide-react';
 
 import { auth as authApi } from '../api/endpoints';
@@ -36,6 +37,8 @@ const NAV = [
   { to: '/build', key: 'nav.build', Icon: Hammer, permission: 'build' },
   { to: '/volumes', key: 'nav.volumes', Icon: Database },
   { to: '/networks', key: 'nav.networks', Icon: Network },
+  // Accounts, like building, are not everyone's section.
+  { to: '/users', key: 'nav.users', Icon: Users, permission: 'admin' },
   { to: '/settings', key: 'nav.settings', Icon: Settings },
 ] as const satisfies readonly {
   to: string;
