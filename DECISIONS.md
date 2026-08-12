@@ -698,6 +698,45 @@ bir admin ise gerçek bir kısıt: yerine birini atayıp çekilmek isteyen opera
 devre dışı bırakma o hesabın tüm oturumlarını kapatıyor; tarayıcısında geçerli token duran devre dışı hesap
 devre dışı değildir.
 
+### D-077 — Audit ekranı, eksik olanı ortaya çıkardı: container yaşam döngüsü hiç kaydedilmiyordu
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Denetim ekranı yazılırken testler start/stop/restart/pause/kill/rename/remove için tek bir kayıt
+bulamadı. M2 auth'u, M5 image/volume/network ve create'i kaydediyordu; M1'den kalan container yaşam döngüsü
+handler'ları hiç geri dönülüp bağlanmamıştı. `Container` servisinin `recorder` alanı vardı ve kullanılmıyordu.
+**Karar:** Yaşam döngüsünün tamamı kaydediliyor — başarısız denemeler dahil. Kayıtsız ham işlemler
+küçük harfli (`start`, `stop`, `remove`…) olarak ayrıldı; toplu işlem (Batch) container başına kendi kaydını
+yazdığı için bunları çağırıyor.
+**Gerekçe:** "Veritabanımı kim durdurdu?" sorusunu yanıtlayamayan bir denetim kaydının üstüne ekran koymak,
+olmayan bir güvenceyi varmış gibi göstermek olurdu. Reddedilen bir işlem de en az başarılı olan kadar kayda
+değer: "kim silmeye çalıştı da silemedi" tam olarak logdan beklenen cevaptır.
+**Sonuç:** Aynı işlemin iki kez kaydedilmemesi önemliydi — iki kayıt iki işlem gibi okunur ve sayan operatör
+yanlış sayar. Ayrım bu yüzden dışa açık (kayıtlı) / paket içi (kayıtsız) olarak yapıldı.
+
+### D-078 — Denetim kaydı API üzerinden salt-okunur
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Ekranla birlikte "eski kayıtları temizle" düğmesi eklemek doğal görünüyordu.
+**Karar:** `/audit` altında yalnız GET var: liste, facet'ler ve dışa aktarma. Kayıt silen ya da düzenleyen
+hiçbir uç yok. Bir test bunu pinliyor. Kayıtların yaşlanarak düşmesi store'un işi
+(`AuditRepo.DeleteBefore`) ve bir retention ayarına bağlanacak — **bu ayar henüz yok**, yani şu an kayıt
+tablosu yalnızca büyüyor. Retention M8-G'de ayarlar sayfasıyla birlikte geliyor.
+**Gerekçe:** Yöneticinin yeniden yazabildiği bir denetim kaydı denetim kaydı değildir. Diski dolan operatörün
+ihtiyacı retention ayarıdır; tek tek satır silmek için bir gerekçe yok.
+**Sonuç:** Dışa aktarma ekrandaki filtrenin aynısını alıyor (limit/offset hariç: dışa aktarma tüm sonuçtur) ve
+satırlar 500'lük gruplar hâlinde okunup yazılıyor — yoğun bir makinenin bir yılı belleğe sığmak zorunda değil.
+Tarayıcı tarafında indirme `Authorization` başlığı gerektirdiği için `<a href>` değil, kimlikli bir `fetch` +
+object URL ile yapılıyor.
+
+### D-079 — Prune'lar admin'e ait ve her biri kendi kuralını söylüyor
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Dört prune ucu var ve "kullanılmayan" her biri için başka bir şey demek.
+**Karar:** Hepsi `prune` izninin (yalnız admin) arkasında. Onay kutusu engine'in gerçek kuralını yazıyor;
+volume prune ayrıca adının yazılmasını istiyor. Image prune yalnız dangling katmanları alıyor — `all`
+etiketli image'ları da silerdi ve bu, aynı düğmenin arkasına saklanacak bir karar değil.
+**Gerekçe:** Prune, kimsenin tek tek adını vermediği nesneleri siler. Volume dışındakiler yeniden üretilebilir;
+volume birinin veritabanıdır ve başka hiçbir yerden geri gelmez.
+**Sonuç:** `POST /containers/prune` bu fazda eklendi (docker katmanında yoktu). Sonuç toast olarak bildiriliyor:
+kaç nesne gitti, ne kadar yer açıldı.
+
 ---
 
 ## Uygulama Sırasında Doğrulanacak Varsayımlar

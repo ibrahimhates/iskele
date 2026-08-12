@@ -196,6 +196,56 @@ export const api = {
  * to travel in the URL; a ticket that dies on first use is what makes that
  * acceptable.
  */
+/**
+ * Downloads a file from the API, honoring the caller's credential.
+ *
+ * A plain `<a href>` would be simpler, but the browser sends no Authorization
+ * header with a navigation, and the endpoint requires one. So the response is
+ * fetched with the token, turned into an object URL, and handed to a synthetic
+ * click. It costs holding the file in memory once, which for an audit export
+ * is a few megabytes at worst — the server still streams its side, so its own
+ * memory does not grow with the length of the trail.
+ *
+ * The filename the server chose in Content-Disposition wins; `fallback` names
+ * the file only when the header is missing.
+ */
+export async function download(path: string, fallback: string): Promise<void> {
+  const headers = new Headers();
+  const token = bridge?.getAccessToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_PREFIX}${path}`, { headers });
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filenameOf(response) ?? fallback;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    // Revoking immediately is safe: the download has already been handed to
+    // the browser by the time click() returns.
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Reads the filename out of a Content-Disposition header. */
+function filenameOf(response: Response): string | null {
+  const header = response.headers.get('Content-Disposition');
+  if (!header) return null;
+
+  const match = /filename="?([^";]+)"?/.exec(header);
+  return match?.[1] ?? null;
+}
+
 export async function fetchStreamTicket(): Promise<string> {
   const { ticket } = await api.post<{ ticket: string; expires_in: number }>('/auth/ws-ticket', {});
   return ticket;

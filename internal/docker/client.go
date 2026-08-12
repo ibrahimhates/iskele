@@ -31,6 +31,7 @@ type Client interface {
 	UnpauseContainer(ctx context.Context, id string) error
 	KillContainer(ctx context.Context, id, signal string) error
 	RenameContainer(ctx context.Context, id, newName string) error
+	PruneContainers(ctx context.Context) (PruneReport, error)
 
 	// CreateContainer and RawInspectConfig exist for redeploy: recreating a
 	// container from its own definition.

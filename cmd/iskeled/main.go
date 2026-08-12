@@ -204,6 +204,7 @@ func run(args []string) error {
 
 		Users:      db.Users,
 		Sessions:   db.Sessions,
+		Audit:      db.Audit,
 		Registries: db.Registries,
 		SecretBox:  secretBox,
 		Builds:     db.Builds,

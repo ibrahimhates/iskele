@@ -73,6 +73,7 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 			Recorder:   audit.New(db.Audit, log),
 			Users:      db.Users,
 			Sessions:   db.Sessions,
+			Audit:      db.Audit,
 			Registries: db.Registries,
 			SecretBox:  secretBox,
 			Builds:     db.Builds,

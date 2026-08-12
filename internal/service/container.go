@@ -71,30 +71,71 @@ func (s *Container) Inspect(ctx context.Context, id string) (docker.RawInspect, 
 }
 
 // Start starts a stopped container.
-func (s *Container) Start(ctx context.Context, id string) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
-	}
-	return s.docker.StartContainer(ctx, id)
+func (s *Container) Start(ctx context.Context, id string, actor audit.Actor, meta RequestMeta) error {
+	return s.record(ctx, "container.start", id, nil, actor, meta, s.start)
 }
 
 // Stop stops a running container. A nil timeout keeps the engine default.
-func (s *Container) Stop(ctx context.Context, id string, timeout *int) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
-	}
-	return s.docker.StopContainer(ctx, id, docker.StopOptions{Timeout: timeout})
+func (s *Container) Stop(ctx context.Context, id string, timeout *int, actor audit.Actor, meta RequestMeta) error {
+	return s.record(ctx, "container.stop", id, timeoutDetail(timeout), actor, meta,
+		func(ctx context.Context, id string) error { return s.stop(ctx, id, timeout) })
 }
 
 // Restart stops then starts a container.
-func (s *Container) Restart(ctx context.Context, id string, timeout *int) error {
+func (s *Container) Restart(ctx context.Context, id string, timeout *int, actor audit.Actor, meta RequestMeta) error {
+	return s.record(ctx, "container.restart", id, timeoutDetail(timeout), actor, meta,
+		func(ctx context.Context, id string) error { return s.restart(ctx, id, timeout) })
+}
+
+// The unrecorded primitives. Batch writes one audit record per container
+// itself, so it calls these directly: an action recorded twice reads as two
+// actions, and an operator counting stops would be counting wrong.
+func (s *Container) start(ctx context.Context, id string) error {
+	return s.docker.StartContainer(ctx, id)
+}
+
+func (s *Container) stop(ctx context.Context, id string, timeout *int) error {
+	return s.docker.StopContainer(ctx, id, docker.StopOptions{Timeout: timeout})
+}
+
+func (s *Container) restart(ctx context.Context, id string, timeout *int) error {
+	return s.docker.RestartContainer(ctx, id, docker.StopOptions{Timeout: timeout})
+}
+
+// timeoutDetail records an explicit stop timeout, and nothing when the engine
+// default was used.
+func timeoutDetail(timeout *int) map[string]any {
+	if timeout == nil {
+		return nil
+	}
+	return map[string]any{"timeout": *timeout}
+}
+
+// record runs one lifecycle operation and writes an audit entry for it,
+// whether it succeeded or not.
+//
+// A refused action belongs in the trail as much as a successful one: "who
+// tried to remove this and could not" is a question the log has to answer.
+func (s *Container) record(ctx context.Context, action, id string, detail map[string]any,
+	actor audit.Actor, meta RequestMeta, fn func(context.Context, string) error,
+) error {
 	id, err := normalizeID(id)
 	if err != nil {
 		return err
 	}
-	return s.docker.RestartContainer(ctx, id, docker.StopOptions{Timeout: timeout})
+
+	err = fn(ctx, id)
+	s.recorder.Record(ctx, audit.Event{
+		Actor:        actor,
+		Action:       action,
+		ResourceType: "container",
+		ResourceID:   id,
+		Err:          err,
+		Detail:       detail,
+		IP:           meta.IP,
+		UserAgent:    meta.UserAgent,
+	})
+	return err
 }
 
 // RemoveOptions mirrors the query parameters of DELETE /containers/{id}.
@@ -104,11 +145,15 @@ type RemoveOptions struct {
 }
 
 // Remove deletes a container.
-func (s *Container) Remove(ctx context.Context, id string, opts RemoveOptions) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
-	}
+func (s *Container) Remove(ctx context.Context, id string, opts RemoveOptions,
+	actor audit.Actor, meta RequestMeta,
+) error {
+	detail := map[string]any{"force": opts.Force, "volumes": opts.RemoveVolumes}
+	return s.record(ctx, "container.remove", id, detail, actor, meta,
+		func(ctx context.Context, id string) error { return s.remove(ctx, id, opts) })
+}
+
+func (s *Container) remove(ctx context.Context, id string, opts RemoveOptions) error {
 	return s.docker.RemoveContainer(ctx, id, docker.RemoveContainerOptions{
 		Force:         opts.Force,
 		RemoveVolumes: opts.RemoveVolumes,
@@ -123,4 +168,26 @@ func normalizeID(id string) (string, error) {
 		return "", ErrEmptyID
 	}
 	return id, nil
+}
+
+// Prune removes every stopped container.
+//
+// The engine decides which those are: a listing this code filtered itself
+// would be a moment out of date, and "stopped when I looked" is not the same
+// as "stopped when I deleted it".
+func (s *Container) Prune(ctx context.Context, actor audit.Actor, meta RequestMeta) (docker.PruneReport, error) {
+	report, err := s.docker.PruneContainers(ctx)
+	s.recorder.Record(ctx, audit.Event{
+		Actor:        actor,
+		Action:       "container.prune",
+		ResourceType: "container",
+		Err:          err,
+		Detail: map[string]any{
+			"deleted":         len(report.Deleted),
+			"space_reclaimed": report.SpaceReclaimed,
+		},
+		IP:        meta.IP,
+		UserAgent: meta.UserAgent,
+	})
+	return report, err
 }

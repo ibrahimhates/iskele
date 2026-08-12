@@ -1,5 +1,8 @@
-import { api } from './client';
+import { api, download } from './client';
 import type {
+  AuditFacets,
+  AuditPage,
+  AuditQuery,
   BatchResponse,
   Build,
   BuildStatus,
@@ -93,6 +96,38 @@ export const users = {
   resetTOTP: (id: string) => api.delete<void>(`/users/${encodeURIComponent(id)}/totp`),
 };
 
+export const audit = {
+  list: (q: AuditQuery = {}) => api.get<AuditPage>(`/audit${auditQuery(q)}`),
+  facets: () => api.get<AuditFacets>('/audit/facets'),
+  /**
+   * Downloads the trail as a file, honoring the current filter.
+   *
+   * `limit` and `offset` are dropped: an export is the whole result, and a
+   * client that wanted a page would have called `list`.
+   */
+  export: (format: 'csv' | 'json', q: AuditQuery = {}) =>
+    download(
+      `/audit/export${auditQuery({ ...q, limit: undefined, offset: undefined, format })}`,
+      `iskele-audit.${format}`,
+    ),
+};
+
+/** Serializes an audit query, dropping the fields that were not set. */
+function auditQuery(q: AuditQuery & { format?: string }): string {
+  return query({
+    format: q.format,
+    user_id: q.user_id,
+    action: q.action,
+    resource_type: q.resource_type,
+    resource_id: q.resource_id,
+    result: q.result,
+    from: q.from,
+    to: q.to,
+    limit: q.limit === undefined ? undefined : String(q.limit),
+    offset: q.offset ? String(q.offset) : undefined,
+  });
+}
+
 export const containers = {
   list: (filters: ContainerFilters = {}) =>
     api.get<ListResponse<Container>>(`/containers${query({ ...filters })}`),
@@ -116,6 +151,7 @@ export const containers = {
   batch: (ids: string[], action: ContainerAction) =>
     api.post<BatchResponse>('/containers/batch', { ids, action }),
   create: (spec: ContainerSpec) => api.post<CreateResult>('/containers', spec),
+  prune: () => api.post<PruneReport>('/containers/prune'),
 };
 
 export const images = {

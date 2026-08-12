@@ -5,6 +5,7 @@ import { system } from '../../api/endpoints';
 import { PageHeader } from '../../components/PageHeader';
 import { RegistriesPanel } from './RegistriesPanel';
 import { TwoFactorPanel } from './TwoFactorPanel';
+import { PrunePanel } from './PrunePanel';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { setLanguage } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
@@ -13,6 +14,7 @@ export function SettingsPage() {
   const { t, i18n } = useTranslation();
   const user = useAuth((s) => s.user);
   const isAdmin = useAuth((s) => s.can('admin'));
+  const canPrune = useAuth((s) => s.can('prune'));
   const version = useQuery({ queryKey: ['version'], queryFn: system.version });
 
   return (
@@ -53,6 +55,9 @@ export function SettingsPage() {
             <RegistriesPanel />
           </div>
         )}
+
+        {/* Prune needs the prune permission, which only an admin has. */}
+        {canPrune && <PrunePanel />}
 
         <section className="card p-4">
           <h2 className="mb-3 text-sm font-medium">{t('settings.about')}</h2>

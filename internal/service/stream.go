@@ -168,22 +168,25 @@ func kindCode(err error) string {
 
 // actionFunc maps an action name onto the operation that performs it.
 func (s *Container) actionFunc(action string) (func(context.Context, string) error, error) {
+	// These are the unrecorded primitives: Batch writes its own audit entry
+	// per container, and going through the recorded methods would put every
+	// bulk action in the trail twice.
 	switch action {
 	case "start":
-		return s.Start, nil
+		return s.start, nil
 	case "stop":
-		return func(ctx context.Context, id string) error { return s.Stop(ctx, id, nil) }, nil
+		return func(ctx context.Context, id string) error { return s.stop(ctx, id, nil) }, nil
 	case "restart":
-		return func(ctx context.Context, id string) error { return s.Restart(ctx, id, nil) }, nil
+		return func(ctx context.Context, id string) error { return s.restart(ctx, id, nil) }, nil
 	case "pause":
-		return s.Pause, nil
+		return s.pause, nil
 	case "unpause":
-		return s.Unpause, nil
+		return s.unpause, nil
 	case "kill":
-		return func(ctx context.Context, id string) error { return s.Kill(ctx, id, "") }, nil
+		return func(ctx context.Context, id string) error { return s.kill(ctx, id, "") }, nil
 	case "remove":
 		return func(ctx context.Context, id string) error {
-			return s.Remove(ctx, id, RemoveOptions{})
+			return s.remove(ctx, id, RemoveOptions{})
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown batch action %q", action)
@@ -191,43 +194,45 @@ func (s *Container) actionFunc(action string) (func(context.Context, string) err
 }
 
 // Pause freezes a running container's processes.
-func (s *Container) Pause(ctx context.Context, id string) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
-	}
-	return s.docker.PauseContainer(ctx, id)
+func (s *Container) Pause(ctx context.Context, id string, actor audit.Actor, meta RequestMeta) error {
+	return s.record(ctx, "container.pause", id, nil, actor, meta, s.pause)
 }
 
 // Unpause resumes a paused container.
-func (s *Container) Unpause(ctx context.Context, id string) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
-	}
-	return s.docker.UnpauseContainer(ctx, id)
+func (s *Container) Unpause(ctx context.Context, id string, actor audit.Actor, meta RequestMeta) error {
+	return s.record(ctx, "container.unpause", id, nil, actor, meta, s.unpause)
 }
 
 // Kill sends a signal to a container's main process.
-func (s *Container) Kill(ctx context.Context, id, signal string) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
+func (s *Container) Kill(ctx context.Context, id, signal string, actor audit.Actor, meta RequestMeta) error {
+	detail := map[string]any(nil)
+	if signal != "" {
+		detail = map[string]any{"signal": signal}
 	}
-	return s.docker.KillContainer(ctx, id, signal)
+	return s.record(ctx, "container.kill", id, detail, actor, meta,
+		func(ctx context.Context, id string) error { return s.kill(ctx, id, signal) })
 }
 
 // Rename changes a container's name.
-func (s *Container) Rename(ctx context.Context, id, newName string) error {
-	id, err := normalizeID(id)
-	if err != nil {
-		return err
-	}
+func (s *Container) Rename(ctx context.Context, id, newName string, actor audit.Actor, meta RequestMeta) error {
 	newName = strings.TrimSpace(newName)
 	if newName == "" {
 		return fmt.Errorf("%w: the new name is required", ErrEmptyID)
 	}
-	return s.docker.RenameContainer(ctx, id, newName)
+	return s.record(ctx, "container.rename", id, map[string]any{"name": newName}, actor, meta,
+		func(ctx context.Context, id string) error { return s.docker.RenameContainer(ctx, id, newName) })
+}
+
+func (s *Container) pause(ctx context.Context, id string) error {
+	return s.docker.PauseContainer(ctx, id)
+}
+
+func (s *Container) unpause(ctx context.Context, id string) error {
+	return s.docker.UnpauseContainer(ctx, id)
+}
+
+func (s *Container) kill(ctx context.Context, id, signal string) error {
+	return s.docker.KillContainer(ctx, id, signal)
 }
 
 // RedeployResult reports what a redeploy did.

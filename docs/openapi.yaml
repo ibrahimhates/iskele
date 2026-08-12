@@ -57,6 +57,10 @@ tags:
     description: Volume listing and lifecycle
   - name: networks
     description: Network listing, lifecycle and container attachment
+  - name: audit
+    description: |
+      The audit trail: who did what, when, and whether it worked. Admin-only
+      and read-only — nothing in the API edits or deletes a record.
   - name: users
     description: |
       Account administration. Admin-only: every endpoint here either grants
@@ -386,6 +390,107 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /audit:
+    get:
+      tags: [audit]
+      summary: Read the audit trail
+      description: |
+        Newest first, paged. `total` counts every match rather than the page,
+        because "200 of 200" and "200 of 12,481" ask an operator for very
+        different next steps.
+
+        Admin only, and read-only: there is no endpoint that edits or deletes a
+        record, because a trail an admin can rewrite is not a trail. Records
+        are kept until an age-based retention sweep removes them; that sweep
+        is not yet configurable.
+      parameters:
+        - { name: user_id, in: query, schema: { type: string }, description: The actor's account ID. }
+        - { name: action, in: query, schema: { type: string }, example: container.stop }
+        - { name: resource_type, in: query, schema: { type: string }, example: container }
+        - { name: resource_id, in: query, schema: { type: string } }
+        - name: result
+          in: query
+          schema: { type: string, enum: [ok, error] }
+          description: A refused action is recorded too; this is how you find them.
+        - name: from
+          in: query
+          schema: { type: string }
+          description: |
+            An RFC 3339 timestamp, or a bare `YYYY-MM-DD` date read as midnight
+            UTC — the only reading that does not silently depend on the
+            server's timezone.
+          example: "2026-08-01"
+        - { name: to, in: query, schema: { type: string }, example: "2026-08-11T23:59:59Z" }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, default: 200, maximum: 1000 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: One page of the trail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditPage" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /audit/facets:
+    get:
+      tags: [audit]
+      summary: The distinct values on record, for building filters
+      description: |
+        Derived from the trail rather than from a fixed list, so a deleted
+        account and a retired action still appear as long as their records do.
+      responses:
+        "200":
+          description: Filter facets
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditFacets" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /audit/export:
+    get:
+      tags: [audit]
+      summary: Download the trail as CSV or JSON
+      description: |
+        Takes the same filters as `GET /audit`, so an operator narrows the
+        screen and then exports what they are looking at. `limit` and `offset`
+        are ignored: an export is the whole result.
+
+        The body is written as the rows are read, in batches, so a year of a
+        busy host does not have to fit in memory.
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [csv, json], default: csv }
+        - { name: user_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: resource_type, in: query, schema: { type: string } }
+        - { name: resource_id, in: query, schema: { type: string } }
+        - { name: result, in: query, schema: { type: string, enum: [ok, error] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: |
+            The trail as a file download. `Content-Disposition` names it
+            `iskele-audit-<timestamp>.<format>`.
+          content:
+            text/csv:
+              schema: { type: string }
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditEntry" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
 
   /users:
     get:
@@ -993,6 +1098,31 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/prune:
+    post:
+      tags: [containers]
+      summary: Remove every stopped container
+      description: |
+        Exactly `docker container prune`: containers in the created, exited or
+        dead states go; running and paused ones stay. The engine decides which
+        those are — a listing this daemon filtered itself would be a moment out
+        of date, and "stopped when I looked" is not "stopped when I deleted it".
+
+        Needs the `prune` permission, which is admin-only: it deletes things
+        nobody named.
+      responses:
+        "200":
+          description: What was reclaimed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PruneReport" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
@@ -3568,6 +3698,62 @@ components:
         volumes: { $ref: "#/components/schemas/DiskUsageEntry" }
         build_cache: { $ref: "#/components/schemas/DiskUsageEntry" }
 
+    AuditEntry:
+      type: object
+      required: [id, action, result, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: string }
+        username:
+          type: string
+          description: |
+            Stored on the record itself, so an actor survives the deletion of
+            their account — which is the entire point of an audit log.
+        action: { type: string, example: container.stop }
+        resource_type: { type: string, example: container }
+        resource_id: { type: string }
+        result: { type: string, enum: [ok, error] }
+        detail:
+          type: string
+          description: |
+            A JSON object as a string, holding whatever the action thought was
+            worth keeping. Secrets are masked before they get here.
+        ip: { type: string }
+        user_agent: { type: string }
+        created_at: { type: string, format: date-time }
+
+    AuditPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEntry" }
+        total:
+          type: integer
+          description: Every entry matching the filter, not just this page.
+        limit: { type: integer }
+        offset: { type: integer }
+
+    AuditFacets:
+      type: object
+      required: [actions, resource_types, actors]
+      properties:
+        actions:
+          type: array
+          items: { type: string }
+        resource_types:
+          type: array
+          items: { type: string }
+        actors:
+          type: array
+          items:
+            type: object
+            required: [username]
+            properties:
+              user_id: { type: string }
+              username: { type: string }
+
     HostReport:
       type: object
       required: [uptime, cpu, memory, swap, disks, daemon]
@@ -3692,9 +3878,10 @@ components:
           type: string
           enum: [start, stop, restart, pause, unpause, kill, remove]
           description: |
-            The action to apply to each container. `remove` forces removal of
-            running containers, because a bulk remove that stopped at the first
-            running container would be worse than useless.
+            The action to apply to each container. `remove` does not force:
+            a running container is reported as a `CONFLICT` failure in its own
+            result while the rest of the selection proceeds, so a bulk remove
+            never kills something that was still serving traffic.
 
     BatchResult:
       type: object

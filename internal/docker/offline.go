@@ -196,6 +196,10 @@ func (o *offline) RemoveVolume(context.Context, string, bool) error {
 	return o.err("volume.remove", "volume")
 }
 
+func (o *offline) PruneContainers(context.Context) (PruneReport, error) {
+	return PruneReport{}, o.err("container.prune", "container")
+}
+
 func (o *offline) PruneVolumes(context.Context) (PruneReport, error) {
 	return PruneReport{}, o.err("volume.prune", "volume")
 }

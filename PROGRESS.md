@@ -21,7 +21,7 @@
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
 | M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
 | M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
-| M8 | App Catalog + Dashboard + Ayarlar | 🟡 Devam ediyor | 15/19 | Katalog, dashboard ve hesap yönetimi bitti; audit ekranı, prune, toast, ayarlar kaldı |
+| M8 | App Catalog + Dashboard + Ayarlar | 🟡 Devam ediyor | 18/19 | Yalnız ayarlar sayfası kaldı |
 | M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
@@ -328,9 +328,9 @@ engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konul
 - [x] Dashboard: gopsutil host CPU/RAM/disk + engine sürümü + uptime
 - [x] `SSE /system/events` — docker events akışı (M4'te açılmıştı, dashboard'a bağlandı)
 - [x] Activity feed (dashboard, canlı engine olayları)
-- [ ] Toast bildirimleri
-- [ ] Prune araçları (dangling image, stopped container, unused volume/network) + onay
-- [ ] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
+- [x] Toast bildirimleri
+- [x] Prune araçları (dangling image, stopped container, unused volume/network) + onay
+- [x] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
 - [x] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma
 - [x] TOTP 2FA: setup (QR), verify, disable, login akışına entegrasyon
 - [ ] Ayarlar sayfası: socket yolu, whitelist, retention, tema, dil, bind uyarısı

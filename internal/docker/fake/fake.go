@@ -27,6 +27,7 @@ const (
 	OpStopContainer       = "StopContainer"
 	OpRestartContainer    = "RestartContainer"
 	OpRemoveContainer     = "RemoveContainer"
+	OpPruneContainers     = "PruneContainers"
 	OpListImages          = "ListImages"
 	OpListVolumes         = "ListVolumes"
 	OpListNetworks        = "ListNetworks"
@@ -384,6 +385,30 @@ func (c *Client) RestartContainer(_ context.Context, id string, opts docker.Stop
 	}
 	c.setState(id, "running")
 	return nil
+}
+
+// PruneContainers removes every container that is neither running nor
+// paused, which is what the engine's own prune does.
+func (c *Client) PruneContainers(_ context.Context) (docker.PruneReport, error) {
+	if err := c.record(OpPruneContainers, "", nil); err != nil {
+		return docker.PruneReport{}, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	report := docker.PruneReport{Deleted: []string{}}
+	kept := c.Containers[:0]
+	for _, ct := range c.Containers {
+		if ct.State == "running" || ct.State == "paused" {
+			kept = append(kept, ct)
+			continue
+		}
+		report.Deleted = append(report.Deleted, ct.ID)
+		report.SpaceReclaimed += ct.SizeRW
+	}
+	c.Containers = kept
+	return report, nil
 }
 
 func (c *Client) RemoveContainer(_ context.Context, id string, opts docker.RemoveContainerOptions) error {

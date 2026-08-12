@@ -13,7 +13,8 @@
     "build": "Derle",
     "stacks": "Stackler",
     "catalog": "Katalog",
-    "users": "Kullanıcılar"
+    "users": "Kullanıcılar",
+    "audit": "Denetim kaydı"
   },
   "dashboard": {
     "activity": "Etkinlik",
@@ -107,27 +108,7 @@
     "dockerDown": "Docker'a ulaşılamıyor: {{reason}}"
   },
   "containers": {
-    "cpu": "CPU",
-    "memory": "Bellek",
-    "title": "Container'lar",
-    "empty": "Henüz container yok",
-    "emptyHelp": "Oluşturduğunuz container'lar burada görünecek.",
-    "emptyStopped": "Çalışan container yok. Durmuş olanları görmek için “durmuşları göster”i açın.",
-    "showAll": "Durmuşları göster",
-    "state": {
-      "running": "Çalışıyor",
-      "exited": "Durdu",
-      "paused": "Duraklatıldı",
-      "created": "Oluşturuldu",
-      "restarting": "Yeniden başlıyor",
-      "removing": "Siliniyor",
-      "dead": "Ölü"
-    },
-    "health": {
-      "healthy": "Sağlıklı",
-      "unhealthy": "Sağlıksız",
-      "starting": "Başlıyor"
-    },
+    "action_failed": "Container {{action}} işlemi yapılamadı",
     "actions": {
       "start": "Başlat",
       "stop": "Durdur",
@@ -139,6 +120,46 @@
       "rename": "Yeniden adlandır",
       "redeploy": "Yeniden dağıt"
     },
+    "batchPartial": "{{succeeded}} başarılı, {{failed}} başarısız",
+    "batchTitle": "{{count}} container'a uygula",
+    "batch_done": "{{count}} container için {{action}} uygulandı",
+    "batch_done_plural": "{{count}} container için {{action}} uygulandı",
+    "batch_failed": "Toplu işlem başarısız oldu",
+    "batch_partial": "{{total}} işlemden {{failed}} tanesi başarısız",
+    "confirmRemove": "Silmeyi onaylamak için container adını yazın",
+    "confirmRemoveHelp": "{{name}} kalıcı olarak silinecek. Anonim volume'lar da silinir.",
+    "cpu": "CPU",
+    "create": "Container oluştur",
+    "empty": "Henüz container yok",
+    "emptyHelp": "Oluşturduğunuz container'lar burada görünecek.",
+    "emptyStopped": "Çalışan container yok. Durmuş olanları görmek için “durmuşları göster”i açın.",
+    "forceRemove": "Zorla (önce durdur)",
+    "health": {
+      "healthy": "Sağlıklı",
+      "unhealthy": "Sağlıksız",
+      "starting": "Başlıyor"
+    },
+    "memory": "Bellek",
+    "redeployHelp": "Image yeniden çekilir ve container aynı yapılandırmayla yeniden oluşturulur. Anonim volume'lar korunmaz.",
+    "redeploy_failed": "Container yeniden dağıtılamadı",
+    "redeploy_rolled_back": "Yeni container başlatılamadı; eskisi geri getirildi",
+    "redeployed": "{{image}} ile yeniden dağıtıldı",
+    "removeVolumes": "Anonim volume'ları da sil",
+    "remove_failed": "Container silinemedi",
+    "removed": "Container silindi",
+    "renameTitle": "Container'ı yeniden adlandır",
+    "rename_failed": "Container adı değiştirilemedi",
+    "restarts": "Yeniden başlatma",
+    "showAll": "Durmuşları göster",
+    "state": {
+      "running": "Çalışıyor",
+      "exited": "Durdu",
+      "paused": "Duraklatıldı",
+      "created": "Oluşturuldu",
+      "restarting": "Yeniden başlıyor",
+      "removing": "Siliniyor",
+      "dead": "Ölü"
+    },
     "tabs": {
       "overview": "Genel",
       "logs": "Loglar",
@@ -149,17 +170,8 @@
       "mounts": "Mount'lar",
       "network": "Ağ"
     },
-    "confirmRemove": "Silmeyi onaylamak için container adını yazın",
-    "confirmRemoveHelp": "{{name}} kalıcı olarak silinecek. Anonim volume'lar da silinir.",
-    "forceRemove": "Zorla (önce durdur)",
-    "removeVolumes": "Anonim volume'ları da sil",
-    "batchTitle": "{{count}} container'a uygula",
-    "batchPartial": "{{succeeded}} başarılı, {{failed}} başarısız",
-    "redeployHelp": "Image yeniden çekilir ve container aynı yapılandırmayla yeniden oluşturulur. Anonim volume'lar korunmaz.",
-    "renameTitle": "Container'ı yeniden adlandır",
-    "uptime": "Çalışma süresi",
-    "restarts": "Yeniden başlatma",
-    "create": "Container oluştur"
+    "title": "Container'lar",
+    "uptime": "Çalışma süresi"
   },
   "logs": {
     "tail": "Satır",
@@ -438,6 +450,55 @@
     "two_factor_off": "kapalı",
     "two_factor_on": "açık",
     "you": "siz"
+  },
+  "audit": {
+    "action": "İşlem",
+    "actor": "Kim",
+    "any_action": "Tüm işlemler",
+    "any_actor": "Herkes",
+    "any_result": "Tüm sonuçlar",
+    "count": "{{count}} kayıt",
+    "count_plural": "{{count}} kayıt",
+    "export_failed": "Dışa aktarma başarısız oldu",
+    "export_started": "Dışa aktarma indirildi",
+    "from": "Başlangıç",
+    "newer": "Daha yeni",
+    "none": "Kayıt yok",
+    "none_match": "Bu filtrelere uyan kayıt yok.",
+    "none_yet": "Bu panelden yapılan işlemler burada görünecek.",
+    "older": "Daha eski",
+    "resource": "Kaynak",
+    "resource_id": "Kaynak",
+    "resource_type": "Kaynak türü",
+    "result": "Sonuç",
+    "result_error": "başarısız",
+    "result_ok": "başarılı",
+    "showing": "{{total}} kaydın {{first}}–{{last}} arası",
+    "title": "Denetim kaydı",
+    "to": "Bitiş",
+    "user_agent": "İstemci",
+    "when": "Ne zaman"
+  },
+  "prune": {
+    "confirm_title": "{{target}} temizlensin mi?",
+    "containers": "Durmuş container’lar",
+    "containers_rule": "Çalışmayan ve duraklatılmamış her container silinir. Logları da gider; volume’ları gitmez.",
+    "description": "Buradaki her işlem, tek tek adı verilmemiş nesneleri siler; bu yüzden her biri önce sorar.",
+    "done": "{{target}}: {{count}} nesne silindi",
+    "done_plural": "{{target}}: {{count}} nesne silindi",
+    "failed": "{{target}} temizlenemedi",
+    "images": "Sahipsiz image’lar",
+    "images_rule": "Hiçbir container’ın kullanmadığı etiketsiz katmanlar silinir. Etiketli image’lar kalır, yeniden çekilmesi gerekmez.",
+    "networks": "Kullanılmayan ağlar",
+    "networks_rule": "Üzerinde container olmayan, kullanıcı tanımlı ağlar silinir. Engine’in varsayılan ağları korunur.",
+    "nothing": "{{target}} için geri kazanılacak bir şey yok",
+    "reclaimed": "{{size}} geri kazanıldı",
+    "title": "Disk alanı geri kazan",
+    "volumes": "Kullanılmayan volume’lar",
+    "volumes_rule": "Hiçbir container’ın kullanmadığı her volume silinir. Volume, başka hiçbir yerden geri gelmeyecek veri tutar — durmuş bir servisin yeniden başlaması gerekip gerekmediğini kontrol edin."
+  },
+  "toast": {
+    "region": "Bildirimler"
   },
   "build": {
     "add_arg": "Argüman ekle",

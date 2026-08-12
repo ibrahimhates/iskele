@@ -608,6 +608,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the audit trail
+         * @description Newest first, paged. `total` counts every match rather than the page,
+         *     because "200 of 200" and "200 of 12,481" ask an operator for very
+         *     different next steps.
+         *
+         *     Admin only, and read-only: there is no endpoint that edits or deletes a
+         *     record, because a trail an admin can rewrite is not a trail. Records
+         *     are kept until an age-based retention sweep removes them; that sweep
+         *     is not yet configurable.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description The actor's account ID. */
+                    user_id?: string;
+                    /** @example container.stop */
+                    action?: string;
+                    /** @example container */
+                    resource_type?: string;
+                    resource_id?: string;
+                    /** @description A refused action is recorded too; this is how you find them. */
+                    result?: "ok" | "error";
+                    /**
+                     * @description An RFC 3339 timestamp, or a bare `YYYY-MM-DD` date read as midnight
+                     *     UTC — the only reading that does not silently depend on the
+                     *     server's timezone.
+                     * @example 2026-08-01
+                     */
+                    from?: string;
+                    /** @example 2026-08-11T23:59:59Z */
+                    to?: string;
+                    limit?: number;
+                    offset?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One page of the trail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuditPage"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The distinct values on record, for building filters
+         * @description Derived from the trail rather than from a fixed list, so a deleted
+         *     account and a retired action still appear as long as their records do.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Filter facets */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuditFacets"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the trail as CSV or JSON
+         * @description Takes the same filters as `GET /audit`, so an operator narrows the
+         *     screen and then exports what they are looking at. `limit` and `offset`
+         *     are ignored: an export is the whole result.
+         *
+         *     The body is written as the rows are read, in batches, so a year of a
+         *     busy host does not have to fit in memory.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    format?: "csv" | "json";
+                    user_id?: string;
+                    action?: string;
+                    resource_type?: string;
+                    resource_id?: string;
+                    result?: "ok" | "error";
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /**
+                 * @description The trail as a file download. `Content-Disposition` names it
+                 *     `iskele-audit-<timestamp>.<format>`.
+                 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                        "application/json": components["schemas"]["AuditEntry"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1667,6 +1837,54 @@ export interface paths {
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["ContainerNotFound"];
                 409: components["responses"]["Conflict"];
+                503: components["responses"]["DockerUnavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/containers/prune": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove every stopped container
+         * @description Exactly `docker container prune`: containers in the created, exited or
+         *     dead states go; running and paused ones stay. The engine decides which
+         *     those are — a listing this daemon filtered itself would be a moment out
+         *     of date, and "stopped when I looked" is not "stopped when I deleted it".
+         *
+         *     Needs the `prune` permission, which is admin-only: it deletes things
+         *     nobody named.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What was reclaimed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PruneReport"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
                 503: components["responses"]["DockerUnavailable"];
             };
         };
@@ -5480,6 +5698,47 @@ export interface components {
             volumes?: components["schemas"]["DiskUsageEntry"];
             build_cache?: components["schemas"]["DiskUsageEntry"];
         };
+        AuditEntry: {
+            /** Format: int64 */
+            id: number;
+            user_id?: string;
+            /**
+             * @description Stored on the record itself, so an actor survives the deletion of
+             *     their account — which is the entire point of an audit log.
+             */
+            username?: string;
+            /** @example container.stop */
+            action: string;
+            /** @example container */
+            resource_type?: string;
+            resource_id?: string;
+            /** @enum {string} */
+            result: "ok" | "error";
+            /**
+             * @description A JSON object as a string, holding whatever the action thought was
+             *     worth keeping. Secrets are masked before they get here.
+             */
+            detail?: string;
+            ip?: string;
+            user_agent?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AuditPage: {
+            items: components["schemas"]["AuditEntry"][];
+            /** @description Every entry matching the filter, not just this page. */
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        AuditFacets: {
+            actions: string[];
+            resource_types: string[];
+            actors: {
+                user_id?: string;
+                username: string;
+            }[];
+        };
         HostReport: {
             hostname?: string;
             /**
@@ -5585,9 +5844,10 @@ export interface components {
             /** @description Container IDs or names. */
             ids: string[];
             /**
-             * @description The action to apply to each container. `remove` forces removal of
-             *     running containers, because a bulk remove that stopped at the first
-             *     running container would be worse than useless.
+             * @description The action to apply to each container. `remove` does not force:
+             *     a running container is reported as a `CONFLICT` failure in its own
+             *     result while the rest of the selection proceeds, so a bulk remove
+             *     never kills something that was still serving traffic.
              * @enum {string}
              */
             action: "start" | "stop" | "restart" | "pause" | "unpause" | "kill" | "remove";

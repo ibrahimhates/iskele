@@ -46,6 +46,9 @@ type Deps struct {
 	// same table.
 	Users    *store.UserRepo
 	Sessions *store.SessionRepo
+	// Audit backs the audit screen. Nil leaves /audit unmounted; the recorder
+	// is separate, so the trail is still written either way.
+	Audit *store.AuditRepo
 	// Tickets issues the short-lived credentials WebSocket and SSE endpoints
 	// use. The router creates one when this is nil.
 	Tickets *auth.TicketStore
@@ -125,6 +128,14 @@ func NewRouter(deps Deps) http.Handler {
 	if deps.Users != nil {
 		users = handlers.NewUsers(
 			service.NewUsers(deps.Users, deps.Sessions, deps.SecretBox, deps.Recorder))
+	}
+
+	// Reading the trail needs the same table the recorder writes to; without
+	// it the endpoints stay unmounted rather than answering an empty list,
+	// which would read as "nothing happened" instead of "not configured".
+	var audits *handlers.Audit
+	if deps.Audit != nil {
+		audits = handlers.NewAudit(service.NewAudit(deps.Audit))
 	}
 	containerService := service.NewContainer(dockerClient, deps.Recorder)
 	containers := handlers.NewContainers(containerService)
@@ -280,6 +291,20 @@ func NewRouter(deps Deps) http.Handler {
 			r.Method(http.MethodPost, "/auth/logout", httpx.Handler(authHandlers.Logout))
 			r.Method(http.MethodPost, "/auth/ws-ticket", httpx.Handler(streams.Ticket))
 
+			// The audit trail is admin-only and read-only: nothing here edits
+			// or deletes a record, because a trail an admin can rewrite is not
+			// a trail. Ageing records out belongs to a retention sweep, which
+			// is still to come.
+			if audits != nil {
+				r.Route("/audit", func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermAdmin, denyAuth))
+
+					r.Method(http.MethodGet, "/", httpx.Handler(audits.List))
+					r.Method(http.MethodGet, "/facets", httpx.Handler(audits.Facets))
+					r.Method(http.MethodGet, "/export", httpx.Handler(audits.Export))
+				})
+			}
+
 			if users != nil {
 				// Two-factor enrollment is nobody's business but the account
 				// holder's: no permission gate, because these three endpoints
@@ -305,6 +330,7 @@ func NewRouter(deps Deps) http.Handler {
 			r.Route("/containers", func(r chi.Router) {
 				r.With(read()).Method(http.MethodGet, "/", httpx.Handler(containers.List))
 				r.With(operate()).Method(http.MethodPost, "/batch", httpx.Handler(containers.Batch))
+				r.With(prune()).Method(http.MethodPost, "/prune", httpx.Handler(containers.Prune))
 
 				r.With(create_()).Method(http.MethodPost, "/", httpx.Handler(create.Container))
 

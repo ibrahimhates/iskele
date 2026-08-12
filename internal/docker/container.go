@@ -80,6 +80,25 @@ func (e *engine) RemoveContainer(ctx context.Context, id string, opts RemoveCont
 	return classify("container.remove", "container", id, err)
 }
 
+// PruneContainers removes every stopped container.
+//
+// No filter is passed, so this is exactly `docker container prune`: containers
+// in the created, exited or dead states go, running and paused ones stay. The
+// engine decides what "stopped" means rather than this code guessing from a
+// listing that may be a second out of date.
+func (e *engine) PruneContainers(ctx context.Context) (PruneReport, error) {
+	report, err := e.api.ContainersPrune(ctx, filters.NewArgs())
+	if err != nil {
+		return PruneReport{}, classify("container.prune", "container", "", err)
+	}
+
+	return PruneReport{
+		Deleted: sortedStrings(report.ContainersDeleted),
+		//nolint:gosec // a reclaimed byte count cannot overflow int64
+		SpaceReclaimed: int64(report.SpaceReclaimed),
+	}, nil
+}
+
 // containerFilters translates our options into engine-side filters. Filtering
 // at the daemon keeps large hosts responsive.
 func containerFilters(opts ListContainersOptions) filters.Args {

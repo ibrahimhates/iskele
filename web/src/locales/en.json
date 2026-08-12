@@ -13,7 +13,8 @@
     "build": "Build",
     "stacks": "Stacks",
     "catalog": "Catalog",
-    "users": "Users"
+    "users": "Users",
+    "audit": "Audit log"
   },
   "dashboard": {
     "activity": "Activity",
@@ -107,27 +108,7 @@
     "dockerDown": "Docker is not reachable: {{reason}}"
   },
   "containers": {
-    "cpu": "CPU",
-    "memory": "Memory",
-    "title": "Containers",
-    "empty": "No containers yet",
-    "emptyHelp": "Containers you create will appear here.",
-    "emptyStopped": "No containers are running. Turn on “show stopped” to see the rest.",
-    "showAll": "Show stopped",
-    "state": {
-      "running": "Running",
-      "exited": "Exited",
-      "paused": "Paused",
-      "created": "Created",
-      "restarting": "Restarting",
-      "removing": "Removing",
-      "dead": "Dead"
-    },
-    "health": {
-      "healthy": "Healthy",
-      "unhealthy": "Unhealthy",
-      "starting": "Starting"
-    },
+    "action_failed": "Could not {{action}} the container",
     "actions": {
       "start": "Start",
       "stop": "Stop",
@@ -139,6 +120,46 @@
       "rename": "Rename",
       "redeploy": "Redeploy"
     },
+    "batchPartial": "{{succeeded}} succeeded, {{failed}} failed",
+    "batchTitle": "Apply to {{count}} containers",
+    "batch_done": "{{count}} container {{action}}ed",
+    "batch_done_plural": "{{count}} containers {{action}}ed",
+    "batch_failed": "The bulk action failed",
+    "batch_partial": "{{failed}} of {{total}} failed",
+    "confirmRemove": "Type the container name to confirm removal",
+    "confirmRemoveHelp": "This removes {{name}} permanently. Anonymous volumes are removed with it.",
+    "cpu": "CPU",
+    "create": "Create a container",
+    "empty": "No containers yet",
+    "emptyHelp": "Containers you create will appear here.",
+    "emptyStopped": "No containers are running. Turn on “show stopped” to see the rest.",
+    "forceRemove": "Force (stop it first)",
+    "health": {
+      "healthy": "Healthy",
+      "unhealthy": "Unhealthy",
+      "starting": "Starting"
+    },
+    "memory": "Memory",
+    "redeployHelp": "Pulls the image again and recreates the container with the same configuration. Anonymous volumes are not preserved.",
+    "redeploy_failed": "Could not redeploy the container",
+    "redeploy_rolled_back": "The new container failed; the old one was restored",
+    "redeployed": "Redeployed from {{image}}",
+    "removeVolumes": "Also remove anonymous volumes",
+    "remove_failed": "Could not remove the container",
+    "removed": "Container removed",
+    "renameTitle": "Rename container",
+    "rename_failed": "Could not rename the container",
+    "restarts": "Restarts",
+    "showAll": "Show stopped",
+    "state": {
+      "running": "Running",
+      "exited": "Exited",
+      "paused": "Paused",
+      "created": "Created",
+      "restarting": "Restarting",
+      "removing": "Removing",
+      "dead": "Dead"
+    },
     "tabs": {
       "overview": "Overview",
       "logs": "Logs",
@@ -149,17 +170,8 @@
       "mounts": "Mounts",
       "network": "Network"
     },
-    "confirmRemove": "Type the container name to confirm removal",
-    "confirmRemoveHelp": "This removes {{name}} permanently. Anonymous volumes are removed with it.",
-    "forceRemove": "Force (stop it first)",
-    "removeVolumes": "Also remove anonymous volumes",
-    "batchTitle": "Apply to {{count}} containers",
-    "batchPartial": "{{succeeded}} succeeded, {{failed}} failed",
-    "redeployHelp": "Pulls the image again and recreates the container with the same configuration. Anonymous volumes are not preserved.",
-    "renameTitle": "Rename container",
-    "uptime": "Uptime",
-    "restarts": "Restarts",
-    "create": "Create a container"
+    "title": "Containers",
+    "uptime": "Uptime"
   },
   "logs": {
     "tail": "Lines",
@@ -438,6 +450,55 @@
     "two_factor_off": "off",
     "two_factor_on": "on",
     "you": "you"
+  },
+  "audit": {
+    "action": "Action",
+    "actor": "Who",
+    "any_action": "Any action",
+    "any_actor": "Anyone",
+    "any_result": "Any result",
+    "count": "{{count}} entry",
+    "count_plural": "{{count}} entries",
+    "export_failed": "The export failed",
+    "export_started": "Export downloaded",
+    "from": "From",
+    "newer": "Newer",
+    "none": "Nothing recorded",
+    "none_match": "No entry matches these filters.",
+    "none_yet": "Actions taken through this panel will appear here.",
+    "older": "Older",
+    "resource": "Resource",
+    "resource_id": "Resource",
+    "resource_type": "Resource type",
+    "result": "Result",
+    "result_error": "failed",
+    "result_ok": "ok",
+    "showing": "{{first}}–{{last}} of {{total}}",
+    "title": "Audit log",
+    "to": "To",
+    "user_agent": "Client",
+    "when": "When"
+  },
+  "prune": {
+    "confirm_title": "Prune {{target}}?",
+    "containers": "Stopped containers",
+    "containers_rule": "Removes every container that is not running or paused. Their logs go with them; their volumes do not.",
+    "description": "Each of these deletes things nobody named individually, so each one asks first.",
+    "done": "Removed {{count}} of {{target}}",
+    "done_plural": "Removed {{count}} of {{target}}",
+    "failed": "Could not prune {{target}}",
+    "images": "Dangling images",
+    "images_rule": "Removes untagged image layers no container references. Tagged images are kept, so nothing has to be pulled again.",
+    "networks": "Unused networks",
+    "networks_rule": "Removes user-defined networks with no containers attached. The engine defaults are kept.",
+    "nothing": "Nothing to reclaim from {{target}}",
+    "reclaimed": "{{size}} reclaimed",
+    "title": "Reclaim disk space",
+    "volumes": "Unused volumes",
+    "volumes_rule": "Removes every volume no container is using. A volume holds data that is not coming back from anywhere — check that nothing stopped is meant to start again."
+  },
+  "toast": {
+    "region": "Notifications"
   },
   "build": {
     "add_arg": "Add argument",

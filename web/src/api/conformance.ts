@@ -11,6 +11,9 @@
 
 import type { components } from './schema';
 import type {
+  AuditEntry,
+  AuditFacets,
+  AuditPage,
   BatchResponse,
   CreateResult,
   BatchResult,
@@ -70,6 +73,9 @@ export type ImageConforms = Conforms<Image, Schemas['Image']>;
 export type VolumeConforms = Conforms<Volume, Schemas['Volume']>;
 export type NetworkConforms = Conforms<NetworkResource, Schemas['Network']>;
 export type SystemInfoConforms = Conforms<SystemInfo, Schemas['SystemInfo']>;
+export type AuditEntryConforms = Conforms<AuditEntry, Schemas['AuditEntry']>;
+export type AuditPageConforms = Conforms<AuditPage, Schemas['AuditPage']>;
+export type AuditFacetsConforms = Conforms<AuditFacets, Schemas['AuditFacets']>;
 export type DiskUsageConforms = Conforms<DiskUsage, Schemas['DiskUsage']>;
 export type HostReportConforms = Conforms<HostReport, Schemas['HostReport']>;
 export type HostCPUConforms = Conforms<HostCPU, Schemas['HostCPU']>;

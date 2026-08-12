@@ -299,6 +299,49 @@ export interface HostReport {
   engine_error?: string;
 }
 
+export interface AuditEntry {
+  id: number;
+  user_id?: string;
+  /** Stored on the record, so an actor survives the deletion of their account. */
+  username?: string;
+  action: string;
+  resource_type?: string;
+  resource_id?: string;
+  result: 'ok' | 'error';
+  /** A JSON object as a string; secrets are masked before they get here. */
+  detail?: string;
+  ip?: string;
+  user_agent?: string;
+  created_at: string;
+}
+
+export interface AuditPage {
+  items: AuditEntry[];
+  /** Every entry matching the filter, not just this page. */
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AuditFacets {
+  actions: string[];
+  resource_types: string[];
+  actors: { user_id?: string; username: string }[];
+}
+
+/** The query every audit endpoint accepts. */
+export interface AuditQuery {
+  user_id?: string;
+  action?: string;
+  resource_type?: string;
+  resource_id?: string;
+  result?: 'ok' | 'error';
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;

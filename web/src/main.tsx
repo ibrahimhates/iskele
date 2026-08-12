@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import App from './App';
+import { Toaster } from './components/Toaster';
 import './lib/i18n';
 import './index.css';
 import { applyTheme, useUI } from './stores/ui';
@@ -36,6 +37,9 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <App />
+        {/* Outside the router so a toast survives navigation: the outcome of
+            an action often arrives after the operator has moved on. */}
+        <Toaster />
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
