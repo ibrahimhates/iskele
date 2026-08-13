@@ -61,6 +61,14 @@ other, and the frontend build fails — which is the point.
 **Tests need `-race` and cgo.** `make test` handles this. `CGO_ENABLED=0
 go test -race` silently cannot run the detector.
 
+**`make vuln` has an allowlist.** It runs govulncheck and fails on anything our
+code reaches that has not been reviewed. Two advisories against
+`github.com/docker/docker` are carried with a written assessment in
+[`scripts/vulncheck`](../scripts/vulncheck/main.go) — see `SECURITY.md`. Adding
+to that list is a security decision, not a way to get a green build: it wants
+the reasoning inline and an entry in `DECISIONS.md`. The list fails the build
+if an entry ever gains a fixed version, or stops being reported at all.
+
 ## Testing
 
 The suite runs with no Docker daemon and no network. `internal/docker/fake`

@@ -811,6 +811,30 @@ uyarı istiyordu ve bu yoktu.
 ekranda söylemek tek işe yarar an. Loopback olmayan bir hostname "belki loopback'e çözülüyordur" diye geçilmiyor:
 root eşdeğeri bir API hakkında yanılmanın yanlış yönü budur.
 
+### D-086 — Docker SDK'sının daemon tarafı açıkları gerekçesiyle listeleniyor, govulncheck kapatılmıyor
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** CI'daki `govulncheck` adımı iki açıkla kırmızıya döndü: GO-2026-4887 (CVE-2026-34040, AuthZ
+plugin bypass) ve GO-2026-4883 (CVE-2026-33997, legacy plugin privilege doğrulamasında off-by-one). İkisi de
+`github.com/docker/docker`'ın **tüm** sürümlerini etkili sayıyor ve o modül yolunda düzeltilmiş sürüm yok —
+düzeltme `github.com/moby/moby/v2 v2.0.0-beta.8`'de, yani başka bir modül yolunda. Modül tek repo olduğu için
+client'ı linkleyen herkes daemon açıklarını da üstleniyor; govulncheck'in izleri de zaten ağırlıklı olarak
+`init` çağrıları.
+**Karar:** Üç seçenek vardı: (a) `moby/v2`'ye geçmek, (b) adımı kaldırmak/`|| true` yapmak, (c) gerekçeli
+istisna listesi. (a) beta bir modüle v0.1.0'da bağlanmak demekti ve SDK yüzeyi baştan taşınacaktı; (b) tarama
+varmış gibi görünüp hiçbir şey taramamak olurdu. (c) seçildi: `scripts/vulncheck` govulncheck'i JSON modunda
+kendisi çalıştırıyor, yalnız **symbol seviyesindeki** bulguları sayıyor ve iki ID'yi yanlarına yazılan
+değerlendirmeyle geçiriyor.
+**Gerekçe:** Her iki açık da daemon kodunda: biri engine'in authorization-plugin middleware'i, diğeri legacy
+plugin kurulum yolu. iskeled ne authz plugin çalıştırıyor ne de plugin API'si açıyor; ikisi de derlenen
+yüzeyimizde değil. Liste körelmesin diye üç kırılma noktası var: listede olmayan çağrılan bir açık, artık
+**düzeltilmiş sürümü olan** bir istisna (yani gerekçe geçersiz, yapılacak şey yükseltmek) ve taramanın artık
+raporlamadığı ölü bir istisna. Filtrenin kendisi test edilmiş — her şeyi geçiren bir filtre, taramasız CI'dan
+daha kötüdür, çünkü yeşil görünür.
+**Sonuç:** `make vuln` artık `go run` üzerinden geçmiyor: `go run` her hatayı 1'e indirgiyor ve "açık bulundu"
+(3) ile "veritabanına ulaşılamadı" ayırt edilemiyordu. Araç govulncheck'i geçici bir GOBIN'e kurup çalıştırıyor,
+çıkış kodu 0 veya 3 değilse tarama başarısız sayılıyor. moby/v2 stabilleştiğinde geçiş ayrı bir iş olarak
+değerlendirilecek; o gün geldiğinde bu iki istisna "düzeltilmiş sürüm var" kuralıyla kendiliğinden CI'ı kıracak.
+
 ---
 
 ## Uygulama Sırasında Doğrulanacak Varsayımlar

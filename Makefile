@@ -110,8 +110,11 @@ tidy: ## Tidy go.mod / go.sum
 	$(GO) mod tidy
 
 .PHONY: vuln
-vuln: ## Scan dependencies with govulncheck
-	go run golang.org/x/vuln/cmd/govulncheck@latest $(PKGS)
+vuln: ## Scan dependencies with govulncheck (reviewed exceptions: scripts/vulncheck)
+	@# The tool runs govulncheck itself: a scan that dies before reaching the
+	@# vulnerability database still prints output that looks clean, and only
+	@# the exit status tells the two apart.
+	$(GO) run ./scripts/vulncheck $(PKGS)
 
 .PHONY: clean
 clean: ## Remove build and coverage artifacts

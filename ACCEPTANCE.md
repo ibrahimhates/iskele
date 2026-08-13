@@ -79,7 +79,7 @@
 | C11 | systemd unit hardening direktiflerinin tamamı mevcut (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths`, `RestrictAddressFamilies`, `MemoryDenyWriteExecute`, boş `CapabilityBoundingSet`) | gözle | M9 | [x] |
 | C12 | Servis `iskele` sistem kullanıcısıyla çalışır (root varsayılan değil), `docker` grubunda | manuel | M9 | 🟡 |
 | C13 | `README.md` ve `SECURITY.md` "docker socket = root eşdeğeri" uyarısını açıkça içerir | gözle | M9 | [x] |
-| C14 | CI'da `govulncheck` ve `npm audit` çalışır | CI | M9 | [x] |
+| C14 | CI'da `govulncheck` ve `npm audit` çalışır. Docker SDK'sının daemon tarafı iki açığı `scripts/vulncheck` içinde gerekçesiyle listeli (D-086); listede olmayan veya düzeltilmiş sürümü çıkan her açık CI'ı kırar. | CI | M9 | [x] |
 | C15 | Güvenlik başlıkları (CSP, X-Frame-Options, nosniff, Referrer-Policy) yanıtlarda mevcut | test | M0 | [x] |
 | C16 | Opsiyonel yerleşik TLS (cert/key) çalışır | manuel | M9 | 🟡 |
 

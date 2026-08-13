@@ -36,7 +36,7 @@
 | `make test` | ✅ | 15 paket, hepsi yeşil (`-race`) |
 | `golangci-lint run` | ✅ | 0 issue (v2.5.0) |
 | Cross-compile | ✅ | amd64 / arm64 / armv7 |
-| `govulncheck` | ⚠️ | yerelde proxy engelliyor (`vuln.go.dev` 403); CI'da koşuyor |
+| `govulncheck` | ✅ | CI'da koşuyor. Docker SDK'sının daemon tarafı iki açığı gerekçeli istisna listesinde (`scripts/vulncheck`, D-086); listede olmayan/çağrılan her açık hâlâ CI'ı kırıyor. Yerelde `vuln.go.dev` proxy tarafından 403 |
 | `npm run lint` | ✅ | 0 uyarı (`--max-warnings 0`) |
 | `npm run format:check` | ✅ | prettier temiz |
 | `npm run build` | ✅ | tsc + vite, uyarısız |
@@ -351,6 +351,8 @@ sayfalama, CSV/JSON dışa aktarma · prune izinleri · retention süpürmesi ·
 - [x] `.goreleaser.yaml` — amd64/arm64/armv7 + `.deb`/`.rpm` + checksum + SBOM
 - [x] `.github/workflows/release.yml` — tag → release
 - [x] `.github/workflows/codeql.yml` + CI'da `govulncheck` ve `npm audit`
+- [x] `scripts/vulncheck` — govulncheck'i JSON modunda koşturup gerekçeli istisna listesiyle
+      değerlendiren filtre; testli, üç ayrı kırılma noktası (D-086)
 - [x] README (tam): özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları
 - [x] `SECURITY.md` — tehdit modeli, socket=root uyarısı, bildirim süreci
 - [x] `CONTRIBUTING.md` — geliştirme kurulumu, commit kuralları, PR süreci

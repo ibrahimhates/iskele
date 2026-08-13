@@ -98,6 +98,31 @@ TOTP uses SHA-1 because every authenticator app assumes it. HMAC-SHA1 is not
 affected by the collision attacks that retired SHA-1 for signatures, and each
 code is valid for half a minute.
 
+## Known advisories in dependencies
+
+`make vuln` runs govulncheck on every push and fails on anything our code
+reaches. Two advisories are currently carried with a written assessment
+instead of a fix, both against `github.com/docker/docker`:
+
+| ID | What it is | Why it is carried |
+|---|---|---|
+| [GO-2026-4887](https://pkg.go.dev/vuln/GO-2026-4887) | CVE-2026-34040 — AuthZ plugin bypass on oversized request bodies | Engine-side, in the daemon's authorization-plugin middleware. iskeled links the client and runs no authz plugin. |
+| [GO-2026-4883](https://pkg.go.dev/vuln/GO-2026-4883) | CVE-2026-33997 — off-by-one in legacy plugin privilege validation | Engine-side, in the legacy plugin installation path. iskeled installs no plugins and exposes no plugin API. |
+
+Both are reported against every version of `github.com/docker/docker` with no
+fix on that module path — the fix ships as `github.com/moby/moby/v2`
+v2.0.0-beta.8, a different module. The client and the daemon are one
+repository, so linking the client inherits the daemon's advisories.
+
+Neither is a statement about your engine: **update Docker itself.** These
+advisories describe the daemon you are running, and iskeled's assessment covers
+only the code iskeled compiles.
+
+The exceptions live in [`scripts/vulncheck`](scripts/vulncheck/main.go) with
+the reasoning next to each one, and the build fails if an exception ever gains
+a fixed version — sitting on a published fix is worse than the original
+finding.
+
 ## Supported versions
 
 Until v1.0.0, only the latest release gets security fixes.

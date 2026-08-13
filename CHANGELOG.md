@@ -106,6 +106,10 @@ serving its own web UI, running as a systemd service.
   browser cannot set a header on a WebSocket or `EventSource` request.
 - Registry passwords and TOTP secrets are encrypted with AES-256-GCM under a
   key iskeled refuses to start on if it is readable by anyone else.
+- govulncheck runs on every push and fails on any advisory our code reaches.
+  Two engine-side advisories against `github.com/docker/docker` are carried
+  with a written assessment rather than silenced; the check fails again if
+  either one ever gains a fixed version. See `SECURITY.md`.
 
 ### Operations
 
@@ -132,6 +136,9 @@ serving its own web UI, running as a systemd service.
 - The socket path and `allowed_paths` are changed by editing the config file
   and restarting, not from the settings page — they are startup-time security
   boundaries.
+- The Docker SDK is `github.com/docker/docker`, where client and daemon share
+  one module path, so daemon advisories land on anything that links the client.
+  The move to `github.com/moby/moby/v2` waits for that module to leave beta.
 
 [Unreleased]: https://github.com/ibrahimhates/iskele/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/ibrahimhates/iskele/releases/tag/v0.1.0
