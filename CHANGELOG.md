@@ -22,6 +22,11 @@ Notable changes to Iskele. The format follows
 - After a loopback install, `install.sh` prints the `ssh -L` command that
   reaches the panel from the operator's own machine. Binding to `127.0.0.1` is
   the right default and also the first thing a fresh install runs into.
+- The README install guide covers what it assumed before: that Docker has to be
+  installed first and how to repair it if it was not, that `x86_64` and `amd64`
+  are the same architecture, how to verify the checksum, and the three ways to
+  reach a panel bound to loopback — a tunnel, a TLS proxy, or a LAN bind with
+  what that costs.
 - The repository URL in the installer output, the package postinstall message
   and the release notes; badges and a star section in the README.
 

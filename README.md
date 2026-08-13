@@ -42,13 +42,65 @@ Iskele deliberately does **not** defend against.
 
 ---
 
-## Install
+## Requirements
 
-Download the archive for your architecture from the
-[releases page](https://github.com/ibrahimhates/iskele/releases), then:
+- **Linux with systemd.** The installer refuses to run anywhere else rather
+  than leaving a half-configured host behind.
+- **Docker Engine, installed first.** Iskele manages a Docker daemon; it does
+  not install one. Order matters: `install.sh` puts the `iskele` user in the
+  `docker` group, and it can only do that if the group already exists.
+- **amd64, arm64 or armv7.** armv6 and below are not built — the floor is a
+  Raspberry Pi 2.
+
+If Docker is missing:
 
 ```sh
-tar xzf iskele_0.1.2_linux_amd64.tar.gz
+curl -fsSL https://get.docker.com | sudo sh
+```
+
+If you installed Iskele first and Docker afterwards, the panel will run but
+every engine route answers `503 DOCKER_UNAVAILABLE`. Repair it with:
+
+```sh
+sudo usermod -aG docker iskele
+sudo systemctl restart iskeled
+```
+
+---
+
+## Install
+
+### 1. Pick your architecture
+
+`uname -m` prints the kernel's name for it, which is not always the name in the
+file:
+
+| `uname -m` | Download |
+|---|---|
+| `x86_64` | `amd64` — same architecture, two names |
+| `aarch64` | `arm64` |
+| `armv7l` | `armv7` |
+
+### 2. Download and verify
+
+```sh
+VER=0.1.2
+ARCH=amd64        # from the table above
+
+base=https://github.com/ibrahimhates/iskele/releases/download/v$VER
+curl -fsSLO $base/iskele_${VER}_linux_${ARCH}.tar.gz
+curl -fsSLO $base/iskele_${VER}_checksums.txt
+
+sha256sum -c --ignore-missing iskele_${VER}_checksums.txt
+```
+
+This panel is a root shell on the host it runs on. Checking the digest costs
+one command; skipping it means trusting the network you downloaded over.
+
+### 3. Install
+
+```sh
+tar xzf iskele_${VER}_linux_${ARCH}.tar.gz
 sudo ./deploy/install.sh
 ```
 
@@ -62,28 +114,88 @@ start the service — a package manager starting a root-equivalent panel because
 somebody typed `apt install` is making a decision that is not its to make:
 
 ```sh
-sudo dpkg -i iskele_0.1.2_linux_amd64.deb
+sudo dpkg -i iskele_0.1.2_linux_amd64.deb      # or: rpm -i …_amd64.rpm
 sudo systemctl enable --now iskeled
 ```
 
-Iskele binds `127.0.0.1:8377`, so it is not reachable from another machine
-until you decide how it should be. The quickest way in needs nothing installed
-— tunnel from your workstation:
+### 4. Check that it came up
+
+```sh
+systemctl status iskeled
+journalctl -u iskeled -f
+```
+
+---
+
+## Reaching the panel
+
+Iskele binds `127.0.0.1:8377`. That is deliberate — until you decide how the
+panel should be published, it is reachable only from the host itself. Three
+ways to change that, in the order we would pick them.
+
+### An SSH tunnel — nothing to install, nothing to expose
 
 ```sh
 ssh -L 8377:127.0.0.1:8377 you@your-host
 ```
 
-Then open `http://127.0.0.1:8377` and create the first admin account. Until you
-do, every route answers `409 NOT_INITIALIZED`.
+Then open `http://127.0.0.1:8377` on your own machine. `install.sh` prints this
+line with your host's address already filled in. It is the right answer for
+occasional administration, and it stays right forever if you never need more.
 
-**Before exposing it anywhere**, read the security notice above. Iskele does
-not ship or configure a proxy: terminate TLS in whatever you already run —
-nginx, Caddy, Traefik — and keep `listen` on loopback. It needs WebSocket
-upgrade and unbuffered SSE to be passed through for logs, stats and the
-terminal.
+Create the first admin account here. Until you do, every route answers
+`409 NOT_INITIALIZED`.
 
-To remove it:
+### A TLS proxy in front — the answer for anything permanent
+
+Keep `listen` on loopback and terminate TLS in whatever the host already runs.
+Iskele ships no proxy configuration on purpose: the machine that needs one is
+already running nginx, Caddy or Traefik, and its operator knows that proxy
+better than a file we could ship. Two requirements it does have — pass through
+**WebSocket upgrades** and **unbuffered SSE**, or logs, stats and the terminal
+will hang.
+
+### Binding to the LAN — convenient, and a real decision
+
+Editing `listen` in `/etc/iskele/config.yaml` puts the panel on the network:
+
+```yaml
+listen: "192.168.1.50:8377"     # the host's own address, not 0.0.0.0
+```
+
+```sh
+sudo systemctl restart iskeled
+ss -tlnp | grep 8377            # confirm what it is bound to
+
+sudo ufw allow from 192.168.1.0/24 to any port 8377 proto tcp
+# or: sudo firewall-cmd --add-port=8377/tcp --permanent && sudo firewall-cmd --reload
+```
+
+Naming the interface rather than `0.0.0.0` keeps the panel off any other
+network the host is on — a public address, a VPN, a tunnel. It also means a
+DHCP lease change stops the service from starting, so give the host a static
+address first.
+
+Understand what you are accepting: over plain HTTP the password and session
+token cross the network in the clear, and whoever reads them gets a root shell
+on this host. On a home LAN that may be a fair trade. On a shared office or
+campus network it is not. The built-in TLS listener closes that gap without a
+proxy — a self-signed certificate is enough, and the browser warning is a
+one-time click:
+
+```yaml
+tls:
+  enabled: true
+  cert_file: "/etc/iskele/cert.pem"
+  key_file: "/etc/iskele/key.pem"
+```
+
+iskeled logs a warning at startup on every non-loopback bind — with TLS or
+without, recording which it was. That warning is not noise.
+
+---
+
+## Uninstall
 
 ```sh
 sudo ./deploy/uninstall.sh           # keeps the database and the secret key
