@@ -63,7 +63,8 @@ a fix may take longer than a funded project's would.
 
 1. **Keep `listen` on `127.0.0.1`** and publish through a reverse proxy that
    terminates TLS. iskeled warns at startup when it is bound to a non-loopback
-   address. Examples: [`deploy/reverse-proxy/`](deploy/reverse-proxy/).
+   address. Iskele ships no proxy configuration: use whatever you already run,
+   and pass through WebSocket upgrades and unbuffered SSE.
 2. **Run as the `iskele` user**, a member of the `docker` group — never as
    root. `deploy/install.sh` does this, and the shipped unit file adds
    `ProtectSystem=strict`, `NoNewPrivileges`, an empty capability set and a

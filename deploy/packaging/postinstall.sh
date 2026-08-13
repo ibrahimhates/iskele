@@ -44,8 +44,9 @@ Iskele is installed but not started.
   3. Open the panel and create the first admin account.
 
 Anyone who can reach this panel can start a privileged container and read the
-whole host. Keep `listen` on 127.0.0.1 behind a TLS proxy; see
-/usr/share/doc/iskele/reverse-proxy/.
+whole host. Keep `listen` on 127.0.0.1 and terminate TLS in front of it.
+
+Docs and issues: https://github.com/ibrahimhates/iskele
 
 MSG
     fi

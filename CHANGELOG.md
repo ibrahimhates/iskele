@@ -6,6 +6,37 @@ Notable changes to Iskele. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-08-13
+
+### Removed
+
+- The reverse proxy examples (`deploy/reverse-proxy/`) are gone from the
+  archive, the packages and the repository. A host that needs a proxy is
+  already running one, and its operator knows that proxy better than three
+  configurations we shipped but never tested against a live release. The advice
+  has not changed — keep `listen` on loopback, terminate TLS in front, and pass
+  through WebSocket upgrades and unbuffered SSE — only the files are gone.
+
+### Added
+
+- After a loopback install, `install.sh` prints the `ssh -L` command that
+  reaches the panel from the operator's own machine. Binding to `127.0.0.1` is
+  the right default and also the first thing a fresh install runs into.
+- The README install guide covers what it assumed before: that Docker has to be
+  installed first and how to repair it if it was not, that `x86_64` and `amd64`
+  are the same architecture, how to verify the checksum, and the three ways to
+  reach a panel bound to loopback — a tunnel, a TLS proxy, or a LAN bind with
+  what that costs.
+- The repository URL in the installer output, the package postinstall message
+  and the release notes; badges and a star section in the README.
+
+### Fixed
+
+- `install.sh` could exit non-zero after a complete install. Under
+  `set -o pipefail` the `grep` that reads `listen:` fails the whole assignment
+  when the key is absent, and `errexit` ended the script before it printed
+  anything. The default is used now.
+
 ## [0.1.1] — 2026-08-13
 
 The first release with artifacts. v0.1.0 was tagged, but its release job failed
@@ -158,6 +189,7 @@ serving its own web UI, running as a systemd service.
   one module path, so daemon advisories land on anything that links the client.
   The move to `github.com/moby/moby/v2` waits for that module to leave beta.
 
-[Unreleased]: https://github.com/ibrahimhates/iskele/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ibrahimhates/iskele/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/ibrahimhates/iskele/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ibrahimhates/iskele/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ibrahimhates/iskele/releases/tag/v0.1.0

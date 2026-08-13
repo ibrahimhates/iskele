@@ -64,8 +64,8 @@ archives:
       # the file into: for a single src, GoReleaser reads dst as the entry name.
       # `dst: deploy/` named all four `deploy`, so the first won, the other
       # three were dropped with a warning, and the archive carried a *file*
-      # called deploy that deploy/reverse-proxy/ could not be written under —
-      # an archive tar(1) refuses to extract.
+      # called deploy that nothing could be written under — an archive tar(1)
+      # refuses to extract.
       - src: deploy/iskeled.service
         dst: deploy/iskeled.service
       - src: deploy/config.example.yaml
@@ -74,8 +74,6 @@ archives:
         dst: deploy/install.sh
       - src: deploy/uninstall.sh
         dst: deploy/uninstall.sh
-      - src: deploy/reverse-proxy/*
-        dst: deploy/reverse-proxy/
       - src: docs/*.md
         dst: docs/
 
@@ -106,8 +104,6 @@ nfpms:
         type: config|noreplace
         file_info:
           mode: 0640
-      - src: deploy/reverse-proxy
-        dst: /usr/share/doc/iskele/reverse-proxy
       - src: docs
         dst: /usr/share/doc/iskele
       - dst: /var/lib/iskele
@@ -165,3 +161,9 @@ release:
     tar xzf iskele_{{ .Version }}_linux_amd64.tar.gz
     sudo ./deploy/install.sh
     ```
+
+    ---
+
+    If Iskele is useful on your host, a ⭐ on
+    [github.com/ibrahimhates/iskele](https://github.com/ibrahimhates/iskele)
+    helps other people find it.
