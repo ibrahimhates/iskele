@@ -106,7 +106,17 @@ fi
 # --- Directories --------------------------------------------------------
 
 say "creating directories"
-install -d -o root       -g "$GROUP_NAME" -m 0750 "$CONFIG_DIR"
+# 2770, not 0750: iskeled runs as $USER_NAME and creates $CONFIG_DIR/secret.key
+# itself on first start, so the group needs write on the directory or the
+# daemon exits with "create key file: permission denied" before it ever
+# listens. The unit's ReadWritePaths=/etc/iskele expresses the same intent, but
+# that governs systemd's mount namespace and cannot grant a POSIX bit. setgid
+# keeps anything created here in the iskele group.
+#
+# This does let a compromised daemon replace config.yaml. That costs nothing it
+# does not already have: its whole privilege is the Docker socket, which is
+# root on this host.
+install -d -o root       -g "$GROUP_NAME" -m 2770 "$CONFIG_DIR"
 install -d -o "$USER_NAME" -g "$GROUP_NAME" -m 0750 "$DATA_DIR"
 # Custom catalog entries are read from here; the directory not existing is
 # fine, but creating it saves the operator a step.
