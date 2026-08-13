@@ -16,6 +16,13 @@ export function AuthLayout({ title, description, children }: Props) {
     <div className="flex min-h-full items-center justify-center bg-bg p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
+          {/* Decorative: the heading below carries the name. */}
+          <img
+            src="/logo.png"
+            alt=""
+            aria-hidden
+            className="mx-auto mb-3 h-16 w-16 rounded-2xl shadow-lg"
+          />
           <h1 className="text-2xl font-semibold tracking-tight">{t('app.name')}</h1>
           <p className="mt-1 text-sm text-muted">{t('app.tagline')}</p>
         </div>

@@ -92,7 +92,10 @@ export function AppShell() {
         )}
         aria-label={t('app.name')}
       >
-        <div className="flex h-14 items-center gap-2 border-b border-border px-4">
+        <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
+          {/* Decorative: the name is right beside it, so a screen reader
+              announcing the logo too would just repeat itself. */}
+          <img src="/logo.png" alt="" aria-hidden className="h-7 w-7 rounded-md" />
           <span className="text-lg font-semibold tracking-tight">{t('app.name')}</span>
         </div>
 

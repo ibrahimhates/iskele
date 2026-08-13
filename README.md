@@ -1,10 +1,16 @@
-# Iskele
+<p align="center">
+  <img src="assets/promotion.webp" alt="Iskele" width="420" />
+</p>
 
-[![Release](https://img.shields.io/github/v/release/ibrahimhates/iskele?logo=github&color=success)](https://github.com/ibrahimhates/iskele/releases/latest)
-[![CI](https://github.com/ibrahimhates/iskele/actions/workflows/ci.yml/badge.svg)](https://github.com/ibrahimhates/iskele/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/ibrahimhates/iskele?logo=github)](https://github.com/ibrahimhates/iskele/stargazers)
+<h1 align="center">Iskele</h1>
+
+<p align="center">
+  <a href="https://github.com/ibrahimhates/iskele/releases/latest"><img src="https://img.shields.io/github/v/release/ibrahimhates/iskele?logo=github&color=success" alt="Release" /></a>
+  <a href="https://github.com/ibrahimhates/iskele/actions/workflows/ci.yml"><img src="https://github.com/ibrahimhates/iskele/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="go.mod"><img src="https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white" alt="Go" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" /></a>
+  <a href="https://github.com/ibrahimhates/iskele/stargazers"><img src="https://img.shields.io/github/stars/ibrahimhates/iskele?logo=github" alt="Stars" /></a>
+</p>
 
 Native Docker management panel for a single Linux host — one static binary, no
 container, no runtime dependencies.
