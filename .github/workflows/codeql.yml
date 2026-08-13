@@ -40,6 +40,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Before `init`, not after. init puts a wrapper for the Go command on
+      # PATH and extracts the code the build compiles through it; setup-go
+      # afterwards prepends the toolcache and shadows that wrapper, so the
+      # build runs untraced and CodeQL finalizes an empty database with
+      # "detected code written in Go but this run didn't build any of it".
+      - uses: actions/setup-go@v5
+        if: matrix.language == 'go'
+        with:
+          go-version: "1.25"
+          # No build cache here. It saves a minute on a job that takes several,
+          # and a fully cached build is one that compiles nothing — which is
+          # the same empty database by a different route.
+          cache: false
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -48,12 +62,6 @@ jobs:
           # security-extended adds the queries that are worth a false positive
           # or two on a codebase whose whole job is reaching the Docker socket.
           queries: security-extended
-
-      - uses: actions/setup-go@v5
-        if: matrix.language == 'go'
-        with:
-          go-version: "1.25"
-          cache: true
 
       # Manual rather than autobuild: the binary embeds web/dist through
       # go:embed, and autobuild would fail on the missing directory. The
