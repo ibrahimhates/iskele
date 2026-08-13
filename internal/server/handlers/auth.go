@@ -105,12 +105,12 @@ func (h *Auth) Bootstrap(w http.ResponseWriter, r *http.Request) error {
 
 // Login handles POST /auth/login.
 func (h *Auth) Login(w http.ResponseWriter, r *http.Request) error {
-	req, err := decodeJSON[credentialsRequest](r)
+	req, err := decodeJSON[service.LoginInput](r)
 	if err != nil {
 		return err
 	}
 
-	pair, err := h.svc.Login(r.Context(), req.Username, req.Password, metaOf(r))
+	pair, err := h.svc.Login(r.Context(), req, metaOf(r))
 	if err != nil {
 		return authError(err)
 	}
@@ -251,6 +251,14 @@ func authError(err error) error {
 
 	case errors.Is(err, service.ErrAlreadyInitialized):
 		return httpx.NewError(http.StatusConflict, httpx.CodeAlreadyInitialized, "%s", err.Error())
+
+	case errors.Is(err, service.ErrTOTPRequired):
+		// Deliberately distinguishable from a wrong password: the form has to
+		// know to ask for a code, and by this point the password was correct.
+		return httpx.NewError(http.StatusUnauthorized, httpx.CodeTOTPRequired, "%s", err.Error())
+
+	case errors.Is(err, service.ErrTOTPUnavailable):
+		return httpx.NewError(http.StatusServiceUnavailable, httpx.CodeTOTPUnavailable, "%s", err.Error())
 
 	case errors.Is(err, service.ErrInvalidCredentials):
 		return httpx.NewError(http.StatusUnauthorized, httpx.CodeInvalidCredentials, "%s", err.Error())

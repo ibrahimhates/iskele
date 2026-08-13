@@ -107,6 +107,16 @@ func (h *Engine) DiskUsage(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// Host handles GET /system/host.
+//
+// It always answers 200: the whole point of the endpoint is to keep reporting
+// while something is wrong, and a reading the platform refused is carried in
+// the body rather than turned into a failed request.
+func (h *Engine) Host(w http.ResponseWriter, r *http.Request) error {
+	httpx.WriteJSON(w, r, http.StatusOK, h.svc.Host(r.Context()))
+	return nil
+}
+
 // EngineStatus is the body of GET /system/ping: whether the daemon is
 // reachable right now, which the UI polls to drive its connection banner.
 type EngineStatus struct {

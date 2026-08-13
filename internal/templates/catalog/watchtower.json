@@ -1,0 +1,102 @@
+{
+  "id": "watchtower",
+  "title": "Watchtower",
+  "category": "tools",
+  "description": "Watches for new image versions and restarts containers onto them.",
+  "icon": "RefreshCw",
+  "website": "https://containrrr.dev/watchtower/",
+  "keywords": [
+    "updates",
+    "automation"
+  ],
+  "image": "containrrr/watchtower:{{version}}",
+  "env": {
+    "WATCHTOWER_CLEANUP": "{{cleanup}}",
+    "WATCHTOWER_POLL_INTERVAL": "{{interval}}",
+    "WATCHTOWER_LABEL_ENABLE": "{{label_enable}}",
+    "WATCHTOWER_INCLUDE_STOPPED": "false",
+    "TZ": "{{timezone}}"
+  },
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "{{docker_socket}}",
+      "destination": "/var/run/docker.sock"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "1.7.1",
+      "options": [
+        {
+          "value": "1.7.1",
+          "label": "1.7.1"
+        },
+        {
+          "value": "latest",
+          "label": "latest"
+        }
+      ]
+    },
+    {
+      "name": "interval",
+      "label": "Check interval (seconds)",
+      "type": "number",
+      "help": "86400 is once a day. Checking more often mostly annoys registries.",
+      "default": "86400",
+      "required": true,
+      "min": 300,
+      "max": 2592000
+    },
+    {
+      "name": "cleanup",
+      "label": "Remove old images",
+      "type": "select",
+      "default": "true",
+      "options": [
+        {
+          "value": "true",
+          "label": "true"
+        },
+        {
+          "value": "false",
+          "label": "false"
+        }
+      ]
+    },
+    {
+      "name": "label_enable",
+      "label": "Only containers that opt in",
+      "type": "select",
+      "help": "With this on, Watchtower only touches containers labelled com.centurylinklabs.watchtower.enable=true. With it off, it updates everything on this host — including Iskele.",
+      "default": "true",
+      "options": [
+        {
+          "value": "true",
+          "label": "true"
+        },
+        {
+          "value": "false",
+          "label": "false"
+        }
+      ]
+    },
+    {
+      "name": "timezone",
+      "label": "Timezone",
+      "type": "text",
+      "default": "UTC"
+    },
+    {
+      "name": "docker_socket",
+      "label": "Docker socket",
+      "type": "path",
+      "default": "/var/run/docker.sock",
+      "required": true
+    }
+  ],
+  "notes": "Watchtower restarts containers onto new images without asking. Leaving the opt-in label off means it may restart this panel too. It reads the Docker socket, which is root on this host — the mount only works if {{docker_socket}} is in allowed_paths."
+}

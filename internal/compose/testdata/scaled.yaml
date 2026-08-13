@@ -1,0 +1,22 @@
+# depends_on without conditions, plus a service that runs more than once.
+services:
+  queue:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+
+  worker:
+    image: ghcr.io/example/worker:2
+    depends_on:
+      - queue
+    deploy:
+      replicas: 3
+    environment:
+      QUEUE_URL: amqp://queue:5672
+
+  scheduler:
+    image: ghcr.io/example/scheduler:2
+    depends_on:
+      - queue
+      - worker
+    restart: on-failure:3

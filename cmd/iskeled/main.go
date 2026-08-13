@@ -22,6 +22,8 @@ import (
 	"github.com/ibrahimhates/iskele/internal/server"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
+	"github.com/ibrahimhates/iskele/internal/systemd"
+	"github.com/ibrahimhates/iskele/internal/templates"
 	"github.com/ibrahimhates/iskele/internal/version"
 )
 
@@ -102,6 +104,11 @@ func run(args []string) error {
 		}
 	}()
 
+	secretBox, err := crypto.NewSecretBox(masterKey)
+	if err != nil {
+		return err
+	}
+
 	recorder := audit.New(db.Audit, log)
 	limiter := auth.NewLimiter(db.Logins, auth.LimiterOptions{})
 	issuer := auth.NewTokenIssuer(masterKey.Derive(auth.JWTPurpose), cfg.Session.AccessTTL.Duration())
@@ -113,6 +120,7 @@ func run(args []string) error {
 		Limiter:    limiter,
 		Issuer:     issuer,
 		Recorder:   recorder,
+		Secrets:    secretBox,
 		RefreshTTL: cfg.Session.RefreshTTL.Duration(),
 	})
 
@@ -150,13 +158,66 @@ func run(args []string) error {
 		}
 	}
 
-	go housekeeping(ctx, log, db, limiter)
+	// A build is bound to the process that ran it: the engine's build request
+	// died with the previous one, so a row still marked running can never
+	// finish on its own.
+	builder := service.NewBuilder(dockerClient, db.Builds, nil,
+		service.NewPathGuard(cfg.AllowedPaths), service.NewTaskRegistry(), recorder,
+		cfg.BuildLogDir())
+	if closed, reconcileErr := builder.ReconcileRunning(ctx); reconcileErr != nil {
+		log.Warn("could not reconcile unfinished builds", slog.Any("error", reconcileErr))
+	} else if closed > 0 {
+		log.Info("closed builds left running by a previous process", slog.Int("count", closed))
+	}
+
+	// A deploy is bound to its process for the same reason, and a stack stuck
+	// at "deploying" would never move again.
+	stackService := service.NewStackService(dockerClient, db.Stacks, nil, builder,
+		service.NewPathGuard(cfg.AllowedPaths), service.NewTaskRegistry(), recorder,
+		cfg.StackDir())
+	if closed, reconcileErr := stackService.ReconcileDeploying(ctx); reconcileErr != nil {
+		log.Warn("could not reconcile unfinished deploys", slog.Any("error", reconcileErr))
+	} else if closed > 0 {
+		log.Info("closed stack deploys left running by a previous process", slog.Int("count", closed))
+	}
+
+	// The router builds its own instance over the same table. That is not a
+	// divergence: the service holds no state, reading the setting fresh on
+	// every sweep, so a retention change made in the browser is in force on
+	// the next tick without anything being handed between them.
+	settingsService := service.NewSettings(db.Settings, cfg, recorder)
+
+	go housekeeping(ctx, log, db, limiter, builder, settingsService)
+
+	// The catalog is read once at startup: twenty templates ship inside the
+	// binary, and an operator's own are read alongside them. A broken custom
+	// file is reported in the catalog rather than fatal here.
+	catalog, err := templates.Load(cfg.TemplateDir, log)
+	if err != nil {
+		return fmt.Errorf("load the app catalog: %w", err)
+	}
+	log.Info("app catalog loaded",
+		slog.Int("templates", catalog.Len()),
+		slog.Int("problems", len(catalog.Problems())),
+		slog.String("template_dir", cfg.TemplateDir))
 
 	router := server.NewRouter(server.Deps{
-		Config: cfg,
-		Logger: log,
-		Docker: dockerClient,
-		Auth:   authService,
+		Config:   cfg,
+		Logger:   log,
+		Docker:   dockerClient,
+		Auth:     authService,
+		Recorder: recorder,
+		Tickets:  auth.NewTicketStore(auth.TicketTTL),
+
+		Users:         db.Users,
+		Sessions:      db.Sessions,
+		Audit:         db.Audit,
+		SettingsStore: db.Settings,
+		Registries:    db.Registries,
+		SecretBox:     secretBox,
+		Builds:        db.Builds,
+		Stacks:        db.Stacks,
+		Catalog:       catalog,
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)
@@ -168,7 +229,29 @@ func run(args []string) error {
 	if cfg.TLS.Enabled {
 		scheme = "https"
 	}
-	log.Info("listening", slog.String("url", fmt.Sprintf("%s://%s", scheme, srv.Addr())))
+	url := fmt.Sprintf("%s://%s", scheme, srv.Addr())
+	log.Info("listening", slog.String("url", url))
+
+	// Under systemd the unit is Type=notify: until READY=1 arrives the service
+	// counts as still starting, and anything ordered after it waits. Outside
+	// systemd every call here is a no-op.
+	notifier := systemd.New(os.LookupEnv)
+	defer func() { _ = notifier.Close() }()
+
+	if notifier.Enabled() {
+		if err := notifier.Ready(); err != nil {
+			// Not fatal: the daemon is serving. But systemd will eventually
+			// give up on the unit, and this line is the only warning of that.
+			log.Warn("could not notify systemd that we are ready", slog.Any("error", err))
+		}
+		_ = notifier.Status("serving " + url)
+
+		// One goroutine for both jobs: telling systemd the shutdown was
+		// deliberate, and — when the unit asked for it — feeding the watchdog
+		// until then. STOPPING=1 has to be sent whether or not there is a
+		// watchdog, or a slow drain reads as a hang.
+		go notifyUntilStopped(ctx, log, notifier, notifier.WatchdogInterval(os.LookupEnv))
+	}
 
 	if err := srv.Run(ctx); err != nil {
 		return err
@@ -178,9 +261,44 @@ func run(args []string) error {
 	return nil
 }
 
+// notifyUntilStopped feeds systemd's watchdog, then reports the shutdown.
+//
+// A ping only establishes that this goroutine is still scheduled and the
+// process has not deadlocked, which is what a watchdog can actually tell. It
+// deliberately does not depend on the Docker daemon: iskeled restarting every
+// time Docker hiccups is the opposite of what this service is for — it is the
+// thing that stays up to say Docker is down.
+//
+// every may be zero, which means the unit asked for no watchdog; the shutdown
+// notification still happens.
+func notifyUntilStopped(ctx context.Context, log *slog.Logger, notifier *systemd.Notifier, every time.Duration) {
+	var pings <-chan time.Time
+	if every > 0 {
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		pings = ticker.C
+		log.Debug("systemd watchdog enabled", slog.Duration("interval", every))
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			_ = notifier.Stopping()
+			_ = notifier.Status("shutting down")
+			return
+		case <-pings:
+			if err := notifier.Watchdog(); err != nil {
+				log.Warn("watchdog ping failed", slog.Any("error", err))
+			}
+		}
+	}
+}
+
 // housekeeping sweeps rows that can no longer affect a decision. Failures are
 // logged and retried on the next tick rather than taken as fatal.
-func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB, limiter *auth.Limiter) {
+func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB,
+	limiter *auth.Limiter, builder *service.Builder, settings *service.Settings,
+) {
 	ticker := time.NewTicker(housekeepingInterval)
 	defer ticker.Stop()
 
@@ -199,6 +317,36 @@ func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB, limiter *
 				log.Warn("login attempt cleanup failed", slog.Any("error", err))
 			} else if n > 0 {
 				log.Debug("removed stale login attempts", slog.Int64("count", n))
+			}
+
+			// The archived log goes first and the row much later: knowing a
+			// build happened stays cheap long after its megabytes of output
+			// stop being useful.
+			if n, err := builder.PruneLogs(ctx, time.Now()); err != nil {
+				log.Warn("build log cleanup failed", slog.Any("error", err))
+			} else if n > 0 {
+				log.Debug("removed archived build logs", slog.Int("count", n))
+			}
+
+			cutoff := time.Now().Add(-service.BuildRowRetention)
+			if n, err := db.Builds.DeleteOlderThan(ctx, cutoff); err != nil {
+				log.Warn("build history cleanup failed", slog.Any("error", err))
+			} else if n > 0 {
+				log.Debug("removed old build records", slog.Int64("count", n))
+			}
+
+			// Audit retention is read every sweep rather than at startup: an
+			// admin who sets it expects the next sweep to honor it, not the
+			// next restart. Zero keeps everything, which is the default.
+			retention, err := settings.AuditRetention(ctx)
+			if err != nil {
+				log.Warn("could not read the audit retention setting", slog.Any("error", err))
+			} else if retention > 0 {
+				if n, pruneErr := db.Audit.DeleteBefore(ctx, time.Now().Add(-retention)); pruneErr != nil {
+					log.Warn("audit cleanup failed", slog.Any("error", pruneErr))
+				} else if n > 0 {
+					log.Debug("removed expired audit entries", slog.Int64("count", n))
+				}
 			}
 		}
 	}

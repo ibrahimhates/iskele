@@ -1,0 +1,122 @@
+{
+  "id": "traefik",
+  "title": "Traefik",
+  "category": "networking",
+  "description": "Reverse proxy that configures itself from container labels.",
+  "icon": "Route",
+  "website": "https://traefik.io",
+  "keywords": [
+    "proxy",
+    "ingress",
+    "loadbalancer"
+  ],
+  "image": "traefik:{{version}}",
+  "command": [
+    "--api.dashboard={{dashboard}}",
+    "--providers.docker=true",
+    "--providers.docker.exposedbydefault=false",
+    "--entrypoints.web.address=:80",
+    "--entrypoints.websecure.address=:443",
+    "--certificatesresolvers.le.acme.email={{acme_email}}",
+    "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json",
+    "--certificatesresolvers.le.acme.tlschallenge=true"
+  ],
+  "ports": [
+    {
+      "host": "{{http_port}}",
+      "container": 80
+    },
+    {
+      "host": "{{https_port}}",
+      "container": 443
+    },
+    {
+      "host": "{{dashboard_port}}",
+      "container": 8080
+    }
+  ],
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "{{docker_socket}}",
+      "destination": "/var/run/docker.sock",
+      "read_only": true
+    },
+    {
+      "type": "volume",
+      "source": "{{acme_volume}}",
+      "destination": "/letsencrypt"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "v3.1",
+      "options": [
+        {
+          "value": "v3.1",
+          "label": "v3.1"
+        },
+        {
+          "value": "v3.2",
+          "label": "v3.2"
+        },
+        {
+          "value": "v2.11",
+          "label": "v2.11"
+        }
+      ]
+    },
+    {
+      "name": "http_port",
+      "label": "HTTP port",
+      "type": "port",
+      "default": "80",
+      "required": true
+    },
+    {
+      "name": "https_port",
+      "label": "HTTPS port",
+      "type": "port",
+      "default": "443",
+      "required": true
+    },
+    {
+      "name": "acme_email",
+      "label": "Let's Encrypt e-mail",
+      "type": "text",
+      "help": "Where expiry warnings go.",
+      "required": true,
+      "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    },
+    {
+      "name": "dashboard",
+      "label": "Enable the dashboard",
+      "type": "bool",
+      "help": "The dashboard has no authentication of its own. Only enable it on a port you keep private.",
+      "default": "false"
+    },
+    {
+      "name": "dashboard_port",
+      "label": "Dashboard port",
+      "type": "port",
+      "help": "Leave empty to keep the dashboard unpublished."
+    },
+    {
+      "name": "docker_socket",
+      "label": "Docker socket",
+      "type": "path",
+      "help": "Traefik reads container labels through this. Mounting the socket into a container gives it root on this host — it must be in allowed_paths, and it should not be unless you accept that.",
+      "default": "/var/run/docker.sock",
+      "required": true
+    },
+    {
+      "name": "acme_volume",
+      "label": "Certificate volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "Traefik routes to containers that carry its labels. It reads the Docker socket, which is the same as root on this host — Iskele will refuse the mount unless {{docker_socket}} is in allowed_paths, and that is a decision worth making deliberately."
+}

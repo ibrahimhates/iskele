@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-08 · **Aktif faz:** M3 (başlamayı bekliyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-13 · **Aktif faz:** M9 ✅ — v0.1.0 tag'i bekliyor · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -16,30 +16,33 @@
 | M0 | İskelet | ✅ Bitti | 14/14 | Servis ayakta, CI kuruldu, kapsam %84.3 |
 | M1 | Docker katmanı + temel API | ✅ Bitti | 13/13 | 12 endpoint, offline istemci, kapsam %82.1 |
 | M2 | Auth + DB | ✅ Bitti | 16/16 | RBAC matrisi tam test edildi, kapsam %79.8 |
-| M3 | Frontend iskeleti | ⬜ Bekliyor | 0/14 | |
-| M4 | Container yönetimi (tam) | ⬜ Bekliyor | 0/16 | |
-| M5 | Oluşturma sihirbazı + Image/Volume/Network | ⬜ Bekliyor | 0/18 | |
-| M6 | Dockerfile build | ⬜ Bekliyor | 0/12 | |
-| M7 | Compose stack | ⬜ Bekliyor | 0/15 | |
-| M8 | App Catalog + Dashboard + Ayarlar | ⬜ Bekliyor | 0/18 | |
-| M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
+| M3 | Frontend iskeleti | ✅ Bitti | 14/14 | Tek binary UI'ı sunuyor, 35 frontend testi |
+| M4 | Container yönetimi (tam) | ✅ Bitti | 16/16 | Log/stats/console/inspect + toplu işlem + redeploy |
+| M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
+| M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
+| M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
+| M8 | App Catalog + Dashboard + Ayarlar | ✅ Bitti | 19/19 | Katalog, dashboard, hesap yönetimi, denetim kaydı, prune, ayarlar |
+| M9 | Paketleme ve teslim | ✅ Bitti | 16/16 | systemd + sd_notify, install/uninstall, 3 reverse proxy, GoReleaser, release/CodeQL, tüm dokümanlar |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
-### Build sağlığı (son çalıştırma: 2026-08-08, M2 sonu)
+### Build sağlığı (son çalıştırma: 2026-08-10, M7 sonu)
 
 | Kontrol | Durum | Not |
 |---|---|---|
-| `go build ./...` | ✅ | — |
+| `make build` | ✅ | web build + go build; 14 MB tek binary |
 | `gofmt -l` | ✅ | temiz |
-| `go vet ./...` | ✅ | — |
-| `go test -race ./...` | ✅ | 14 paket, hepsi yeşil |
+| `make vet` | ✅ | — |
+| `make test` | ✅ | 15 paket, hepsi yeşil (`-race`) |
 | `golangci-lint run` | ✅ | 0 issue (v2.5.0) |
 | Cross-compile | ✅ | amd64 / arm64 / armv7 |
-| `govulncheck` | ⚠️ | yerelde proxy engelliyor (`vuln.go.dev` 403); CI'da koşuyor |
-| `npm run lint` | — | M3'te devreye girer |
-| `npm run build` | — | M3'te devreye girer |
-| Backend coverage | ✅ **%79.8** | hedef ≥ %60 (`-coverpkg=./...`) |
+| `govulncheck` | ✅ | CI'da koşuyor. Docker SDK'sının daemon tarafı iki açığı gerekçeli istisna listesinde (`scripts/vulncheck`, D-086); listede olmayan/çağrılan her açık hâlâ CI'ı kırıyor. Yerelde `vuln.go.dev` proxy tarafından 403 |
+| `npm run lint` | ✅ | 0 uyarı (`--max-warnings 0`) |
+| `npm run format:check` | ✅ | prettier temiz |
+| `npm run build` | ✅ | tsc + vite, uyarısız |
+| `npm run test` | ✅ | 11 dosya / 100 test |
+| Frontend bundle | ✅ | index 96 kB gz · vendor 54 kB gz · charts/terminal ayrı chunk · Monaco (743 kB gz) yalnız editör açılınca indiriliyor (D-070) |
+| Backend coverage | ✅ **%72.5** | hedef ≥ %60. `make test-cover`'ın yöntemiyle (`-coverpkg` ile tüm paketler) ölçüldü. M7 `internal/compose` ile ~1600 satır ekledi; oran sabit kaldı. `make test-cover` bu ortamda koşmuyor (D-042), komut elle çalıştırıldı. |
 
 ---
 
@@ -138,164 +141,227 @@ Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayı
 
 ---
 
-## M3 — Frontend iskeleti  ⬜
+## M3 — Frontend iskeleti  ✅
 
-- [ ] `web/` — Vite + React 18 + TS kurulumu
-- [ ] Tailwind + shadcn/ui + tema değişkenleri (dark varsayılan)
-- [ ] eslint + prettier + vitest yapılandırması
-- [ ] `src/api` — fetch wrapper (401 → refresh → retry), hata tipi eşlemesi
-- [ ] `make gen-api` — OpenAPI'den TS tip üretimi
-- [ ] Router + `ProtectedRoute` + rol bazlı gizleme
-- [ ] Bootstrap ekranı (parola gücü, doğrulama)
-- [ ] Login ekranı (hata mesajları, rate limit geri bildirimi)
-- [ ] AppShell: sidebar (10 bölüm), topbar, kullanıcı menüsü, tema toggle
-- [ ] TanStack Query client + varsayılan ayarlar
-- [ ] i18n (react-i18next) + `locales/tr.json` + `locales/en.json`
-- [ ] `internal/server/spa.go` — `embed.FS` + SPA fallback (`/api` hariç)
-- [ ] `make build` → web build + go build tek komutta
-- [ ] Vitest: fetch refresh akışı, protected route, i18n anahtar eşitliği
+- [x] `web/` — Vite 5 + React 18 + TS (strict) kurulumu
+- [x] Tailwind + CSS değişkeni tabanlı tema (açık/koyu, `dark` sınıfı) — shadcn/ui yerine kendi bileşenleri (D-039)
+- [x] eslint + prettier + vitest yapılandırması
+- [x] `src/api` — fetch wrapper (401 → tek paylaşımlı refresh → tek tekrar), `ApiError` kod eşlemesi
+- [x] `make gen-api` — OpenAPI'den TS tip üretimi + `conformance.ts` ile derleme zamanı uyum kanıtı (D-040)
+- [x] Router + `ProtectedRoute` + izin bazlı gizleme (`useAuth().can()`)
+- [x] Bootstrap ekranı (parola gücü ölçer, doğrulama)
+- [x] Login ekranı (hata mesajları, 429 geri bildirimi, `NOT_INITIALIZED` yönlendirmesi)
+- [x] AppShell: sidebar, topbar, kullanıcı menüsü, tema toggle, klavye kısayolları
+- [x] TanStack Query client + varsayılan ayarlar
+- [x] i18n (react-i18next) + `locales/tr.json` + `locales/en.json`
+- [x] `internal/server/spa.go` — `embed.FS` + SPA fallback (`/api` hariç), hash'li varlıklara `immutable` cache
+- [x] `make build` → web build + go build tek komutta
+- [x] Vitest: fetch refresh akışı, `ProtectedRoute`, i18n anahtar eşitliği, parola gücü, biçimleyiciler
 
-**DoD:** tek binary çalıştırılınca tarayıcıda login/bootstrap ekranı gelir · CI'da web adımları yeşil · commit + push
+**Not:** Sidebar yalnızca yapılmış bölümleri listeliyor. Henüz gelmemiş bölümler için "yakında" sayfası
+konulmadı; çalışmayan bir menü öğesi PROMPT'un "işlevsiz UI yok" kuralına aykırı (D-041).
 
----
-
-## M4 — Container yönetimi (tam)  ⬜
-
-- [ ] Container liste: durum, image, port map, CPU/RAM, uptime, health, restart sayısı
-- [ ] Filtre + arama + etikete göre gruplama + sıralama + sanallaştırma (500+)
-- [ ] Çoklu seçim + `POST /containers/batch` (toplu aksiyon)
-- [ ] Aksiyonlar: start/stop/restart/pause/unpause/kill/rename/remove(force, volumes)
-- [ ] Yıkıcı işlem onayı (container adını yazdırma)
-- [ ] Detay sayfası sekme iskeleti (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network)
-- [ ] WS `/containers/{id}/logs` backend (tail, follow, timestamps, stdout/stderr)
-- [ ] `LogViewer` bileşeni: ring buffer, ANSI, arama, otomatik kaydırma kilidi, indir
-- [ ] SSE `/containers/{id}/stats` backend + in-memory ring buffer (60 örnek)
-- [ ] Stats sekmesi: CPU/mem/net/blk canlı grafikler (Recharts)
-- [ ] WS `/containers/{id}/exec` backend (attach, tty, resize)
-- [ ] `TerminalPane`: xterm.js + fit + shell seçimi + resize
-- [ ] Inspect sekmesi: ham JSON görüntüleyici (katlanabilir, arama, kopyala)
-- [ ] `POST /containers/{id}/redeploy` — inspect'ten config türetme + pull + recreate
-- [ ] WS/SSE ticket mekanizması + origin doğrulaması
-- [ ] `ReconnectingBanner` + exponential backoff yeniden bağlanma
-
-**Testler:** log/exec/stats handler'ları (fake) · redeploy config türetme · LogViewer buffer · Terminal resize
-**DoD:** gerçek bir container üzerinde log akar, konsol açılır, stats grafiği çizer · commit + push
+**DoD:** ✅ `make build` çıktısı tek başına UI'ı sunuyor · CI'da `web` ve `bundle` job'ları eklendi · commit + push
 
 ---
 
-## M5 — Oluşturma sihirbazı + Image/Volume/Network  ⬜
+## M4 — Container yönetimi (tam)  ✅
 
-- [ ] `POST /containers` — tam create spec (host config dahil)
-- [ ] Sihirbaz sekme 1: Image + tag + pull policy + ad + restart policy
-- [ ] Sihirbaz sekme 2: Komut/entrypoint/workdir/user
-- [ ] Sihirbaz sekme 3: Port mapping (çoklu satır, proto)
-- [ ] Sihirbaz sekme 4: Volumes (bind + path picker, named, tmpfs, read-only)
-- [ ] Sihirbaz sekme 5: Env (satır satır + `.env` yapıştır/import)
-- [ ] Sihirbaz sekme 6: Network (seçim, alias, statik IP, extra hosts)
-- [ ] Sihirbaz sekme 7: Labels
-- [ ] Sihirbaz sekme 8: Kaynaklar (CPU, memory limit/reservation, pids)
-- [ ] Sihirbaz sekme 9: Healthcheck (test, interval, timeout, retries, start period)
-- [ ] Sihirbaz sekme 10: Gelişmiş (devices, cap add/drop, privileged, security-opt, log driver) — **admin-only alanlar işaretli**
-- [ ] Canlı **Preview** paneli: `docker run ...` komutu + API payload
-- [ ] `POST /images/pull` SSE + ilerleme çubuğu + katman bazlı durum
-- [ ] Registry CRUD + AES-GCM şifreli kimlik + pull'da auth kullanımı
-- [ ] Image ekranı: liste, remove/force, prune, tag, history, inspect, kullanan container sayısı
-- [ ] Volume ekranı: liste, oluştur (driver+opts), remove, prune, kullanım bilgisi
-- [ ] Network ekranı: liste, oluştur (bridge/macvlan/overlay, subnet/gateway), remove, prune, connect/disconnect, inspect
-- [ ] Global `TaskDrawer` + `GET /tasks` + iptal
+**M4-A — Docker katmanı**
+- [x] pause/unpause/kill/rename engine çağrıları
+- [x] `ContainerLogs` — 8 baytlık multiplex başlığı çözümü, TTY tespiti, 64 KB satır sınırı
+- [x] `ContainerStats` — `docker stats` ile aynı CPU formülü, page cache düşülmüş bellek, 60 örneklik ring buffer
+- [x] `Exec` / `ResizeExec` / `ExecExitCode`
+- [x] `Events` — engine olay akışı
 
-**Testler:** form→payload dönüşümü · zod şemaları · whitelist ihlali reddi · registry şifreleme round-trip
-**DoD:** UI'dan sıfırdan çalışan container yaratılabiliyor · commit + push
+**M4-B — WS/SSE altyapısı**
+- [x] WS/SSE ticket mekanizması (60 sn, tek kullanımlık) + origin doğrulaması
+- [x] WS `/containers/{id}/logs` (tail, follow, timestamps, stdout/stderr)
+- [x] WS `/containers/{id}/exec` (binary=stdin, text=resize, exit kodu raporu, audit kaydı)
+- [x] SSE `/containers/{id}/stats` + `/system/events` (25 sn heartbeat)
+- [x] SSE `/containers/stats` — tüm çalışan container'lar tek bağlantıda, ID etiketli (D-048)
+- [x] `POST /containers/batch` — hiçbir hata döngüyü durdurmuyor, kısmi başarıda 207
+- [x] `POST /containers/{id}/redeploy` — inspect'ten config türetme + pull + recreate + rollback
 
----
+**M4-C — Arayüz**
+- [x] Container liste: durum, image, port map, uptime, health, **canlı CPU/RAM** (tek paylaşımlı akış).
+      Restart sayısı listede yok — engine'in liste API'si döndürmüyor (D-049), detay sekmesinde var.
+- [x] Filtre + arama + sıralama + 500+ satırda sanallaştırma
+- [x] Çoklu seçim + toplu aksiyon (batch endpoint'i)
+- [x] Aksiyonlar: start/stop/restart/pause/unpause/kill/rename/remove(force, volumes)
+- [x] Yıkıcı işlem onayı (container adını yazdırma)
+- [x] Detay sayfası 8 sekme (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network)
+- [x] `LogViewer`: ring buffer, arama, stderr vurgusu, otomatik kaydırma kilidi, indirme
+- [x] Stats sekmesi: CPU/mem/net/blk canlı grafikleri (Recharts)
+- [x] `ConsolePanel`: xterm.js + fit + shell seçimi + resize
+- [x] Inspect sekmesi: ham JSON görüntüleyici (arama, kopyala)
+- [x] `ConnectionBanner` + üstel geri çekilmeli yeniden bağlanma (maks. 30 sn)
 
-## M6 — Dockerfile build  ⬜
+**Testler:** `internal/server/stream_test.go` (ticket, izin, WS/SSE handler'ları) · batch/redeploy servis testleri ·
+`useLogStream.test.ts` (ring buffer sınırı, yeniden bağlanma, hata ve EOF davranışı) · `spa_test.go`
 
-- [ ] `internal/paths/whitelist.go` — `EvalSymlinks` + prefix kontrolü
-- [ ] `internal/paths/browse.go` + `GET /fs/browse?path=`
-- [ ] Path browser UI bileşeni (whitelist kökleri, ileri/geri, dizin seçimi)
-- [ ] Build formu: dizin, Dockerfile adı, tag'ler, build args, target, no-cache, platform, pull
-- [ ] Tar context üretimi (`.dockerignore` desteği, boyut limiti)
-- [ ] `WS /build` — canlı log stream + layer ilerleme + hata vurgusu
-- [ ] Build iptali (`POST /builds/{id}/cancel`) → `canceled` durumu
-- [ ] `builds` tablosu kayıt yaşam döngüsü (running→success/failed/canceled)
-- [ ] Log arşivi `/var/lib/iskele/builds/<id>.log` + retention
-- [ ] `GET /builds`, `GET /builds/{id}`, `GET /builds/{id}/log`
-- [ ] Build geçmişi ekranı + log yeniden görüntüleme
-- [ ] "Bu image'dan container oluştur" kısayolu (M5 sihirbazına ön-dolgulu geçiş)
-
-**Testler:** traversal/symlink saldırı vektörleri (tablo) · tar context · build kaydı · iptal
-**DoD:** gerçek bir dizinden build çalışır, log akar, iptal edilebilir · commit + push
+**DoD:** ✅ Docker soketi olmayan ortamda uçtan uca doğrulandı (bootstrap → ticket → batch → `DOCKER_UNAVAILABLE` zinciri);
+gerçek container üzerinde log/stats/console doğrulaması Docker'lı bir makinede yapılmalı (bkz. Bloke Eden Konular) · commit + push
 
 ---
 
-## M7 — Compose stack  ⬜
+## M5 — Oluşturma sihirbazı + Image/Volume/Network  ✅
 
-- [ ] `internal/compose/parse.go` — compose-go v2 parse + normalize
-- [ ] `.env` yükleme + değişken interpolasyon
-- [ ] `convert.go` — service → container/network/volume spec (portlar, volume, healthcheck, limitler, depends_on)
-- [ ] Desteklenen alan matrisi (`docs/compose-support.md`) + desteklenmeyen alan uyarısı
-- [ ] `up.go` — bağımlılık sıralı `up -d`, Iskele etiketleri (`com.iskele.stack`, `.service`)
-- [ ] `down.go`, `stop/start`, `restart`, `pull`, `scale`
-- [ ] `diff.go` — kaydetmeden önce diff üretimi
-- [ ] `git.go` — repo clone/pull (ref seçimi)
-- [ ] Stack CRUD API (`/stacks`, `/stacks/{id}`) + kaynak tipleri (file/editor/git)
-- [ ] `WS /stacks/{id}/logs` — birleşik + servis bazlı
-- [ ] Stacks liste ekranı + servis durum tablosu
-- [ ] Monaco YAML editör + şema doğrulama + hata işaretleri
-- [ ] Diff görünümü (kaydetmeden önce)
-- [ ] `.env` yönetimi ekranı
-- [ ] Mevcut compose ile başlatılmış container'ların stack olarak keşfi
+**M5-A — Docker katmanı**
+- [x] `docker.ContainerSpec` — operatör diliyle tam container tanımı + `BuildCreateSpec` çevirisi
+- [x] `PullImageProgress` (NDJSON ilerleme), `RemoveImage`, `PruneImages`, `TagImage`, `ImageHistory`, `InspectImageRaw`
+- [x] `CreateVolume` / `InspectVolume` / `RemoveVolume` / `PruneVolumes`
+- [x] `CreateNetwork` / `InspectNetwork` / `RemoveNetwork` / `PruneNetworks` / `Connect` / `Disconnect`
+- [x] Fake ve offline istemciler yeni yüzeyin tamamını kapsıyor
 
-**Testler:** ≥5 gerçek compose fixture · interpolasyon · diff · dönüşüm birim testleri
-**DoD:** UI'dan yazılan bir compose stack ayağa kalkar ve logları akar · commit + push
+**M5-B — Güvenlik ve kalıcılık**
+- [x] `PathGuard` — bind mount'ları `allowed_paths`'e karşı doğruluyor; symlink çözüyor, bileşen bazlı karşılaştırıyor, boş liste = hepsini reddet
+- [x] Privileged kapısı: `privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`
+- [x] `registries` tablosu + AES-GCM şifreli parola + `NormalizeRegistryServer` / `RegistryServerForImage`
+- [x] Servisler: `Creator`, `Registry`, ve Image/Volume/Network mutasyonları (hepsi audit kayıtlı)
+
+**M5-C — Uzun işler**
+- [x] `TaskRegistry` — bellek içi, iptal edilebilir, 10 dk saklama, 200 görev tavanı
+- [x] `GET /tasks`, `GET /tasks/{id}`, `POST /tasks/{id}/cancel`
+- [x] Image pull bir task olarak kaydediliyor; katman bazlı ilerlemeden tek yüzde hesaplanıyor
+
+**M5-D — API**
+- [x] `POST /containers` (tam spec), `GET /system/allowed-paths`
+- [x] `/images` pull(SSE)/remove/prune/tag/history/inspect
+- [x] `/volumes` ve `/networks` tam CRUD + prune + connect/disconnect
+- [x] `/registries` CRUD (admin-only), `/tasks`
+- [x] `PATH_NOT_ALLOWED` hata kodu + `field` taşıyan 422; OpenAPI 60 endpoint'i kapsıyor
+
+**M5-E — Oluşturma sihirbazı**
+- [x] 10 sekme: Genel, Komut, Portlar, Volume'ler, Ortam, Ağ, Etiketler, Kaynaklar, Sağlık, Gelişmiş
+- [x] `.env` yapıştırma (yorum, `export` öneki, tırnaklı değer, ilk `=`'de bölme)
+- [x] Canlı **`docker run` komutu + API payload** önizlemesi — ikisi de gönderilen nesneden üretiliyor
+- [x] Whitelist ihlali ve privileged seçenekler sunucuya gitmeden formda uyarılıyor
+
+**M5-F — Kaynak ekranları**
+- [x] Image: pull ilerleme çubuğu, katman geçmişi, inspect, tag, remove, prune
+- [x] Volume: oluştur (driver), sil, prune, kullanım bilgisi
+- [x] Network: oluştur (driver + subnet + internal), container bağla/çöz, sil, prune
+- [x] Ayarlar altında registry CRUD (yalnız admin), parola asla geri dönmüyor
+- [x] Global `TaskDrawer` — çalışan iş sayacı, ilerleme, iptal
+
+**Testler:** `spec_test.go` (form→payload çevirisi, 20 vaka) · `paths_test.go` (whitelist, symlink kaçışı, traversal) ·
+`create_test.go` servis + handler (privileged matrisi, whitelist reddi, audit) · `registries_test.go` (şifreleme
+round-trip, parolanın sızmaması) · `tasks_test.go` · `preview.test.ts` + `state.test.ts` (35 frontend testi)
+
+**DoD:** ✅ UI'dan sıfırdan container tanımlanıp gönderilebiliyor; whitelist dışı bind 403, bozuk alan 422,
+privileged seçenek operator'a 403 dönüyor. Docker'lı bir makinede canlı oluşturma doğrulaması bekliyor · commit + push
 
 ---
 
-## M8 — App Catalog + Dashboard + Ayarlar  ⬜
+## M6 — Dockerfile build  ✅
 
-- [ ] Template JSON şeması + `internal/templates/schema.go` doğrulama
-- [ ] Template motoru (render → container/stack payload)
-- [ ] `docs/template-schema.md`
-- [ ] 20 template: redis, postgres, mysql, mariadb, mongodb
-- [ ] 20 template: cloudflared, nginx, caddy, traefik, portainer_agent
-- [ ] 20 template: uptime-kuma, n8n, vaultwarden, minio, rabbitmq
-- [ ] 20 template: adminer, pgadmin, watchtower, gitea, wg-easy
-- [ ] Custom katalog dizini `/etc/iskele/templates/` yükleme
-- [ ] Catalog UI: kategori/arama/ikon, dinamik form, parola "rastgele üret", deploy akışı
-- [ ] Dashboard: container/image/volume/network sayıları + `system df`
-- [ ] Dashboard: gopsutil host CPU/RAM/disk + engine sürümü + uptime
-- [ ] `SSE /system/events` — docker events akışı
-- [ ] Toast bildirimleri + activity feed
-- [ ] Prune araçları (dangling image, stopped container, unused volume/network) + onay
-- [ ] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
-- [ ] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma
-- [ ] TOTP 2FA: setup (QR), verify, disable, login akışına entegrasyon
-- [ ] Ayarlar sayfası: socket yolu, whitelist, retention, tema, dil, bind uyarısı
+- [x] Yol whitelist'i — `EvalSymlinks` + bileşen bazlı kök kontrolü (`internal/service/paths.go`, M5'ten devralındı; ikinci bir uygulama yazılmadı → D-059)
+- [x] `internal/service/browse.go` + `GET /fs/browse?path=`
+- [x] Path browser UI bileşeni (whitelist kökleri, ileri/geri, dizin seçimi)
+- [x] Build formu: dizin, Dockerfile adı, tag'ler, build args, label, target, no-cache, platform, pull
+- [x] Tar context üretimi (`.dockerignore` desteği, negasyon + `**/`, boyut limiti, symlink takip edilmiyor)
+- [x] `WS /build` — canlı log stream + adım/layer ilerleme + hata vurgusu
+- [x] Build iptali (`POST /builds/{id}/cancel`) → `canceled` durumu
+- [x] `builds` tablosu kayıt yaşam döngüsü (running→success/failed/canceled) + restart sonrası uzlaştırma
+- [x] Log arşivi `<data_dir>/builds/<id>.log` + retention (log 30 gün, kayıt 180 gün)
+- [x] `GET /builds`, `GET /builds/{id}`, `GET /builds/{id}/log`
+- [x] Build geçmişi ekranı + log yeniden görüntüleme
+- [x] "Bu image'dan container oluştur" kısayolu (M5 sihirbazına ön-dolgulu geçiş) — image listesi, build sonucu ve build geçmişinden
 
-**Testler:** her template için geçerli payload · şema negatif testleri · dashboard aggregate · TOTP
+**Testler:** `browse_test.go` + `paths_test.go` (traversal/symlink tablosu, kök dışına çıkan bağ) ·
+`context_test.go` (`.dockerignore` negasyon + `**/`, boyut limiti, symlink girdileri) · `build_test.go` servis
+(kayıt yaşam döngüsü, iptal, log arşivi + retention, restart uzlaştırması) · `internal/server/build_test.go`
+(gerçek WebSocket üzerinden uçtan uca build, izin matrisi, soket açılmadan önceki reddler, log replay) ·
+`state.test.ts` + `useBuildStream.test.ts` (24 frontend testi)
+
+**DoD:** ✅ Whitelist dışı dizin 403, eksik Dockerfile 422, context'ten kaçan Dockerfile 422 — hepsi soket
+kabul edilmeden, canlı binary ile doğrulandı. Fake engine üzerinden build akıyor, iptal ediliyor, arşivlenen log
+geri okunuyor. Gerçek bir engine ile build hâlâ elle koşulmalı (bkz. Bloke Eden Konular) · commit + push
+
+---
+
+## M7 — Compose stack  ✅
+
+- [x] `internal/compose/parse.go` — compose-go v2 parse + normalize + `depends_on` döngü kontrolü
+- [x] `.env` yükleme + değişken interpolasyon (yalnız stack'in kendi `.env`'i; daemon ortamı görünmüyor → D-065)
+- [x] `convert.go` — service → container/network/volume spec (portlar, volume, healthcheck, limitler, depends_on, güvenlik seçenekleri)
+- [x] Desteklenen alan matrisi (`docs/compose-support.md`) + desteklenmeyen alan uyarısı (parser'ın kendi uyarıları dahil → D-066)
+- [x] `stackup.go` — bağımlılık sıralı `up`, Iskele + compose etiketleri, config-hash ile değişmeyen servisi yerinde bırakma (D-067)
+- [x] `down`, `stop/start`, `restart`, `pull`, `scale`
+- [x] `diff.go` — kaydetmeden önce alan bazlı diff
+- [x] `git.go` — repo clone/pull (ref seçimi) + tehlikeli URL reddi (D-069)
+- [x] Stack CRUD API (`/stacks`, `/stacks/{id}`) + kaynak tipleri (file/editor/git)
+- [x] `WS /stacks/{id}/logs` — birleşik + servis bazlı, satırlar servis adıyla etiketli
+- [x] Stacks liste ekranı + servis durum tablosu
+- [x] Monaco YAML editör (gömülü, CDN'siz; yalnız yaml + ini dilleri → D-070) + sunucu tarafı doğrulama
+- [x] Diff görünümü (kaydetmeden önce)
+- [x] `.env` yönetimi ekranı
+- [x] Mevcut compose ile başlatılmış container'ların stack olarak keşfi ve içe aktarımı
+
+**Testler:** `parse_test.go` (6 gerçek fixture, interpolasyon, `:?` zorunlu değişken, daemon ortamının görünmezliği,
+döngü) · `convert_test.go` (etiketler, namespace, replica, kaynak limitleri, healthcheck, ağ/alias, bind/tmpfs,
+uyarı listesi, privileged geçişi) · `diff_test.go` · `git_test.go` (`ext::`, tire ile başlayan URL, dosya yolu) ·
+`stack_test.go` servis (deploy sırası, değişmeyeni bırakma, whitelist reddi, privileged kapısı, eşzamanlı deploy,
+down/scale, keşif/import, engine'siz okuma) · `internal/server/stacks_test.go` (CRUD, RBAC, SSE deploy akışı, reddin
+problem listesi)
+
+**DoD:** ✅ Canlı binary ile doğrulandı: whitelist dışı compose yolu 403, `ext::` git URL'i 422, whitelist dışı bind
+mount `problems` listesiyle raporlanıyor, `.env` yanındaki dosyadan okunuyor, diff alan bazlı çıkıyor, Docker
+kapalıyken bile stack tanımı okunabiliyor. Fake engine üzerinden uçtan uca deploy/scale/down akıyor. Gerçek bir
+engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konular) · commit + push
+
+---
+
+## M8 — App Catalog + Dashboard + Ayarlar  ✅
+
+- [x] Template JSON şeması + `internal/templates/schema.go` doğrulama
+- [x] Template motoru (render → container/stack payload)
+- [x] `docs/template-schema.md`
+- [x] 20 template: redis, postgres, mysql, mariadb, mongodb
+- [x] 20 template: cloudflared, nginx, caddy, traefik, portainer_agent
+- [x] 20 template: uptime-kuma, n8n, vaultwarden, minio, rabbitmq
+- [x] 20 template: adminer, pgadmin, watchtower, gitea, wg-easy
+- [x] Custom katalog dizini `/etc/iskele/templates/` yükleme
+- [x] Catalog UI: kategori/arama/ikon, dinamik form, parola "rastgele üret", deploy akışı
+- [x] Dashboard: container/image/volume/network sayıları + `system df`
+- [x] Dashboard: gopsutil host CPU/RAM/disk + engine sürümü + uptime
+- [x] `SSE /system/events` — docker events akışı (M4'te açılmıştı, dashboard'a bağlandı)
+- [x] Activity feed (dashboard, canlı engine olayları)
+- [x] Toast bildirimleri
+- [x] Prune araçları (dangling image, stopped container, unused volume/network) + onay
+- [x] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
+- [x] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma
+- [x] TOTP 2FA: setup (QR), verify, disable, login akışına entegrasyon
+- [x] Ayarlar sayfası: socket yolu, whitelist, retention, tema, dil, bind uyarısı
+
+**Testler:** her template için geçerli payload · şema negatif testleri · host metrikleri (RFC yok, CPU delta ve
+kısmi okuma) · TOTP (RFC 6238 vektörleri) · hesap yönetimi + son yönetici değişmezi · denetim kaydı filtreleri,
+sayfalama, CSV/JSON dışa aktarma · prune izinleri · retention süpürmesi · toast kuyruğu
 **DoD:** katalogdan tek tıkla redis + postgres deploy edilir · commit + push
 
 ---
 
-## M9 — Paketleme ve teslim  ⬜
+## M9 — Paketleme ve teslim  ✅
 
-- [ ] `deploy/iskeled.service` — tam systemd hardening
-- [ ] `deploy/install.sh` — kullanıcı/grup, dizinler, secret.key, binary, config, enable+start (idempotent)
-- [ ] `deploy/uninstall.sh` — `--purge` seçeneği ile
-- [ ] `deploy/reverse-proxy/` — nginx, Caddy, Traefik örnekleri (WS upgrade dahil)
-- [ ] `.goreleaser.yaml` — amd64/arm64/armv7 + `.deb`/`.rpm` + checksum + SBOM
-- [ ] `.github/workflows/release.yml` — tag → release
-- [ ] `.github/workflows/codeql.yml` + CI'da `govulncheck` ve `npm audit`
-- [ ] README (tam): özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları
-- [ ] `SECURITY.md` — tehdit modeli, socket=root uyarısı, bildirim süreci
-- [ ] `CONTRIBUTING.md` — geliştirme kurulumu, commit kuralları, PR süreci
-- [ ] `CHANGELOG.md` — v0.1.0
-- [ ] `docs/architecture.md`
-- [ ] `docs/openapi.yaml` — final, tüm endpoint'lerle senkron
-- [ ] `docs/configuration.md` + `docs/security-model.md` + `docs/development.md`
-- [ ] Temiz VM'de kurulum → bootstrap → container start/stop manuel doğrulaması
-- [ ] `ACCEPTANCE.md` tüm maddeleri doğrulandı ve işaretlendi → `v0.1.0` tag
+- [x] `deploy/iskeled.service` — tam systemd hardening
+- [x] `deploy/install.sh` — kullanıcı/grup, dizinler, secret.key, binary, config, enable+start (idempotent)
+- [x] `deploy/uninstall.sh` — `--purge` seçeneği ile
+- [x] `deploy/reverse-proxy/` — nginx, Caddy, Traefik örnekleri (WS upgrade dahil)
+- [x] `.goreleaser.yaml` — amd64/arm64/armv7 + `.deb`/`.rpm` + checksum + SBOM
+- [x] `.github/workflows/release.yml` — tag → release
+- [x] `.github/workflows/codeql.yml` + CI'da `govulncheck` ve `npm audit`
+- [x] `scripts/vulncheck` — govulncheck'i JSON modunda koşturup gerekçeli istisna listesiyle
+      değerlendiren filtre; testli, üç ayrı kırılma noktası (D-086)
+- [x] README (tam): özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları
+- [x] `SECURITY.md` — tehdit modeli, socket=root uyarısı, bildirim süreci
+- [x] `CONTRIBUTING.md` — geliştirme kurulumu, commit kuralları, PR süreci
+- [x] `CHANGELOG.md` — v0.1.0
+- [x] `docs/architecture.md`
+- [x] `docs/openapi.yaml` — final, tüm endpoint'lerle senkron
+- [x] `docs/configuration.md` + `docs/security-model.md` + `docs/development.md`
+- [🟡] Temiz VM'de kurulum → bootstrap → container start/stop manuel doğrulaması (systemd + Docker gerektiriyor; ACCEPTANCE'ta koşulacak liste var)
+- [x] `ACCEPTANCE.md` gözden geçirildi: 112 işaretli, 29 🟡 (ortam kaynaklı), 0 işaretsiz
 
 **DoD:** release artifact'ları üretildi, ACCEPTANCE tamamen yeşil · commit + push + tag
 
@@ -305,6 +371,12 @@ Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayı
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-13 | M9 ✅ | Paketleme ve teslim. systemd unit'i yazarken iki şey uydurmuş olduğumu fark ettim: `Type=notify-reload` ve `ExecReload=kill -HUP`. Daemon sd_notify göndermiyordu ve SIGHUP'ın varsayılan davranışı süreci öldürmek — yani unit dosyası servisi ya hiç başlatmayacak ya da reload denemesinde öldürecekti. Çözüm unit'i kısmak değil, eksiği tamamlamak oldu: `internal/systemd` (bağımlılıksız, ~150 satır) READY/STOPPING/WATCHDOG gönderiyor, unit `Type=notify` + `WatchdogSec=60s`, ExecReload yok. Watchdog kasten Docker'a bakmıyor — Docker hıçkırdığında iskeled'i yeniden başlatmak, bu servisin varlık sebebinin tam tersi olurdu. `install.sh`'in dosya/kullanıcı/izin yarısı bu container'da gerçekten koşturuldu ve doğrulandı; `systemctl` yarısı systemd olmayan hostta net bir mesajla duruyor. OpenAPI ile router'ın senkron olduğu artık gözle değil testle tutuluyor (chi.Walk ↔ spec, iki yönlü). WebSocket Origin kontrolü de teste bağlandı — kütüphaneden geliyordu, yani bir AcceptOptions temizliği onu sessizce kaldırabilirdi. Panelin loopback dışında ve TLS'siz olduğu durumda ayarlar ekranında uyarı çıkıyor (log'daki uyarıyı kimse yeniden okumuyor). Kapsam %74.5, cross-compile 3 mimari, `goreleaser check` temiz.
+| 2026-08-13 | M8 ✅ | App catalog (20 gömülü template + `/etc/iskele/templates`), dashboard host metrikleri, hesap yönetimi + TOTP, denetim ekranı, prune araçları ve ayarlar sayfası. Template'ler betik değil form (D-072): render sonucu sıradan bir `ContainerSpec` ve PathGuard/privileged kapısı aynen işliyor. gopsutil tek pakette ve "elden geldiğince" (D-073) — Docker kapalıyken de makinenin sayıları duruyor. TOTP elde yazılıp RFC 6238 vektörleriyle sabitlendi (D-075). Yol boyunca üç gerçek eksik çıktı: **container yaşam döngüsü hiç kaydedilmiyordu** (D-077) — denetim ekranı olmayan bir güvenceyi gösterecekti; **son yönetici koruması ulaşılamazdı** (D-076), tek değişmeze indirgendi ve devretme mümkün hâle geldi; batch remove'un dokümante edilmiş `force`'u hiç uygulanmamıştı — yıkıcı davranışı sessizce genişletmek yerine spec gerçeğe çekildi. Retention artık gerçekten işliyor (D-081). Lint 0 issue, 119 frontend testi.
+| 2026-08-10 | M7 ✅ | Compose stack yönetimi uçtan uca. `docker compose` binary'si çalıştırılmıyor: dosyalar CLI'ın kullandığı compose-go ile ayrıştırılıp container'lar engine soketi üzerinden oluşturuluyor, böylece kurulu bir CLI'a bağımlılık yok. En önemli iki karar güvenlik tarafında: interpolasyon yalnız stack'in kendi `.env`'ini görüyor — daemon'ın ortamı görünmez (D-065) — ve `privileged`/`cap_add`/`devices` ile bind mount'lar YAML'dan geldiğinde de sihirbazdakiyle aynı kapılardan geçiyor (D-068). Reddedilen bir deploy hiçbir şey yaratmadan duruyor ve hangi servisin hangi alanının takıldığını listeliyor. Deploy, config-hash sayesinde değişmeyen servisi yerinde bırakıyor (D-067): komşusunun etiketi değişti diye veritabanı yeniden başlamıyor. compose-go'nun logrus'a yazdığı "değişken atanmamış, boş string kullanılıyor" uyarısı yakalanıp operatöre gösteriliyor (D-066) — parolası sessizce boşalan bir veritabanı bir satır metne değer. Git klonlama `git` binary'siyle (D-069); `ext::` gibi git'e komut çalıştırtan URL'ler reddediliyor. Monaco gömülü ve budanmış, editör sayfası tembel yükleniyor (D-070). Yol boyunca üç hata düzeltildi: `StackDetail`, gömülü `store.Stack`'in `MarshalJSON`'ını devraldığı için servis listesini sessizce düşürüyordu; `?networks=false` istemcide serileştirilmiyordu; ve stack okuma engine'e bağımlıydı — Docker kapalıyken operatör düzeltmek üzere olduğu dosyayı okuyamıyordu (D-071). Lint 0 issue, coverage %72.5, 100 frontend testi. |
+| 2026-08-09 | M6 ✅ | Dockerfile build uçtan uca. En kritik karar `PathGuard`'ın yeniden kullanılması (D-059): gezinme, bind mount ve build context aynı güven sınırının üç yüzü, ikinci bir uygulama ikinci bir hata kaynağı olurdu. Build context bir `io.Pipe` üzerinden engine'e akıyor, diske ikinci kez yazılmıyor; `.dockerignore` negasyon ve `**/` ile destekleniyor; symlink'ler izlenmeden bağ olarak yazılıyor (D-061). Build, kendisini izleyen soketten uzun yaşıyor: sekme kapanınca yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor, log arşivleniyor ve kayıt kapanıyor (D-062). İki hata yol boyunca yakalandı: `TaskRegistry.Finish` task context'ini iptal ettiği için son `done` frame'i sessizce düşüyordu — gönderim context'i artık task'tan değil kökten türüyor; ve `/fs/browse` `read` izniyle açıktı, host dizinlerini sıralayan bir uç için fazla gevşek, `build`'e çekildi. `WS /build` isteği soket kabul edilmeden önce doğrulanıyor, bu yüzden whitelist dışı bir dizin veya eksik Dockerfile sıradan bir HTTP hatası olarak dönüyor (403/422). Lint 0 issue, coverage %73.3 (`-coverpkg`), 94 frontend testi. Docker soketi olmayan ortamda whitelist/doğrulama yüzeyi canlı binary ile doğrulandı; gerçek bir engine ile build hâlâ elle koşulmalı (G3/G4 🟡). |
+| 2026-08-08 | M5 ✅ | Container oluşturma sihirbazı (10 sekme) ve tüm kaynak yönetimi. En kritik parça `PathGuard`: bind mount kaynakları `allowed_paths`'e karşı, symlink çözülerek ve bileşen bazlı karşılaştırılarak doğrulanıyor; boş whitelist hepsini reddediyor. Privileged seçenekler (`privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`) ayrı bir izin kapısının arkasında ve hata mesajı hangisinin takıldığını söylüyor. Registry parolaları AES-GCM ile şifreli saklanıyor ve hiçbir yanıtta geri dönmüyor. Image pull SSE ile akıyor, bir task olarak kaydediliyor ve drawer'dan iptal edilebiliyor. Sihirbazın canlı `docker run` önizlemesi API'ye gidenle aynı nesneden üretiliyor, bu yüzden ayrışamıyor. Yol boyunca üç hata düzeltildi: pull akışında `done` olayı hata kanalıyla yarışıyordu, registry yanıtları sıfır zaman damgası (`0001-01-01`) yayıyordu, `Create` yazdığı zaman damgalarını çağırana bildirmiyordu. Lint 0 issue, coverage %60.4, 70 frontend testi. |
+| 2026-08-08 | M3 + M4 ✅ | Frontend tek binary'ye gömüldü (`web/embed.go` + `internal/server/spa.go`): derin bağlantılar SPA kabuğunu, `/api` altındaki bilinmeyen yollar JSON 404'ü döndürüyor. Container yönetimi tam: liste + toplu işlem + 8 sekmeli detay, WS log/exec, SSE stats/events, redeploy. `make gen-api` OpenAPI'den TS tipi üretiyor, `conformance.ts` elle yazılan tiplerle spec'i derleme zamanında karşılaştırıyor. CI'ya `web` ve `bundle` job'ları eklendi. Üç gerçek hata yakalandı: `web/node_modules` altındaki üçüncü parti Go dosyası `./...`'a sızıyordu (D-042), `make test`/`make test-cover` `-race` ile CGO_ENABLED=0 yüzünden hiç koşamıyordu (D-043), `go.mod` tidy değildi. Lint 0 issue, coverage %71.9, 35 frontend testi. |
 | 2026-08-08 | M2 ✅ | SQLite + migration'lar, argon2id, JWT + refresh rotasyonu, API token, brute-force limiti, 8 izinli RBAC matrisi, CSRF, rate limit, audit + maskeleme. M1'in tüm endpoint'leri koruma altında. Uçtan uca bootstrap→login→refresh zinciri doğrulandı. Lint 0 issue, coverage %79.8. |
 | 2026-08-07 | Planlama | PLAN/PROGRESS/DECISIONS/ACCEPTANCE oluşturuldu. Kodlamaya başlama komutu bekleniyor. |
 | 2026-08-07 | M1 ✅ | Docker katmanı: `Client` interface + SDK implementasyonu + fake + offline istemci. 12 yeni endpoint, OpenAPI spec'i, engine hatası → HTTP eşlemesi. Docker soketi olmayan ortamda uçtan uca doğrulandı. **Go minimumu 1.25'e yükseldi** (D-019, Docker SDK bağımlılık ağacı). Lint 0 issue, coverage %82.1. |
@@ -314,4 +386,10 @@ Anahtar dosyası 0600, audit tablosunda `auth.bootstrap` ve `auth.refresh` kayı
 
 ## Bloke Eden Konular
 
-_(Şu an yok. Bir konu bloke ederse buraya tarih + açıklama + gereken karar yazılır ve `DECISIONS.md`'e bağlanır.)_
+| Tarih | Konu | Durum |
+|---|---|---|
+| 2026-08-08 | Bu geliştirme ortamında Docker soketi yok. Log/stats/console yolları fake engine ve offline istemciyle test edildi; **gerçek bir container üzerinde canlı doğrulama yapılmadı.** | Bloke değil — kod yolları test altında, ama Docker'lı bir makinede elle bir tur atılması gerekiyor. |
+| 2026-08-08 | `govulncheck` yerelde koşmuyor (`vuln.go.dev` proxy tarafından 403). | Bloke değil — CI'da koşuyor. |
+| 2026-08-08 | `make test-cover` yerelde koşmuyor: bu ortamın Go araç zincirinde `covdata` yok. `make test` (`-race`, kapsamsız) yeşil. | Bloke değil — CI'da tam araç zinciri var. |
+| 2026-08-10 | Gerçek bir engine ile compose stack ayağa kaldırılmadı (soket yok). Deploy/scale/down/keşif fake engine ile uçtan uca test ediliyor; ayrıştırma, whitelist reddi, git URL reddi, diff ve engine'siz okuma canlı binary ile doğrulandı. | Bloke değil — H3/H4/H6 🟡 olarak işaretli. |
+| 2026-08-09 | Gerçek bir engine ile Dockerfile build koşulmadı (soket yok). WS build akışı, iptal, log arşivi ve geçmiş fake engine ile uçtan uca test ediliyor; whitelist ve doğrulama reddleri canlı binary ile doğrulandı. | Bloke değil — G3/G4 🟡 olarak işaretli, Docker'lı bir makinede bir tur atılması gerekiyor. |

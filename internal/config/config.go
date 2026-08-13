@@ -41,6 +41,10 @@ type Config struct {
 	// AllowedPaths restricts which host directories may be used for bind
 	// mounts and build contexts. Everything outside is rejected.
 	AllowedPaths []string `yaml:"allowed_paths"`
+	// TemplateDir is where an operator's own catalog entries live. Twenty
+	// templates ship inside the binary; these are read alongside them, and one
+	// whose id matches a shipped entry replaces it.
+	TemplateDir string `yaml:"template_dir"`
 	// LogLevel is one of debug, info, warn, error.
 	LogLevel string `yaml:"log_level"`
 	// LogFormat is one of auto, text, json. "auto" picks text on a TTY.
@@ -73,6 +77,7 @@ func Default() Config {
 		DockerHost:    "unix:///var/run/docker.sock",
 		DataDir:       "/var/lib/iskele",
 		SecretKeyFile: "/etc/iskele/secret.key",
+		TemplateDir:   "/etc/iskele/templates",
 		AllowedPaths:  []string{"/opt/stacks", "/srv"},
 		LogLevel:      "info",
 		LogFormat:     "auto",
@@ -349,6 +354,10 @@ func (c *Config) DBPath() string { return filepath.Join(c.DataDir, "iskele.db") 
 
 // BuildLogDir is where build logs are archived.
 func (c *Config) BuildLogDir() string { return filepath.Join(c.DataDir, "builds") }
+
+// StackDir is where each stack's working copy lives: a git clone, or the
+// directory relative paths in an editor-written compose file resolve against.
+func (c *Config) StackDir() string { return filepath.Join(c.DataDir, "stacks") }
 
 // PubliclyBound reports whether the listener is reachable from outside the
 // host, which warrants a TLS / reverse-proxy warning.

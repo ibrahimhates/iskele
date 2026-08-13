@@ -1,0 +1,13 @@
+# The smallest useful stack: one service, one port, one volume.
+services:
+  cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - cache:/data
+    restart: always
+
+volumes:
+  cache:

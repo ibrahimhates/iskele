@@ -310,6 +310,533 @@ geçmesi diğerini vermez.
 
 ---
 
+## M3 + M4 Sırasında Alınan Kararlar
+
+### D-039 — shadcn/ui yerine kendi bileşenleri
+**Durum:** Kabul · **Faz:** M3
+**Karar:** PLAN'da shadcn/ui yazıyordu; onun yerine Tailwind üstünde ~10 küçük bileşen elle yazıldı
+(`Spinner`, `EmptyState`, `ErrorPanel`, `ConfirmDialog`, `PageHeader`, `StatCard`, `StateBadge`, `JsonViewer`).
+**Gerekçe:** shadcn bir kütüphane değil, bir kopyala-yapıştır jeneratörüdür: Radix + CVA + tailwind-merge
+bağımlılıklarını ve onlarca dosyayı projeye kalıcı olarak sokar. İhtiyacımız olan yüzey bunun onda biri.
+Tema, CSS özel değişkenleriyle (`--bg`, `--fg`, `--accent`…) tanımlanıyor; koyu/açık tek sınıf değişimiyle geçiyor.
+**Sonuç:** Frontend bağımlılık ağacı küçük kaldı, `vendor` chunk'ı 54 kB gz.
+
+### D-040 — Elle yazılan TS tipleri + üretilen şema, derleme zamanında karşılaştırılıyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** `src/api/types.ts` elle yazılıyor (uygulamanın okuduğu tipler), `src/api/schema.d.ts`
+`make gen-api` ile OpenAPI'den üretiliyor, `src/api/conformance.ts` ise ikisi arasındaki uyumu
+tip düzeyinde iddia ediyor. CI ayrıca `gen:api` çıktısının commit'lenmiş dosyayla aynı olmasını şart koşuyor.
+**Gerekçe:** Üretilen tipler doğrudan kullanılırsa arayüz kodu jeneratörün şekline (`components['schemas'][...]`)
+bağlanır ve okunmaz hale gelir; sadece elle yazılırsa spec ile sessizce ayrışır. Bu kurulum ikisini de engelliyor:
+ayrışma `npm run build`'i kırıyor.
+**Sonuç:** İlk çalıştırmada iki gerçek hata çıktı — OpenAPI'de yinelenen `"409"` anahtarları (YAML'i geçersiz kılıyordu)
+ve `health` alanının spec'te enum, TS'te `string` olması.
+
+### D-041 — Yapılmamış bölümler için menü öğesi ve "yakında" sayfası yok
+**Durum:** Kabul · **Faz:** M3
+**Karar:** Stacks/Catalog/Builds/Audit menü öğeleri ve `ComingSoonPage` bileşeni kaldırıldı.
+Bu bölümler kendi milestone'larında (M6–M8) menüye geri eklenecek.
+**Gerekçe:** PROMPT §0: "işlevsiz UI butonu yok." Hiçbir şey yapmayan bir menü öğesi, ne kadar dürüstçe
+"M7'de gelecek" dese de, tıklanabilir ve hiçbir şey yapmıyor.
+**Sonuç:** Sidebar 6 öğe; hepsi çalışıyor.
+
+### D-042 — Go paket listesi `web/node_modules`'ü dışlıyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** Makefile `PKGS = go list ./... | grep -v /node_modules/` tanımlıyor; `test`, `test-cover`,
+`vet` ve `vuln` hedefleri joker yerine bu listeyi alıyor. `.golangci.yml` de aynı yolu dışlıyor.
+**Gerekçe:** npm paketleri bazen kendi Go kaynaklarını taşıyor — `flatted` bunu yapıyor ve
+`web/node_modules/flatted/golang/pkg/flatted` `./...`'a giriyordu. Frontend'in bir bağımlılığının
+bizim derlememize, vet çıktımıza ve kapsam sayımıza karışması kabul edilemez.
+**Sonuç:** `go list` çıktısı 15 paket + `web`; üçüncü parti kaynak yok.
+
+### D-043 — Testler cgo ile, ürün binary'si cgo'suz derleniyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** Makefile ikiye ayrıldı: `GO := CGO_ENABLED=0 go` (derleme, cross-compile) ve
+`GOTEST := CGO_ENABLED=1 go` (yalnız test hedefleri). CI'daki global `CGO_ENABLED=0` ortam değişkeni
+kaldırıldı, cross-compile adımına taşındı.
+**Gerekçe:** Yarış dedektörü C ile yazılmıştır; `CGO_ENABLED=0 go test -race` doğrudan
+"`-race` requires cgo" ile ölüyordu. Yani `make test` ve `make test-cover` **hiç koşmuyordu** —
+yeşil sanılan bir hedefti. Ürün binary'si statik kalmak zorunda olduğu için ayrım şart.
+**Sonuç:** `make test` 15 paketi `-race` ile koşuyor; `make build` hâlâ CGO'suz statik binary üretiyor.
+
+### D-044 — SPA fallback yalnız `/api` dışındaki yollara, varlıklara değil
+**Durum:** Kabul · **Faz:** M3
+**Karar:** `internal/server/spa.go`: `/api` ile başlayan yollar JSON 404 alır; diğerleri için dosya varsa
+dosya, yoksa `index.html` döner. **İstisna:** `/assets/` altında bulunamayan bir dosya 404 alır,
+`index.html` almaz. Hash'li varlıklar `immutable` bir yıl, `index.html` `no-cache`.
+**Gerekçe:** Eski bir kabuk artık var olmayan bir bundle'ı isterse, ona HTML dönmek tarayıcıda
+"JavaScript'te sözdizimi hatası" olarak görünür ve hatayı tamamen yanlış yere işaret eder.
+`index.html` hash'li dosya adlarını taşıdığı için kendisi asla cache'lenemez.
+**Sonuç:** Binary tek başına UI'ı sunuyor; `curl /containers/abc` kabuğu, `curl /api/v1/nope` JSON'u döndürüyor.
+
+### D-045 — Frontend'siz `go build` çalışmaya devam ediyor
+**Durum:** Kabul · **Faz:** M3
+**Karar:** `web/dist/.gitkeep` commit'leniyor ve `//go:embed all:dist` boş bir ağacı da kabul ediyor.
+`web.Bundled()` `index.html`'in varlığına bakıyor; yoksa sunucu, API'nin çalıştığını ve `make build`
+gerektiğini söyleyen bir sayfa döndürüyor.
+**Gerekçe:** `go build ./cmd/iskeled`, Node kurulu olmayan bir makinede de çalışmalı; aksi halde
+backend üzerinde çalışan biri frontend araç zincirini kurmak zorunda kalır. Alternatif — embed'i
+build tag'i arkasına almak — iki farklı derleme yolu demekti.
+**Sonuç:** CI'nın `go` job'ı Node'suz `make build-go` koşuyor, `bundle` job'ı ikisini birden.
+
+### D-046 — Ticket, izin kontrolü başarısız olsa bile tüketilir
+**Durum:** Kabul · **Faz:** M4
+**Karar:** `redeemTicket` önce ticket'ı siler, sonra izni kontrol eder.
+**Gerekçe:** Ticket tanımı gereği tek kullanımlıktır. Reddedilen bir ticket'ı hayatta bırakmak,
+onu başka bir endpoint'e karşı tekrar denemeye izin verir.
+**Sonuç:** Yanlış izinle gelen bir istek 403 alır ve ticket'ı da kaybeder.
+
+### D-047 — Redeploy: silmeden önce park et, hata olursa geri al
+**Durum:** Kabul · **Faz:** M4
+**Karar:** Eski container `_old_<ts>` adına yeniden adlandırılır, yenisi oluşturulup başlatılır,
+ancak o zaman eskisi silinir. Herhangi bir adımda hata olursa eski container kendi adına döndürülüp
+başlatılır ve sonuç `rolled_back: true` ile raporlanır.
+**Gerekçe:** Önce silip sonra oluşturmak, oluşturma başarısız olduğunda operatörü container'sız bırakır.
+**Sonuç:** Atomik değil (ikisinin de servis vermediği bir pencere var) ve bu OpenAPI'de açıkça yazıyor.
+Yalnızca engine'in inspect çıktısında ifade edilebilen ayarlar taşınır.
+
+### D-048 — Liste görünümündeki CPU/RAM tek bir çoğullanmış akıştan geliyor
+**Durum:** Kabul · **Faz:** M4
+**Karar:** `GET /containers/stats` (SSE) çalışan tüm container'ları tek bağlantıda yayınlıyor;
+her örnek ait olduğu container'ın ID'siyle etiketleniyor. Sunucu tarafında `statsMux` her container
+için bir engine akışı tutuyor ve 10 saniyede bir listeyi yeniden tarayarak yeni başlayanları ekliyor,
+duranları düşürüyor.
+**Gerekçe:** Satır başına bir SSE bağlantısı, tarayıcının origin başına ~6 bağlantı sınırına
+altıncı container'da toslar. Engine olaylarını dinlemek yerine periyodik tarama seçildi: tarama
+tek ucuz bir çağrı, kaçan bir olay ise satırı kalıcı olarak boş bırakır.
+**Sonuç:** Liste 500 container'da da tek bağlantı kullanıyor. Bir container'ın akışı hata verirse
+yalnızca o satır boş kalıyor; akışın tamamı yalnızca daemon erişilemezse kapanıyor.
+
+### D-049 — Restart sayısı listede değil, yalnızca detayda
+**Durum:** Kabul (kapsam daraltma) · **Faz:** M4
+**Karar:** ACCEPTANCE D1 listede "restart sayısı" istiyor; gösterilmiyor. Detay sayfasının
+Overview sekmesinde var.
+**Gerekçe:** Engine'in liste API'si (`docker ps` eşleniği) `RestartCount` döndürmüyor; yalnızca
+`inspect` döndürüyor. Listede göstermek, her sayfa yüklemesinde container sayısı kadar `inspect`
+çağrısı demek — 500 container'lı bir hostta 500 çağrı. Her zaman `—` yazan bir sütun ise
+hiç olmamasından kötü.
+**Sonuç:** ACCEPTANCE D1 bu gerekçeyle kısmi (🟡) işaretlendi; M8'de dashboard'a "en çok yeniden
+başlayan container'lar" olarak, tek seferlik ve isteğe bağlı bir sorguyla gelebilir.
+
+---
+
+## M5 Sırasında Alınan Kararlar
+
+### D-050 — İki ayrı container tanımı: `CreateSpec` (motor) ve `ContainerSpec` (operatör)
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `docker.CreateSpec` SDK yapılarını taşımaya devam ediyor (redeploy bir container'ı byte byte
+yeniden üretebilsin diye). Sihirbazın gönderdiği ise `docker.ContainerSpec`: düz, JSON dostu, operatörün
+tanıdığı terimlerle. Çeviri `BuildCreateSpec` içinde, yani `internal/docker` sınırının içinde.
+**Gerekçe:** Servis katmanı doğrulamayı (whitelist, privileged) SDK tiplerine bakarak yapamaz — o zaman
+SDK dışarı sızardı. Tek bir tip kullanmak ise ya redeploy'u bozar ya da formu SDK'nın şekline bağlardı.
+**Sonuç:** SDK hâlâ tek pakette. `BuildCreateSpec` alan alan doğruluyor, bu yüzden bozuk bir port
+"400 Bad Request" yerine "ports: container port 70000 is outside 1-65535" olarak dönüyor.
+
+### D-051 — Bind mount doğrulaması: symlink çöz, bileşen karşılaştır, boşsa reddet
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `PathGuard.Check` yolu temizliyor, `EvalSymlinks` ile çözüyor, sonra `filepath.Rel` ile
+bileşen bazlı karşılaştırıyor. Henüz var olmayan bir yol (engine oluşturacaksa) kabul ediliyor.
+`allowed_paths` boşsa **her** bind mount reddediliyor.
+**Gerekçe:** Bind mount, container'dan host root'una en kısa yol. Üç saldırı da gerçek: `..` ile çıkış
+(Clean çözer), `/srv-other` gibi önek çakışması (string karşılaştırma yakalamaz), ve izinli kök içine
+konmuş bir symlink (yalnız çözerek yakalanır). Boş liste "her şey serbest" demek olsaydı, bir
+yapılandırma hatası hostu verirdi.
+**Sonuç:** `paths_test.go` üç saldırıyı da pinliyor. Named volume ve tmpfs host yoluna dokunmadığı için
+kontrol dışında — aksi halde sihirbaz kullanılamaz olurdu.
+
+### D-052 — Privileged seçenekler tek bir kapı arkasında, hata hangisini söylüyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `privileged`, `cap_add`, `devices`, `security_opt`, `sysctls` ve `network=host`
+`privileged` iznini gerektiriyor. `cap_drop` gerektirmiyor. Reddedilen istek 403 ile birlikte
+`details.options` içinde takılan seçeneklerin tamamını döndürüyor.
+**Gerekçe:** Her biri bir yapılandırmada container'dan host root'una çıkış yolu. `cap_drop` ise tam
+tersi — container'ı daraltıyor, kapıya koymak yalnızca güvenli yapılandırmayı zorlaştırırdı.
+Hangi seçeneğin takıldığını söylememek operatörü tek tek denemeye zorlar.
+**Sonuç:** Sihirbaz aynı listeyi istemci tarafında da hesaplıyor, böylece uyarı gönderim öncesi çıkıyor;
+otorite yine sunucuda.
+
+### D-053 — Registry parolaları şifreli saklanıyor, hiçbir yanıtta dönmüyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** Parola `SecretBox` (AES-256-GCM, master anahtardan türetilmiş) ile şifrelenip saklanıyor.
+`store.Registry.Password` `json:"-"` etiketli; API yalnız `has_password` söylüyor. Güncellemede boş
+parola "saklı olanı koru" anlamına geliyor. Audit kaydına parola hiç yazılmıyor.
+**Gerekçe:** Anahtar dosyası olmadan sızan bir veritabanı özel registry'ye erişim vermemeli.
+UI parolayı hiç görmediği için geri gönderemez; boş alanı "sil" saymak her düzenlemede kimliği silerdi.
+**Sonuç:** İki test bunu pinliyor: biri API yanıtlarının parolayı taşımadığını, diğeri veritabanı
+satırının düz metin içermediğini doğruluyor.
+
+### D-054 — Görevler bellekte, veritabanında değil
+**Durum:** Kabul · **Faz:** M5
+**Karar:** `TaskRegistry` bellek içi. Biten görevler 10 dakika, en fazla 200 görev saklanıyor.
+**Gerekçe:** Bir görev, onu çalıştıran daemon yaşadığı sürece anlamlı. iskeled yeniden başladığında
+her pull zaten iptal oluyor; kalıcı kayıt yalnızca asla bitemeyecek satırlar üretirdi.
+**Sonuç:** M6'da build'ler aynı kayda girecek. Kalıcı bir geçmiş gerekirse audit log zaten var.
+
+### D-055 — Pull ilerlemesi sunucuda toplanıyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** Engine katman katman rapor veriyor ve hiçbir zaman toplam vermiyor. Sunucu her katmanın son
+figürünü tutup topluyor ve tek bir yüzde yayınlıyor; hiçbir katman boyut bildirmemişken `-1`.
+**Gerekçe:** Tek bir ilerleme çubuğu ancak böyle var olabilir. Boyut bildirmeyen katmanı sıfır saymak
+çubuğu geri götürürdü; toplamak yerine biriktirmek ilk katmanda 100'ü aşardı.
+**Sonuç:** `pullprogress_test.go` bu üç durumu da pinliyor.
+
+### D-056 — Pull akışı `done` demeden önce iki kanalı da boşaltıyor
+**Durum:** Kabul (hata düzeltmesi) · **Faz:** M5
+**Karar:** SSE döngüsü `events` kapandığında hemen başarı ilan etmiyor; `events` ve `errs` **ikisi de**
+kapanana kadar sürüyor.
+**Gerekçe:** Engine başarısız bir pull'u 200 yanıtın *içinde* raporluyor, yani hata son ilerleme
+satırıyla aynı anda geliyor. `select` kapanan `events`'i önce seçtiğinde başarısız bir pull "done"
+olarak bildiriliyordu. Test yazılırken yakalandı.
+**Sonuç:** Katman düzeyindeki hata olayı da ayrıca kontrol ediliyor, böylece hata iki yoldan da yakalanıyor.
+
+### D-057 — Sıfır zaman damgası yayınlanmıyor
+**Durum:** Kabul (hata düzeltmesi) · **Faz:** M5
+**Karar:** `store.Registry` kendi `MarshalJSON`'ını uyguluyor ve hiç kullanılmamış `last_used_at`
+alanını çıkarıyor. `Create` ve `Update` yazdıkları zaman damgalarını çağıranın kopyasına basıyor.
+**Gerekçe:** `omitempty` bir struct'a uygulanmıyor, bu yüzden sıfır `time.Time` `"0001-01-01T00:00:00Z"`
+olarak gidiyordu — arayüz bunu "2000 yıl önce" diye gösterir. `Create` değer alıyordu, dolayısıyla
+oluşturma yanıtı da sıfır zaman taşıyordu. İkisi de uçtan uca doğrulamada görüldü.
+**Sonuç:** `APIToken.LastUsedAt` aynı desende ama bugün hiçbir yanıtta görünmüyor; M8'de token listesi
+gelince aynı düzeltme oraya da gerekecek.
+
+### D-058 — Wizard önizlemesi gönderilen nesneden üretiliyor
+**Durum:** Kabul · **Faz:** M5
+**Karar:** Hem `docker run` komutu hem API payload'ı, POST edilen `ContainerSpec`'ten render ediliyor.
+Komut, kabuğun dokunacağı argümanları POSIX tek tırnak (`'\''` kaçışıyla) ile alıntılıyor.
+**Gerekçe:** Önizleme ayrı bir açıklama olsaydı formdan sapabilir ve operatöre yalan söyleyebilirdi.
+Aynı nesneden üretilince sapması imkânsız. Alıntılama doğru olmazsa terminale yapıştırılan komut
+gösterilenden başka bir container yaratır.
+**Sonuç:** `preview.test.ts` 14 vaka ile pinliyor; boşluk, kesme işareti ve `?` içeren değerler dahil.
+
+---
+
+## M6 Sırasında Alınan Kararlar
+
+### D-059 — Ayrı bir `internal/paths` paketi yazılmadı
+**Durum:** Kabul · **Faz:** M6
+**Bağlam:** PROGRESS M6 için `internal/paths/whitelist.go` öngörüyordu; ama M5'te bind mount kaynakları
+için yazılan `service.PathGuard` zaten `EvalSymlinks` + bileşen bazlı kök karşılaştırması yapıyor.
+**Karar:** Gezinme, bind mount ve build context aynı `PathGuard`'ı kullanıyor.
+**Gerekçe:** Üçü de tek bir güven sınırının farklı yüzleri. İkinci bir uygulama, yanlış yazılabilecek
+ikinci bir yer demekti; bir güvenlik kontrolünün iki kopyası er ya da geç ayrışır.
+**Sonuç:** `internal/service/paths.go` tek doğruluk kaynağı. Traversal/symlink tablo testleri hem
+mount hem browse tarafını kapsıyor.
+
+### D-060 — Build context boru üzerinden akıyor, diske ikinci kez yazılmıyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** `WriteBuildContext` tar'ı bir `io.Pipe`'a yazıyor, engine de aynı borudan okuyor.
+**Gerekçe:** Önce geçici bir tar dosyası üretmek, birkaç gigabaytlık bir ağacı diskte iki kere
+tutmak demekti; `/var/lib` dolduğunda build değil daemon ölür.
+**Sonuç:** Boyut limiti (`DefaultMaxContextBytes`, 512 MiB) akış sırasında uygulanıyor; aşıldığında
+boru hata ile kapanıyor ve engine kısmi bir tar görmek yerine hatayı alıyor.
+
+### D-061 — Symlink'ler context'e bağ olarak giriyor, izlenmiyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** Tar'a symlink girdisi olarak yazılıyor; hedefi okunmuyor.
+**Gerekçe:** İzlemek, whitelist dışındaki bir dosyanın (`/etc/shadow`) context'e kopyalanması demekti.
+Docker CLI de aynısını yapıyor, dolayısıyla davranış operatörün beklediğiyle aynı.
+**Sonuç:** Kök dışına işaret eden bir bağ, image içinde kırık bir bağ olur — sızıntı değil.
+
+### D-062 — Build, kendisini izleyen soketten uzun yaşıyor
+**Durum:** Kabul · **Faz:** M6
+**Bağlam:** Sekmeyi kapatmak, "bu build'i durdur" demek değil.
+**Karar:** Build `context.WithoutCancel(r.Context())` üzerine kurulu bir task'ta çalışıyor; soket
+koptuğunda yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor.
+**Gerekçe:** Yarıda kesilen bir build ne image üretir ne de log arşivler; kayıt "running"de asılı kalır.
+**Sonuç:** İptal yalnız `POST /builds/{id}/cancel` ile oluyor. Task, build'in kendi id'siyle
+kaydediliyor (`TaskRegistry.StartWithID`), bu yüzden ikinci bir tanımlayıcı taşımaya gerek yok.
+2 saatlik zaman aşımı, yavaş değil takılmış bir build'i sınırlıyor.
+
+### D-063 — Restart'ta "running" kalan build'ler uzlaştırılıyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** `Builder.ReconcileRunning` açılışta bu satırları "canceled" olarak kapatıyor.
+**Gerekçe:** Build, onu başlatan daemon'a bağlı; süreç ölünce engine isteği de ölüyor. Kayıt kendi
+başına asla bitemez, sonsuza dek "running" görünür.
+**Sonuç:** Açıklama mesajı ne olduğunu söylüyor: "iskeled restarted while this build was running".
+
+### D-064 — Log dosyası 30, kayıt 180 gün duruyor
+**Durum:** Kabul · **Faz:** M6
+**Karar:** `PruneLogs` yalnız dosyayı siliyor ve `log_archived`'ı düşürüyor; satırı `DeleteOlderThan`
+çok daha sonra siliyor.
+**Gerekçe:** "Bu build ne zaman oldu, ne üretti" bilgisi ucuz; megabaytlarca çıktı değil.
+**Sonuç:** UI, `log_archived` false ise "çıktıyı göster" düğmesini hiç göstermiyor; endpoint yine de
+410 döndürüyor.
+
+---
+
+## M7 Sırasında Alınan Kararlar
+
+### D-065 — Interpolasyon yalnız stack'in kendi `.env`'ini görüyor
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** `docker compose` CLI'ı `${VAR}` için kabuğun ortamını da okur. iskeled'in ortamı ise kabuk değil:
+secret key yolu, veritabanı yolu ve unit dosyasının verdiği ne varsa orada.
+**Karar:** Interpolasyon kaynağı yalnız stack'in `.env` içeriği. Servis `environment:` bloğundaki değersiz
+girdiler (`- FROM_HOST`) de düşürülüyor — onlar da "çağıranın ortamından kopyala" demek.
+**Gerekçe:** Aksi hâlde "bu stack'i ayağa kaldır", "bana daemon'ın ortamını yazdır"a dönüşürdü.
+**Sonuç:** `${VAR:-default}` çalışıyor, `${VAR:?mesaj}` deploy'u reddediyor, `${VAR}` boş kalırsa **uyarı**
+üretiliyor. Davranış `docs/compose-support.md`'de açıkça yazılı.
+
+### D-066 — Parser'ın kendi uyarıları yakalanıyor, stderr'e sızmıyor
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** compose-go, "değişken atanmamış, boş string kullanılıyor" gibi düzeltmelerini dönüş değeriyle değil
+global logrus ile bildiriyor.
+**Karar:** Parse sırasında logrus'a geçici bir hook takılıyor, çıktı `io.Discard`'a alınıyor ve uyarılar
+`[]Warning` olarak dönüyor. Parse, global hook yüzünden bir mutex ile seri hâle getiriliyor.
+**Gerekçe:** JSON log yazan bir daemon'ın araya düz metin satırı sıkıştırması bir sorun; asıl sorun ise
+`${DB_PASSWORD}` boş kaldığında operatörün bunu hiç duymaması. Parse, insanın yazdığı bir belge üzerinde
+milisaniyelik iş; mutex'in maliyeti tasarım yapmaya değmez.
+**Sonuç:** Obsolete `version:` uyarısı eleniyor — her dosyada var ve eyleme dönüşmeyen uyarı, uyarıları
+görmezden gelmeyi öğretir.
+
+### D-067 — Değişmeyen servis yerinde bırakılıyor (config-hash)
+**Durum:** Kabul · **Faz:** M7
+**Karar:** Her container, oluşturulduğu tanımın SHA-256 özetiyle etiketleniyor
+(`com.docker.compose.config-hash`, compose'un kendi etiketi). `up`, özet aynıysa ve container çalışıyorsa ona
+dokunmuyor.
+**Gerekçe:** Her deploy'da her şeyi yeniden yaratmak, komşusunun image etiketi değişti diye veritabanını
+yeniden başlatmak demek. Özet isim ve replica etiketlerini dışlıyor; yoksa aynı servisin iki kopyası her
+seferinde farklı özetlenir ve ikisi de yeniden yaratılırdı.
+**Sonuç:** CLI ile ayağa kaldırılmış bir stack de aynı ölçüyle değerlendiriliyor, çünkü etiket ortak.
+
+### D-068 — Compose dosyası privileged kapısını ve whitelist'i aşamıyor
+**Durum:** Kabul · **Faz:** M7
+**Karar:** `privileged: true`, `cap_add`, `devices`, `security_opt`, `sysctls` YAML'dan geldiğinde de aynı izin
+kapısından geçiyor; bind mount kaynakları ve build context'leri aynı `PathGuard`'dan.
+**Gerekçe:** Bir compose dosyası, kutuyu işaretlemekle aynı istektir. İkisinin farklı davranması, sihirbazdaki
+kapıyı anlamsız kılardı.
+**Sonuç:** Reddedilen deploy hiçbir şey yaratmadan duruyor ve **hangi servis, hangi alan** olduğunu listeliyor —
+operatör birini düzeltip yeniden deneyerek diğerini keşfetmiyor.
+
+### D-069 — Git için `git` binary'si çalıştırılıyor, gömülü implementasyon değil
+**Durum:** Kabul · **Faz:** M7
+**Karar:** Klonlama `exec.Command("git", ...)` ile, `--depth 1`, `GIT_TERMINAL_PROMPT=0` ve 5 dakikalık zaman
+aşımıyla. Binary yoksa hata bunu açıkça söylüyor.
+**Gerekçe:** go-git birkaç megabaytlık bir bağımlılık; repodan deploy eden her makinede `git` zaten var.
+**Sonuç:** URL doğrulaması bu kararın bedeli: `ext::` git'e keyfî komut çalıştırtır, tire ile başlayan bir URL
+seçenek olarak okunur. İkisi de reddediliyor, `file://` ve yerel yollar da öyle. `git_test.go` bunları pinliyor.
+
+### D-070 — Monaco gömülü ve budanmış, editör sayfası tembel yükleniyor
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** `@monaco-editor/react` varsayılan olarak Monaco'yu CDN'den çekiyor.
+**Karar:** Monaco pakete gömülüyor; `monaco-editor` barrel'ı yerine yalnız `editor.api` + yaml/ini dil kayıtları
++ sayılı contrib içe aktarılıyor; editör sayfası `React.lazy` ile ayrı chunk'ta.
+**Gerekçe:** Kendi arayüzünü sunan tek binary, internete çıkışı olmayan makinelerde çalışacak. Barrel 4 MB'lık bir
+chunk üretiyordu (Solidity, PowerShell, TypeScript derleyicisi dahil); budanmış hâli 2.7 MB ve artık **ilk açılışta
+indirilmiyor** — index chunk 539 kB'den 345 kB'ye düştü.
+**Sonuç:** Şema doğrulaması istemcide yok; `POST /stacks/validate` deploy'un çalıştırdığı kontrollerin aynısını
+çalıştırıyor. İkinci ve daha zayıf bir doğrulayıcı, karar veren doğrulayıcıyla çelişirdi.
+
+### D-071 — Stack okuma, Docker'a bağlı değil
+**Durum:** Kabul · **Faz:** M7
+**Bağlam:** `GET /stacks/{id}` container listesi için engine'e gidiyordu; engine kapalıyken tüm istek 503 dönüyordu.
+**Karar:** Engine'e ulaşılamazsa tanım yine dönüyor, canlı durum boş kalıyor ve `engine_error` alanı nedeni
+söylüyor.
+**Gerekçe:** Bir stack okuma isteği önce bir Docker işlemi değil: compose dosyası, servisleri ve uyarıları
+engine olmadan da bilinebilir. Docker'ı çökmüş bir operatörün, düzeltmek üzere olduğu dosyayı okuyamaması saçma.
+**Sonuç:** Arayüz sarı bir bant gösteriyor; `stack_test.go` bunu pinliyor. Uçtan uca doğrulamada da bu yoldan
+geçildi (bu ortamda Docker yok).
+
+### D-072 — Template'ler betik değil form
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Katalog girdilerinin "kurulum betiği" çalıştırması, panelin tüm güvenlik kapılarını atlatmanın en kısa yolu olurdu.
+**Karar:** Bir template JSON şemasıyla sınırlı bir sorular kümesi + bir container tarifi. Render sonucu sıradan bir
+`ContainerSpec`; oradan sonra `PathGuard`, privileged kapısı ve RBAC aynen işliyor. Şema `DisallowUnknownFields` ile
+okunuyor; bind mount dışında host'a değen bir alan yok.
+**Gerekçe:** Katalog, `/etc/iskele/templates` altına dosya bırakabilen herkesin panelin yetkilerini devralabildiği bir
+uzantı noktası olmamalı. Yanlış cevapların hepsi tek seferde `details.fields` altında dönüyor — formu üç kez
+göndertmek yerine.
+
+### D-073 — Host metrikleri tek pakette ve "elden geldiğince"
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** gopsutil platforma özel dosya/syscall okuyor; container içinde koşan bir daemon'da bunların bir kısmı yok
+(swap yok, load average yok, `/proc` kısıtlı).
+**Karar:** gopsutil'i yalnız `internal/hostinfo` içe aktarıyor — `internal/docker`'ın SDK için oynadığı rolün aynısı.
+Okumalar tek tek başarısız olabiliyor; başarısız olan `errors` listesine yazılıyor, istek yine 200 dönüyor.
+CPU yüzdesi paket-düzeyi global yerine `Collector` içinde tutulan önceki örneğe göre hesaplanıyor; ilk okuma
+karşılaştıracak bir şey bulamadığı için `-1` diyor.
+**Gerekçe:** Altı sayıdan biri okunamadı diye boş kalan bir panel, beş sayı gösterenden kötü. Global durum ise farklı
+hızlarda yoklayan iki sekmenin birbirinin ölçümünü bozması demekti.
+**Sonuç:** `GET /system/host` Docker kapalıyken de çalışıyor — `engine` alanı düşüyor, makinenin kendi sayıları
+duruyor. Panelin en çok işe yaradığı an tam olarak orası.
+
+### D-074 — Activity feed engine olaylarıdır, audit değil
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Dashboard'daki akış ya panelin kendi audit kaydından ya da engine'in olay akışından beslenebilirdi.
+**Karar:** `SSE /system/events` — yani makinede olan biten. SSH'tan durdurulan bir container, kendini yeniden
+başlatan bir servis ve panelden yapılan işlem aynı listede.
+**Gerekçe:** Dashboard "bu makine ne durumda?" sorusunu yanıtlıyor, "bu panelden kim ne yaptı?" sorusunu değil;
+ikincisi audit ekranının işi (M8-F). Akış aynı zamanda sayımların bayatladığını haber veriyor: her olay sonrası
+sorgular 1 sn'lik debounce ile tazeleniyor — `docker compose up` düzinelerce olay üretiyor, her biri için dört liste
+çekmek engine'i en meşgul anında dövmek olurdu.
+**Sonuç:** Ticket tek kullanımlık olduğu için tarayıcının kendi yeniden bağlanması yetmiyor; hook kopmayı görünce
+yeni ticket alıp üstel geri çekilmeyle yeniden bağlanıyor.
+
+### D-075 — TOTP elde yazıldı, RFC vektörleriyle sabitlendi
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** İki adımlı doğrulama için bir kütüphane çekmek ya da RFC 6238'i uygulamak arasında seçim vardı.
+**Karar:** `internal/auth/totp.go` (~150 satır) elde yazıldı; testler RFC 6238'in kendi test vektörlerini koşuyor.
+Parametreler seçim değil, dayatma: SHA-1, 6 hane, 30 sn. Doğrulayıcı uygulamaların tamamı bunu varsayıyor, başka
+bir şey seçen sunucu kodları çalışmayan sunucu olur. Kod karşılaştırması `subtle.ConstantTimeCompare` ile ve
+erken çıkışsız — hangi adımın tuttuğu zamanlamadan okunamıyor.
+**Gerekçe:** Kendi çıktısını kendisiyle karşılaştıran bir test, yanlış ama tutarlı bir algoritmayı da geçirirdi;
+RFC vektörleri bunun TOTP olduğunu kanıtlıyor. Bağımlılık yüzeyi de artmıyor.
+**Sonuç:** Gizli anahtar AES-GCM ile şifreli saklanıyor (registry parolalarıyla aynı kutu). Secret key yoksa
+iki adımlı "kullanılamaz" diyor — açık olan bir hesap giriş yapamıyor. Ters yönde başarısız olmak, anahtarı
+kaybetmeyi ikinci faktörü atlamanın yoluna çevirirdi.
+
+### D-076 — Son yönetici koruması, "kendi hesabına dokunma" kuralının yerini aldı
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** İlk yazımda iki ayrı kapı vardı: kendi rolünü/etkinliğini değiştirememek ve son admin'i düşürememek.
+İkincisi hiç tetiklenemiyordu — değişikliği yapan zaten bir admin olduğuna göre, hedef kendisi değilse başka bir
+admin her zaman var demektir; hedef kendisiyse ilk kapı önce kapanıyordu.
+**Karar:** Korunan değişmez tek: **paneli yönetebilecek etkin hesapsız bırakma**. Kendi hesabı da bu kapsamda —
+devretmek meşru bir iş, ama ancak devralacak biri varken. Ayrıca kendi hesabını *silmek* yasak (`SelfDelete`):
+demote'un aksine kimsenin kasten yaptığı bir hamle değil ve yapacak başka admin hep var.
+**Gerekçe:** Ulaşılamayan bir kontrol, kontrol değil; test edilemeyen bir garanti de garanti değil. Devredemeyen
+bir admin ise gerçek bir kısıt: yerine birini atayıp çekilmek isteyen operatörün önü kapalıydı.
+**Sonuç:** Devre dışı bir admin sayıma girmiyor — giriş yapamayan hesap kimseyi yönetemez. Parola sıfırlama ve
+devre dışı bırakma o hesabın tüm oturumlarını kapatıyor; tarayıcısında geçerli token duran devre dışı hesap
+devre dışı değildir.
+
+### D-077 — Audit ekranı, eksik olanı ortaya çıkardı: container yaşam döngüsü hiç kaydedilmiyordu
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Denetim ekranı yazılırken testler start/stop/restart/pause/kill/rename/remove için tek bir kayıt
+bulamadı. M2 auth'u, M5 image/volume/network ve create'i kaydediyordu; M1'den kalan container yaşam döngüsü
+handler'ları hiç geri dönülüp bağlanmamıştı. `Container` servisinin `recorder` alanı vardı ve kullanılmıyordu.
+**Karar:** Yaşam döngüsünün tamamı kaydediliyor — başarısız denemeler dahil. Kayıtsız ham işlemler
+küçük harfli (`start`, `stop`, `remove`…) olarak ayrıldı; toplu işlem (Batch) container başına kendi kaydını
+yazdığı için bunları çağırıyor.
+**Gerekçe:** "Veritabanımı kim durdurdu?" sorusunu yanıtlayamayan bir denetim kaydının üstüne ekran koymak,
+olmayan bir güvenceyi varmış gibi göstermek olurdu. Reddedilen bir işlem de en az başarılı olan kadar kayda
+değer: "kim silmeye çalıştı da silemedi" tam olarak logdan beklenen cevaptır.
+**Sonuç:** Aynı işlemin iki kez kaydedilmemesi önemliydi — iki kayıt iki işlem gibi okunur ve sayan operatör
+yanlış sayar. Ayrım bu yüzden dışa açık (kayıtlı) / paket içi (kayıtsız) olarak yapıldı.
+
+### D-078 — Denetim kaydı API üzerinden salt-okunur
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Ekranla birlikte "eski kayıtları temizle" düğmesi eklemek doğal görünüyordu.
+**Karar:** `/audit` altında yalnız GET var: liste, facet'ler ve dışa aktarma. Kayıt silen ya da düzenleyen
+hiçbir uç yok. Bir test bunu pinliyor. Kayıtların yaşlanarak düşmesi store'un işi
+(`AuditRepo.DeleteBefore`) ve bir retention ayarına bağlanacak — **bu ayar henüz yok**, yani şu an kayıt
+tablosu yalnızca büyüyor. Retention M8-G'de ayarlar sayfasıyla birlikte geliyor.
+**Gerekçe:** Yöneticinin yeniden yazabildiği bir denetim kaydı denetim kaydı değildir. Diski dolan operatörün
+ihtiyacı retention ayarıdır; tek tek satır silmek için bir gerekçe yok.
+**Sonuç:** Dışa aktarma ekrandaki filtrenin aynısını alıyor (limit/offset hariç: dışa aktarma tüm sonuçtur) ve
+satırlar 500'lük gruplar hâlinde okunup yazılıyor — yoğun bir makinenin bir yılı belleğe sığmak zorunda değil.
+Tarayıcı tarafında indirme `Authorization` başlığı gerektirdiği için `<a href>` değil, kimlikli bir `fetch` +
+object URL ile yapılıyor.
+
+### D-079 — Prune'lar admin'e ait ve her biri kendi kuralını söylüyor
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** Dört prune ucu var ve "kullanılmayan" her biri için başka bir şey demek.
+**Karar:** Hepsi `prune` izninin (yalnız admin) arkasında. Onay kutusu engine'in gerçek kuralını yazıyor;
+volume prune ayrıca adının yazılmasını istiyor. Image prune yalnız dangling katmanları alıyor — `all`
+etiketli image'ları da silerdi ve bu, aynı düğmenin arkasına saklanacak bir karar değil.
+**Gerekçe:** Prune, kimsenin tek tek adını vermediği nesneleri siler. Volume dışındakiler yeniden üretilebilir;
+volume birinin veritabanıdır ve başka hiçbir yerden geri gelmez.
+**Sonuç:** `POST /containers/prune` bu fazda eklendi (docker katmanında yoktu). Sonuç toast olarak bildiriliyor:
+kaç nesne gitti, ne kadar yer açıldı.
+
+### D-080 — Soket yolu ve yol beyaz listesi ayarlar ekranından değiştirilemez
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** PROMPT ayarlar sayfasında "socket yolu, whitelist, retention" istiyor. Retention'ı çalışma zamanında
+değiştirmek doğal; diğer ikisi değil.
+**Karar:** `docker_host` ve `allowed_paths` ekranda **salt-okunur** gösteriliyor, yanlarında hangi dosyadan
+geldikleri yazıyor. Değiştirmek config dosyasını düzenleyip servisi yeniden başlatmak demek. `PUT /settings`
+bilinmeyen alanı reddediyor (400), yani whitelist'i ayarladığını sanan bir istemciye "ayarlamadın" deniyor —
+hiçbir şey yapmayan bir 200 dönmek yerine.
+**Gerekçe:** Bunlar açılış anında kurulan güvenlik sınırları. `allowed_paths`'i tarayıcıdan genişletebilen bir
+yönetici, tüm dosya sistemini bir container'a bağlamaya tek istek uzaktadır — panel yöneticiliğinden host
+root'una giden bir yol açılırdı. Dosyayı düzenlemek bilinçli bir eylemdir ve kendi izini bırakır (dosyanın mtime'ı).
+**Sonuç:** Ekran yine de bu değerleri *gösteriyor*: "bu panel host'un ne kadarına erişebiliyor" sorusunun cevabı
+operatörün görmesi gereken bir şey. Boş whitelist ayrıca sarı uyarıyla işaretleniyor — her bind mount'u reddeden
+bir yapılandırma kasıtlı olmayabilir.
+
+### D-081 — Retention ayarı her süpürmede okunuyor, açılışta değil
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** M8-F'te denetim kaydının "yaşlanarak düşmesi" doküman edilmişti ama `DeleteBefore` hiçbir yerden
+çağrılmıyordu; ayar da yoktu. O dokümanı düzeltip işi buraya bıraktım.
+**Karar:** `audit_retention_days` settings tablosunda; 0 = sonsuza kadar sakla ve bu varsayılan. Günlük
+housekeeping döngüsü ayarı **her tick'te** yeniden okuyor.
+**Gerekçe:** Ayarı değiştiren yönetici bir sonraki süpürmenin buna uymasını bekler, bir sonraki yeniden
+başlatmanın değil. Varsayılanın "sakla" olması da bilinçli: ayarlar sayfasını hiç açmadığı için birinin denetim
+geçmişini silmek, onun adına verilecek yanlış karardır.
+**Sonuç:** `retention > 0` kapısı testle sabitlendi — sıfırın "şu andan öncekini sil"e dönüşmesi bu işin
+bozulma biçimidir.
+
+### D-082 — Fake build'ler test tarafından tutulabiliyor
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** `TestCancelStopsARunningBuild` tam suite ağır yük altında koşarken düştü: fake tüm build olaylarını
+testin bir sonraki satırından önce oynatıp bitirmişti, `Cancel` de "bu build zaten başarılı" dedi.
+**Karar:** Fake'e `HoldBuilds()` eklendi; build ilk olaydan önce, test bırakana ya da context iptal edilene kadar
+bekliyor. İptal testi build'i tutuyor, sonra iptal ediyor.
+**Gerekçe:** Test yanlış bir şey iddia etmiyordu; iddiasının ön koşulunu (build'in hâlâ koşuyor olması)
+zamanlamaya bırakmıştı. "Yük altında bazen kırmızı" bir test, kırmızıyken bakılmayan bir testtir.
+**Sonuç:** Dört çekirdek meşgulken 10 kez üst üste geçtiği doğrulandı. Üretim kodunda değişiklik yok — kusur
+testin kendisindeydi.
+
+### D-083 — sd_notify elde yazıldı; unit dosyası daemon'ın gerçekte yaptığına uyduruldu
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** systemd unit'ini yazarken `Type=notify-reload` ve `ExecReload=/bin/kill -HUP $MAINPID` koymuştum.
+İkisi de yanlıştı: daemon sd_notify göndermiyordu (systemd READY=1 bekleyip zaman aşımına düşerdi) ve SIGHUP'ın
+varsayılan davranışı süreci sonlandırmak — yani "reload" servisi öldürürdü.
+**Karar:** Unit'i kısmak yerine eksik tamamlandı. `internal/systemd` (~150 satır, bağımlılıksız) READY=1,
+STOPPING=1, STATUS ve WATCHDOG gönderiyor; unit `Type=notify` + `WatchdogSec=60s`; `ExecReload` yok.
+`NOTIFY_SOCKET` yoksa her çağrı sessizce hiçbir şey yapmıyor, yani elle başlatılan daemon eskisi gibi davranıyor.
+**Gerekçe:** Protokol tek bir datagram; bunun için bağımlılık çekmek, yerine koyduğu şeyden fazla kod denetlemek
+demekti. Watchdog kasten Docker'a bakmıyor: Docker hıçkırdığında iskeled'i yeniden başlatmak, "Docker kapalı"
+diyebilmek için ayakta kalan servisin varlık sebebinin tam tersi olurdu. Ping yalnız sürecin kilitlenmediğini
+kanıtlar — bir watchdog'un gerçekten söyleyebileceği tek şey de budur.
+**Sonuç:** `Type=notify` sayesinde bu unit'ten sonra sıralanan birimler, kabul etmeyen bir sokete karşı
+başlamıyor. STOPPING=1, yavaş bir drain'in watchdog'un yakalamak için var olduğu takılmayla karıştırılmasını
+önlüyor.
+
+### D-084 — OpenAPI ↔ router senkronu gözle değil testle tutuluyor
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** ACCEPTANCE M7 "openapi.yaml tüm endpoint'lerle senkron" diyordu ve doğrulaması "CI" idi — ama böyle
+bir kontrol yoktu; senkron olduğuna elle bakılıyordu.
+**Karar:** `chi.Walk` ile mount edilmiş her route çıkarılıp spec'teki path'lerle iki yönlü karşılaştırılıyor.
+Üçüncü bir test de yürüyüşün boş dönmediğini kontrol ediyor — aksi hâlde ilk ikisi hiçbir şeyi denetlemeden
+geçerdi.
+**Gerekçe:** Spec bu projede sonradan yazılan bir doküman değil, arayüzün üretildiği kaynak. Belgelenmemiş bir
+route hiçbir istemcinin bilmediği bir route'tur; var olmayan bir belgelenmiş route ise daha kötüsüdür — tutulmayan
+bir söz. İkisi de kod okuyarak değil, koşarak yakalanmalı.
+
+### D-085 — Panelin korumasız olduğu ekranda da söyleniyor
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** loopback dışında ve TLS'siz dinlerken daemon açılışta uyarı basıyordu. ACCEPTANCE C1 ayrıca UI'da
+uyarı istiyordu ve bu yoktu.
+**Karar:** Ayarlar → Kurulum panelinde, `listen` loopback değilse ve TLS kapalıysa sarı uyarı.
+**Gerekçe:** Açılış logunu kimse yeniden okumuyor. `listen`'i aylar önce değiştiren operatöre, o adresi gösteren
+ekranda söylemek tek işe yarar an. Loopback olmayan bir hostname "belki loopback'e çözülüyordur" diye geçilmiyor:
+root eşdeğeri bir API hakkında yanılmanın yanlış yönü budur.
+
+### D-086 — Docker SDK'sının daemon tarafı açıkları gerekçesiyle listeleniyor, govulncheck kapatılmıyor
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** CI'daki `govulncheck` adımı iki açıkla kırmızıya döndü: GO-2026-4887 (CVE-2026-34040, AuthZ
+plugin bypass) ve GO-2026-4883 (CVE-2026-33997, legacy plugin privilege doğrulamasında off-by-one). İkisi de
+`github.com/docker/docker`'ın **tüm** sürümlerini etkili sayıyor ve o modül yolunda düzeltilmiş sürüm yok —
+düzeltme `github.com/moby/moby/v2 v2.0.0-beta.8`'de, yani başka bir modül yolunda. Modül tek repo olduğu için
+client'ı linkleyen herkes daemon açıklarını da üstleniyor; govulncheck'in izleri de zaten ağırlıklı olarak
+`init` çağrıları.
+**Karar:** Üç seçenek vardı: (a) `moby/v2`'ye geçmek, (b) adımı kaldırmak/`|| true` yapmak, (c) gerekçeli
+istisna listesi. (a) beta bir modüle v0.1.0'da bağlanmak demekti ve SDK yüzeyi baştan taşınacaktı; (b) tarama
+varmış gibi görünüp hiçbir şey taramamak olurdu. (c) seçildi: `scripts/vulncheck` govulncheck'i JSON modunda
+kendisi çalıştırıyor, yalnız **symbol seviyesindeki** bulguları sayıyor ve iki ID'yi yanlarına yazılan
+değerlendirmeyle geçiriyor.
+**Gerekçe:** Her iki açık da daemon kodunda: biri engine'in authorization-plugin middleware'i, diğeri legacy
+plugin kurulum yolu. iskeled ne authz plugin çalıştırıyor ne de plugin API'si açıyor; ikisi de derlenen
+yüzeyimizde değil. Liste körelmesin diye üç kırılma noktası var: listede olmayan çağrılan bir açık, artık
+**düzeltilmiş sürümü olan** bir istisna (yani gerekçe geçersiz, yapılacak şey yükseltmek) ve taramanın artık
+raporlamadığı ölü bir istisna. Filtrenin kendisi test edilmiş — her şeyi geçiren bir filtre, taramasız CI'dan
+daha kötüdür, çünkü yeşil görünür.
+**Sonuç:** `make vuln` artık `go run` üzerinden geçmiyor: `go run` her hatayı 1'e indirgiyor ve "açık bulundu"
+(3) ile "veritabanına ulaşılamadı" ayırt edilemiyordu. Araç govulncheck'i geçici bir GOBIN'e kurup çalıştırıyor,
+çıkış kodu 0 veya 3 değilse tarama başarısız sayılıyor. moby/v2 stabilleştiğinde geçiş ayrı bir iş olarak
+değerlendirilecek; o gün geldiğinde bu iki istisna "düzeltilmiş sürüm var" kuralıyla kendiliğinden CI'ı kıracak.
+
+---
+
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
 
 ### A-001 — Docker minimum API sürümü 1.41 (Docker 20.10+) — **M1'de doğrulandı**

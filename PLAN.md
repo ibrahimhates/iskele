@@ -281,36 +281,45 @@ Prefix `/api/v1`. Tüm hatalar:
 | GET | `/auth/me` | any | M2 |
 | POST | `/auth/totp/setup` `/auth/totp/verify` `/auth/totp/disable` | self | M8 |
 | GET | `/containers?all=&filter=` | viewer | M1 |
-| POST | `/containers` | operator* | M5 |
+| POST | `/containers` | operator (bind ve privileged için ek kontrol) | M5 |
 | GET | `/containers/{id}` `/containers/{id}/inspect` | viewer | M1 |
 | DELETE | `/containers/{id}?force=&volumes=` | operator | M1 |
 | POST | `/containers/{id}/{start\|stop\|restart\|pause\|unpause\|kill\|rename}` | operator | M1/M4 |
 | POST | `/containers/{id}/redeploy` | operator | M4 |
 | POST | `/containers/batch` `{ids:[],action}` | operator | M4 |
-| GET | `/containers/{id}/stats` (SSE) | viewer | M4 |
-| WS | `/containers/{id}/logs` | viewer | M4 |
-| WS | `/containers/{id}/exec` | operator | M4 |
+| POST | `/auth/ws-ticket` | any | M4 |
+| GET | `/containers/{id}/stats` (SSE) | viewer (ticket) | M4 |
+| GET | `/containers/stats` (SSE, hepsi tek bağlantıda) | viewer (ticket) | M4 |
+| GET | `/system/events` (SSE) | viewer (ticket) | M4 |
+| WS | `/containers/{id}/logs` | viewer (ticket) | M4 |
+| WS | `/containers/{id}/exec` | operator (ticket) | M4 |
 | GET | `/images` | viewer | M1 |
-| POST | `/images/pull` (SSE) | operator | M5 |
-| DELETE | `/images/{id}?force=` | operator | M5 |
-| POST | `/images/prune` `/images/{id}/tag` | admin | M5 |
+| GET | `/images/pull` (SSE, ticket) | operator | M5 |
+| DELETE | `/images/{id}?force=&noprune=` | delete | M5 |
+| POST | `/images/prune` | prune (admin) | M5 |
+| POST | `/images/{id}/tag` | operator | M5 |
+| GET | `/system/allowed-paths` | viewer | M5 |
+| GET/POST/PUT/DELETE | `/registries` `/registries/{id}` | admin | M5 |
+| GET | `/tasks` `/tasks/{id}` · POST `/tasks/{id}/cancel` | viewer / operator | M5 |
 | GET | `/images/{id}/history` `/images/{id}/inspect` | viewer | M5 |
-| WS | `/build` | admin | M6 |
+| WS | `/build` | build | M6 |
 | GET | `/builds` `/builds/{id}` `/builds/{id}/log` | viewer | M6 |
-| POST | `/builds/{id}/cancel` | admin | M6 |
+| POST | `/builds/{id}/cancel` | build | M6 |
 | GET/POST | `/volumes` · DELETE `/volumes/{name}` · POST `/volumes/prune` | viewer/operator/admin | M1/M5 |
 | GET/POST | `/networks` · DELETE `/networks/{id}` · POST `/networks/prune` | viewer/operator/admin | M1/M5 |
 | POST | `/networks/{id}/{connect\|disconnect}` | operator | M5 |
-| GET/POST | `/stacks` · GET/PUT/DELETE `/stacks/{id}` | viewer/admin | M7 |
-| POST | `/stacks/{id}/{up\|down\|restart\|pull\|stop\|start}` | operator | M7 |
-| POST | `/stacks/{id}/diff` `/stacks/{id}/validate` `/stacks/{id}/scale` | operator | M7 |
+| GET/POST | `/stacks` · GET/PUT/DELETE `/stacks/{id}` | viewer/create/delete | M7 |
+| SSE | `/stacks/{id}/{up\|pull\|scale}` | ticket (operate) | M7 |
+| POST | `/stacks/{id}/{down\|stop\|start\|restart}` | operator/delete | M7 |
+| POST | `/stacks/{id}/diff` · `/stacks/validate` · `/stacks/import` | viewer/create | M7 |
+| GET | `/stacks/discovered` | viewer | M7 |
 | WS | `/stacks/{id}/logs` | viewer | M7 |
 | GET | `/templates` `/templates/{id}` | viewer | M8 |
 | POST | `/templates/{id}/deploy` | operator | M8 |
 | GET | `/system/info` `/system/df` · SSE `/system/events` | viewer | M8 |
 | POST | `/system/prune` | admin | M8 |
 | GET | `/audit?actor=&action=&from=&to=&format=` | admin | M8 |
-| GET | `/fs/browse?path=` | operator | M6 |
+| GET | `/fs/browse?path=` | build | M6 |
 | GET/POST/PUT/DELETE | `/users`, `/users/{id}` | admin | M8 |
 | GET/PUT | `/settings` | admin | M8 |
 | GET/POST/DELETE | `/registries` | admin | M5 |
@@ -393,27 +402,32 @@ Prefix `/api/v1`. Tüm hatalar:
 /                             → /dashboard
 /dashboard
 /containers                   /containers/:id  (overview|logs|stats|console|inspect|env|mounts|network)
-/containers/new               (sihirbaz)
-/stacks                       /stacks/:id  /stacks/new
+/containers/new               (sihirbaz — M5)
+/stacks                       /stacks/:id  /stacks/new                       (M7)
 /images  /volumes  /networks
-/catalog                      /catalog/:templateId
-/builds                       /builds/:id
-/audit
+/catalog                      /catalog/:templateId                           (M8)
+/builds                       /builds/:id                                    (M6)
+/audit                                                                       (M8)
 /settings                     (general|users|registries|paths|retention|appearance|about)
 ```
 
-**Ortak bileşenler:** `DataTable` (filtre/sıralama/çoklu seçim/sanallaştırma 500+),
-`LogViewer` (ring buffer, ANSI renk, arama, indir, otomatik kaydır kilidi), `TerminalPane` (xterm+fit+resize),
-`TaskDrawer` (global uzun iş çekmecesi), `ConfirmDestructive` (ad yazdırarak onay),
-`EmptyState`, `StatCard`, `JsonViewer`, `ReconnectingBanner`, `CommandPreview`.
+Route'lar ve sidebar öğeleri kendi milestone'larında ekleniyor; yapılmamış bir bölüm için
+menü öğesi konmuyor (D-041).
+
+**Ortak bileşenler:** container tablosu (filtre/sıralama/çoklu seçim/sanallaştırma 500+),
+`LogViewer` (ring buffer, arama, indir, otomatik kaydır kilidi), `ConsolePanel` (xterm+fit+resize),
+`ConfirmDialog` (ad yazdırarak onay), `EmptyState`, `StatCard`, `JsonViewer`, `ConnectionBanner`.
+`TaskDrawer` M5'te, `CommandPreview` M5'te geliyor.
+shadcn/ui yerine bu bileşenler elle yazıldı (D-039).
 
 **State**
 - Sunucu verisi: TanStack Query (`staleTime` 5 sn, liste ekranlarında 5 sn `refetchInterval`, docker event geldiğinde invalidate).
 - İstemci state: Zustand — `authStore` (token, user, role), `uiStore` (tema, dil, sidebar), `taskStore` (aktif işler).
 - WS/SSE: `useWebSocket` hook'u, exponential backoff (1s→30s), `ReconnectingBanner` bağlantı durumuna bağlı.
 
-**Klavye kısayolları:** `/` arama, `g c`/`g s`/`g i`/`g v`/`g n` navigasyon, `Esc` modal kapat.
-**Erişilebilirlik:** Radix primitiv'leri, tüm ikon butonlarda `aria-label`, odak halkaları korunur.
+**Klavye kısayolları:** `/` arama, `g c`/`g i`/`g v`/`g n`/`g d` navigasyon, `Esc` modal kapat.
+(`g s` stacks ile birlikte M7'de gelir.) Metin alanı ve terminal içindeyken kısayollar susar.
+**Erişilebilirlik:** tüm ikon butonlarda `aria-label`, odak halkaları korunur.
 **i18n:** hard-coded metin yasak; `locales/tr.json` ve `locales/en.json` anahtar bazında eşit.
 
 ---
@@ -456,27 +470,34 @@ Her milestone'un **Definition of Done (DoD)** ortak maddeleri:
 
 ---
 
-### M3 — Frontend iskeleti
-**Kapsam:** Vite+React+TS+Tailwind+shadcn kurulumu; `web/` tooling (eslint, prettier, vitest); router ve korumalı route'lar; bootstrap ve login ekranları; AppShell + sidebar + topbar + tema toggle; TanStack Query client + fetch wrapper (401→refresh→retry); OpenAPI'den TS tip üretimi (`make gen-api`); i18n TR/EN; `embed.FS` ile `web/dist` gömme + SPA fallback (`/api` hariç tüm yollar `index.html`); `make build` frontend'i de derler.
+### M3 — Frontend iskeleti  ✅
+**Kapsam:** Vite+React+TS+Tailwind kurulumu (shadcn yerine kendi bileşenleri, D-039); `web/` tooling (eslint, prettier, vitest); router ve korumalı route'lar; bootstrap ve login ekranları; AppShell + sidebar + topbar + tema toggle; TanStack Query client + fetch wrapper (401→refresh→retry); OpenAPI'den TS tip üretimi (`make gen-api`); i18n TR/EN; `embed.FS` ile `web/dist` gömme + SPA fallback (`/api` hariç tüm yollar `index.html`); `make build` frontend'i de derler.
 **Çıktılar:** tek binary çalıştırıldığında tarayıcıda login ekranı gelir.
 **Testler:** Vitest — fetch wrapper refresh akışı, protected route yönlendirmesi, i18n anahtar eşitliği testi.
-**Risk:** embed edilecek `dist` yoksa Go derlemesi kırılır → `web/dist/.gitkeep` + placeholder `index.html`.
+**Risk (gerçekleşti, çözüldü):** embed edilecek `dist` yoksa Go derlemesi kırılır → `web/dist/.gitkeep`
+commit'lendi ve `//go:embed all:dist` boş ağacı kabul ediyor; `web.Bundled()` false ise sunucu
+`make build` gerektiğini söyleyen bir sayfa döndürüyor (D-045).
 **Tahmini commit:** 6–9.
 
 ---
 
-### M4 — Container yönetimi (tam)
-**Kapsam:** Liste (durum, image, port, CPU/RAM, uptime, health, restart sayısı; filtre/arama/etiket gruplama/sıralama); toplu seçim + batch aksiyon; detay sayfası sekmeleri (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network); WS log stream (tail, timestamps, arama, indir); SSE stats + Recharts canlı grafik + ring buffer; xterm.js exec (shell seçimi, resize); redeploy (inspect'ten config türetip yeni image ile yeniden yarat); yıkıcı işlem onay diyaloğu; `ConnectionBanner`.
+### M4 — Container yönetimi (tam)  ✅
+**Kapsam:** Liste (durum, image, port, canlı CPU/RAM, uptime, health; filtre/arama/sıralama —
+restart sayısı listede yok, gerekçesi D-049); toplu seçim + batch aksiyon; detay sayfası sekmeleri (Overview/Logs/Stats/Console/Inspect/Env/Mounts/Network); WS log stream (tail, timestamps, arama, indir); SSE stats + Recharts canlı grafik + ring buffer; xterm.js exec (shell seçimi, resize); redeploy (inspect'ten config türetip yeni image ile yeniden yarat); yıkıcı işlem onay diyaloğu; `ConnectionBanner`.
 **Testler:** log/exec/stats handler'ları fake Docker ile; redeploy config türetme birim testi; LogViewer buffer ve Terminal resize Vitest testleri.
 **Risk:** exec/TTY akışı → küçük entegrasyon testi + manuel doğrulama, `docker exec` semantiği ile karşılaştırma.
 **Tahmini commit:** 8–12.
 
 ---
 
-### M5 — Oluşturma sihirbazı + Image/Volume/Network
+### M5 — Oluşturma sihirbazı + Image/Volume/Network  ✅
 **Kapsam:** Container create sihirbazı — PROMPT §4.3'teki **tüm** alanlar (image/tag/pull policy, ad, restart policy, cmd/entrypoint, workdir, user, port map, bind/named/tmpfs volume + read-only, env satır satır + `.env` yapıştırma, network/alias/statik IP/extra hosts, labels, CPU/mem/pids limitleri, healthcheck, devices, cap add/drop, privileged, security-opt, log driver); canlı **`docker run` preview + API payload** paneli; image pull SSE ilerleme; registry CRUD + şifreli kimlik; image remove/prune/tag/history/inspect; volume ve network CRUD + prune + connect/disconnect; global TaskDrawer + iptal.
 **Testler:** form→API payload dönüşümü (birim), whitelist ihlali reddi, registry şifreleme round-trip, zod şema testleri.
-**Risk:** form karmaşıklığı → alanlar sekmeli gruplanır, zod ile tek şema, preview canlı doğrulama sağlar.
+**Not (gerçekleşen):** zod eklenmedi. Doğrulama iki yerde: formu API'nin aldığı nesneye çeviren saf bir fonksiyon
+(`buildSpec`, birim testli) ve sunucudaki `BuildCreateSpec` — ki otorite odur. Araya üçüncü bir şema koymak,
+üçünün ayrışabileceği bir yüzey daha yaratırdı (D-050).
+**Risk (gerçekleşti, çözüldü):** form karmaşıklığı → alanlar 10 sekmeye ayrıldı, canlı `docker run` önizlemesi
+gönderilecek nesneden üretiliyor (D-058), whitelist ve privileged uyarıları gönderim öncesi çıkıyor.
 **Tahmini commit:** 10–14.
 
 ---

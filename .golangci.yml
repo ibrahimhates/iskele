@@ -42,12 +42,26 @@ linters:
           disabled: true
 
   exclusions:
+    # npm packages sometimes ship Go sources (flatted does). They are not ours
+    # and `npm ci` regenerates them, so a finding there can never be fixed.
+    paths:
+      - web/node_modules
     rules:
       - path: _test\.go
         linters:
           - gosec
           - noctx
+      # scripts/vulncheck runs govulncheck over the package patterns it is
+      # given, so "subprocess launched with a variable" is the tool working.
+      # It runs on a developer's machine and in CI, never in the daemon.
+      - path: scripts/vulncheck
+        text: G204
+        linters:
+          - gosec
 
 formatters:
   enable:
     - gofmt
+  exclusions:
+    paths:
+      - web/node_modules

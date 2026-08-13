@@ -1,0 +1,101 @@
+{
+  "id": "rabbitmq",
+  "title": "RabbitMQ",
+  "category": "database",
+  "description": "Message broker with a management UI, for work queues between services.",
+  "icon": "Inbox",
+  "website": "https://www.rabbitmq.com",
+  "keywords": [
+    "queue",
+    "amqp",
+    "broker"
+  ],
+  "image": "rabbitmq:{{version}}",
+  "env": {
+    "RABBITMQ_DEFAULT_USER": "{{username}}",
+    "RABBITMQ_DEFAULT_PASS": "{{password}}"
+  },
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 5672
+    },
+    {
+      "host": "{{management_port}}",
+      "container": 15672
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "{{data_volume}}",
+      "destination": "/var/lib/rabbitmq"
+    }
+  ],
+  "health_check": {
+    "test": [
+      "CMD",
+      "rabbitmq-diagnostics",
+      "-q",
+      "ping"
+    ],
+    "interval": "15s",
+    "timeout": "10s",
+    "retries": 5,
+    "start_period": "45s"
+  },
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "3-management-alpine",
+      "options": [
+        {
+          "value": "3-management-alpine",
+          "label": "3-management-alpine"
+        },
+        {
+          "value": "4-management-alpine",
+          "label": "4-management-alpine"
+        }
+      ]
+    },
+    {
+      "name": "username",
+      "label": "Username",
+      "type": "text",
+      "default": "rabbit",
+      "required": true,
+      "pattern": "^[a-zA-Z0-9_.-]+$"
+    },
+    {
+      "name": "password",
+      "label": "Password",
+      "type": "password",
+      "required": true,
+      "generate": true,
+      "generate_length": 32
+    },
+    {
+      "name": "port",
+      "label": "AMQP port",
+      "type": "port",
+      "default": "5672",
+      "required": true
+    },
+    {
+      "name": "management_port",
+      "label": "Management UI port",
+      "type": "port",
+      "help": "Leave empty to keep the web UI unpublished.",
+      "default": "15672"
+    },
+    {
+      "name": "data_volume",
+      "label": "Data volume",
+      "type": "volume"
+    }
+  ],
+  "notes": "AMQP is on {{port}}; the management UI is on {{management_port}}, sign in as {{username}}."
+}

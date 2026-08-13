@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/docker/fake"
 )
@@ -12,7 +13,7 @@ import (
 func newContainerService(t *testing.T) (*Container, *fake.Client) {
 	t.Helper()
 	f := fake.New()
-	return NewContainer(f), f
+	return NewContainer(f, nil), f
 }
 
 const runningID = "c1000000000000000000000000000000000000000000000000000000000000a"
@@ -101,10 +102,10 @@ func TestBlankIDsAreRejectedBeforeTheEngine(t *testing.T) {
 	operations := map[string]func() error{
 		"Get":     func() error { _, err := svc.Get(ctx, "  "); return err },
 		"Inspect": func() error { _, err := svc.Inspect(ctx, ""); return err },
-		"Start":   func() error { return svc.Start(ctx, "") },
-		"Stop":    func() error { return svc.Stop(ctx, "", nil) },
-		"Restart": func() error { return svc.Restart(ctx, "\t", nil) },
-		"Remove":  func() error { return svc.Remove(ctx, "", RemoveOptions{}) },
+		"Start":   func() error { return svc.Start(ctx, "", audit.Actor{}, RequestMeta{}) },
+		"Stop":    func() error { return svc.Stop(ctx, "", nil, audit.Actor{}, RequestMeta{}) },
+		"Restart": func() error { return svc.Restart(ctx, "\t", nil, audit.Actor{}, RequestMeta{}) },
+		"Remove":  func() error { return svc.Remove(ctx, "", RemoveOptions{}, audit.Actor{}, RequestMeta{}) },
 	}
 
 	for name, op := range operations {
@@ -124,7 +125,7 @@ func TestBlankIDsAreRejectedBeforeTheEngine(t *testing.T) {
 func TestIDsAreTrimmedBeforeReachingTheEngine(t *testing.T) {
 	svc, f := newContainerService(t)
 
-	if err := svc.Start(context.Background(), "  "+runningID+"  "); err != nil {
+	if err := svc.Start(context.Background(), "  "+runningID+"  ", audit.Actor{}, RequestMeta{}); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
 
@@ -139,13 +140,13 @@ func TestLifecycleOperationsReachTheEngine(t *testing.T) {
 	ctx := context.Background()
 	timeout := 5
 
-	if err := svc.Stop(ctx, runningID, &timeout); err != nil {
+	if err := svc.Stop(ctx, runningID, &timeout, audit.Actor{}, RequestMeta{}); err != nil {
 		t.Fatalf("Stop() error = %v", err)
 	}
-	if err := svc.Start(ctx, runningID); err != nil {
+	if err := svc.Start(ctx, runningID, audit.Actor{}, RequestMeta{}); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	if err := svc.Restart(ctx, runningID, nil); err != nil {
+	if err := svc.Restart(ctx, runningID, nil, audit.Actor{}, RequestMeta{}); err != nil {
 		t.Fatalf("Restart() error = %v", err)
 	}
 
@@ -172,7 +173,7 @@ func TestRemoveRunningContainerNeedsForce(t *testing.T) {
 	svc, _ := newContainerService(t)
 	ctx := context.Background()
 
-	err := svc.Remove(ctx, runningID, RemoveOptions{})
+	err := svc.Remove(ctx, runningID, RemoveOptions{}, audit.Actor{}, RequestMeta{})
 	if err == nil {
 		t.Fatal("Remove() error = nil, want a conflict for a running container")
 	}
@@ -180,7 +181,7 @@ func TestRemoveRunningContainerNeedsForce(t *testing.T) {
 		t.Errorf("error = %v, want KindConflict", err)
 	}
 
-	if err := svc.Remove(ctx, runningID, RemoveOptions{Force: true}); err != nil {
+	if err := svc.Remove(ctx, runningID, RemoveOptions{Force: true}, audit.Actor{}, RequestMeta{}); err != nil {
 		t.Fatalf("Remove(force) error = %v", err)
 	}
 
@@ -192,7 +193,7 @@ func TestRemoveRunningContainerNeedsForce(t *testing.T) {
 func TestRemoveForwardsVolumeFlag(t *testing.T) {
 	svc, f := newContainerService(t)
 
-	err := svc.Remove(context.Background(), runningID, RemoveOptions{Force: true, RemoveVolumes: true})
+	err := svc.Remove(context.Background(), runningID, RemoveOptions{Force: true, RemoveVolumes: true}, audit.Actor{}, RequestMeta{})
 	if err != nil {
 		t.Fatalf("Remove() error = %v", err)
 	}

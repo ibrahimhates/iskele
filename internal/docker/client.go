@@ -11,7 +11,7 @@ import (
 //
 // Handlers and services depend on this interface only, so the whole engine can
 // be replaced by [github.com/ibrahimhates/iskele/internal/docker/fake.Client]
-// in tests. Later milestones extend it (create, exec, logs, build, events).
+// in tests. Later milestones extend it (build, compose).
 type Client interface {
 	// Ping verifies the daemon is reachable and returns its API version.
 	Ping(ctx context.Context) (Pong, error)
@@ -27,10 +27,45 @@ type Client interface {
 	StopContainer(ctx context.Context, id string, opts StopOptions) error
 	RestartContainer(ctx context.Context, id string, opts StopOptions) error
 	RemoveContainer(ctx context.Context, id string, opts RemoveContainerOptions) error
+	PauseContainer(ctx context.Context, id string) error
+	UnpauseContainer(ctx context.Context, id string) error
+	KillContainer(ctx context.Context, id, signal string) error
+	RenameContainer(ctx context.Context, id, newName string) error
+	PruneContainers(ctx context.Context) (PruneReport, error)
+
+	// CreateContainer and RawInspectConfig exist for redeploy: recreating a
+	// container from its own definition.
+	CreateContainer(ctx context.Context, spec CreateSpec) (string, error)
+	RawInspectConfig(ctx context.Context, id string) (CreateSpec, error)
+	PullImage(ctx context.Context, ref string) error
 
 	ListImages(ctx context.Context, opts ListImagesOptions) ([]Image, error)
+	PullImageProgress(ctx context.Context, opts PullOptions) (<-chan PullEvent, <-chan error)
+	RemoveImage(ctx context.Context, id string, opts RemoveImageOptions) ([]ImageDeleted, error)
+	PruneImages(ctx context.Context, all bool) (PruneReport, error)
+	TagImage(ctx context.Context, id, ref string) error
+	ImageHistory(ctx context.Context, id string) ([]ImageHistoryEntry, error)
+	InspectImageRaw(ctx context.Context, id string) (RawInspect, error)
+	BuildImage(ctx context.Context, opts BuildOptions) (<-chan BuildEvent, <-chan error)
+
 	ListVolumes(ctx context.Context) ([]Volume, error)
+	CreateVolume(ctx context.Context, opts CreateVolumeOptions) (Volume, error)
+	InspectVolume(ctx context.Context, name string) (Volume, error)
+	InspectVolumeRaw(ctx context.Context, name string) (RawInspect, error)
+	RemoveVolume(ctx context.Context, name string, force bool) error
+	PruneVolumes(ctx context.Context) (PruneReport, error)
+
 	ListNetworks(ctx context.Context) ([]Network, error)
+	CreateNetwork(ctx context.Context, opts CreateNetworkOptions) (Network, error)
+	InspectNetwork(ctx context.Context, id string) (Network, error)
+	InspectNetworkRaw(ctx context.Context, id string) (RawInspect, error)
+	RemoveNetwork(ctx context.Context, id string) error
+	PruneNetworks(ctx context.Context) (PruneReport, error)
+	ConnectNetwork(ctx context.Context, networkID, containerID string, opts ConnectOptions) error
+	DisconnectNetwork(ctx context.Context, networkID, containerID string, force bool) error
+
+	// Streaming operations: logs, stats, exec and engine events.
+	Streamer
 
 	// Close releases the underlying HTTP transport.
 	Close() error

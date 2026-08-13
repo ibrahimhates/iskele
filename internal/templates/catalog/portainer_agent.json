@@ -1,0 +1,72 @@
+{
+  "id": "portainer_agent",
+  "title": "Portainer Agent",
+  "category": "tools",
+  "description": "Exposes this host's Docker engine to a Portainer server elsewhere.",
+  "icon": "Radio",
+  "website": "https://www.portainer.io",
+  "keywords": [
+    "agent",
+    "remote"
+  ],
+  "image": "portainer/agent:{{version}}",
+  "ports": [
+    {
+      "host": "{{port}}",
+      "container": 9001
+    }
+  ],
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "{{docker_socket}}",
+      "destination": "/var/run/docker.sock"
+    },
+    {
+      "type": "bind",
+      "source": "{{volumes_dir}}",
+      "destination": "/var/lib/docker/volumes"
+    }
+  ],
+  "fields": [
+    {
+      "name": "version",
+      "label": "Version",
+      "type": "select",
+      "default": "2.21.4",
+      "options": [
+        {
+          "value": "2.21.4",
+          "label": "2.21.4"
+        },
+        {
+          "value": "2.20.3",
+          "label": "2.20.3"
+        }
+      ]
+    },
+    {
+      "name": "port",
+      "label": "Agent port",
+      "type": "port",
+      "help": "The Portainer server connects here. Anyone who can reach it controls this host's Docker.",
+      "default": "9001",
+      "required": true
+    },
+    {
+      "name": "docker_socket",
+      "label": "Docker socket",
+      "type": "path",
+      "default": "/var/run/docker.sock",
+      "required": true
+    },
+    {
+      "name": "volumes_dir",
+      "label": "Docker volumes directory",
+      "type": "path",
+      "default": "/var/lib/docker/volumes",
+      "required": true
+    }
+  ],
+  "notes": "The agent hands full control of this host's Docker to whoever connects to port {{port}}. Both mounts must be in allowed_paths, and mounting the Docker socket is equivalent to giving root."
+}

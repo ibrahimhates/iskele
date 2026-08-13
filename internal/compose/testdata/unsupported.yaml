@@ -1,0 +1,32 @@
+# Everything Iskele cannot honour, in one file, so the warnings can be pinned.
+services:
+  app:
+    image: alpine:3.20
+    command: sleep infinity
+    configs:
+      - app_config
+    secrets:
+      - app_secret
+    deploy:
+      replicas: 3
+      mode: replicated
+    develop:
+      watch:
+        - path: ./src
+          action: sync
+          target: /app/src
+    links:
+      - other
+
+
+  other:
+    image: alpine:3.20
+    command: sleep infinity
+
+configs:
+  app_config:
+    content: "hello"
+
+secrets:
+  app_secret:
+    environment: APP_SECRET

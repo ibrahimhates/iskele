@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -13,9 +14,11 @@ import (
 	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/auth"
 	"github.com/ibrahimhates/iskele/internal/config"
+	"github.com/ibrahimhates/iskele/internal/crypto"
 	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
+	"github.com/ibrahimhates/iskele/internal/templates"
 )
 
 // testPassword satisfies the password policy used across the suite.
@@ -48,13 +51,35 @@ func newEnv(t *testing.T, dockerClient docker.Client) *testEnv {
 	authService := newAuthService(db, log)
 
 	cfg := config.Default()
+	// The whitelist has to be a real directory, because the guard resolves
+	// symlinks before deciding and a bind test needs a path that exists.
+	cfg.AllowedPaths = []string{allowedRoot(t)}
+	// The default points at /var/lib/iskele, which a test must not touch and
+	// cannot measure; the host metrics endpoint reports the free space here.
+	cfg.DataDir = t.TempDir()
+
+	secretBox, err := crypto.NewSecretBox(testMasterKey())
+	if err != nil {
+		t.Fatalf("NewSecretBox() error = %v", err)
+	}
+
 	env := &testEnv{
 		db: db,
 		raw: NewRouter(Deps{
-			Config: &cfg,
-			Logger: log,
-			Docker: dockerClient,
-			Auth:   authService,
+			Config:        &cfg,
+			Logger:        log,
+			Docker:        dockerClient,
+			Auth:          authService,
+			Recorder:      audit.New(db.Audit, log),
+			Users:         db.Users,
+			Sessions:      db.Sessions,
+			Audit:         db.Audit,
+			SettingsStore: db.Settings,
+			Registries:    db.Registries,
+			SecretBox:     secretBox,
+			Builds:        db.Builds,
+			Stacks:        db.Stacks,
+			Catalog:       testCatalog(t),
 		}),
 		tokens: map[store.Role]string{},
 	}
@@ -100,7 +125,8 @@ func (e *testEnv) login(t *testing.T, username, password string) string {
 	t.Helper()
 
 	svc := newAuthService(e.db, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	pair, err := svc.Login(context.Background(), username, password,
+	pair, err := svc.Login(context.Background(),
+		service.LoginInput{Username: username, Password: password},
 		service.RequestMeta{IP: "192.0.2.1", UserAgent: "test"})
 	if err != nil {
 		t.Fatalf("Login(%s) error = %v", username, err)
@@ -143,6 +169,7 @@ func newAuthService(db *store.DB, log *slog.Logger) *service.Auth {
 		Limiter:    auth.NewLimiter(db.Logins, auth.LimiterOptions{}),
 		Issuer:     auth.NewTokenIssuer(testSigningKey, 15*time.Minute),
 		Recorder:   audit.New(db.Audit, log),
+		Secrets:    testSecretBox(),
 		RefreshTTL: 168 * time.Hour,
 	})
 }
@@ -181,3 +208,45 @@ func newTokenID(t *testing.T) (string, error) {
 	t.Helper()
 	return auth.NewID()
 }
+
+// allowedRoot is the one host directory the test server will bind-mount from.
+func allowedRoot(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "allowed")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir allowed root: %v", err)
+	}
+	return root
+}
+
+// testMasterKey is a fixed key, so a registry password encrypted in one test
+// is readable in the same one. It is not a secret: nothing outside the test
+// binary ever sees it.
+func testMasterKey() crypto.Key {
+	var key crypto.Key
+	for i := range key {
+		key[i] = byte(i)
+	}
+	return key
+}
+
+// testCatalog loads the shipped app catalog, with no custom directory.
+func testCatalog(t *testing.T) *templates.Catalog {
+	t.Helper()
+
+	catalog, err := templates.Load("", nil)
+	if err != nil {
+		t.Fatalf("templates.Load() error = %v", err)
+	}
+	return catalog
+}
+
+// testSecretBox is the box the whole suite shares, so a TOTP secret written by
+// one auth service instance is readable by another in the same test.
+var testSecretBox = sync.OnceValue(func() *crypto.SecretBox {
+	box, err := crypto.NewSecretBox(testMasterKey())
+	if err != nil {
+		panic("test: cannot build the secret box: " + err.Error())
+	}
+	return box
+})

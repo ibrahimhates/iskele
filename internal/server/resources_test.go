@@ -130,6 +130,64 @@ func TestSystemDiskUsage(t *testing.T) {
 	}
 }
 
+func TestSystemHostReportsTheMachine(t *testing.T) {
+	rec := request(t, routerWith(t, fake.New()), http.MethodGet, APIPrefix+"/system/host")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("body is not JSON: %v", err)
+	}
+
+	memory, ok := report["memory"].(map[string]any)
+	if !ok || memory["total"] == float64(0) {
+		t.Errorf("memory = %v", report["memory"])
+	}
+	daemon, ok := report["daemon"].(map[string]any)
+	if !ok || daemon["go_version"] == "" {
+		t.Errorf("daemon = %v", report["daemon"])
+	}
+	engine, ok := report["engine"].(map[string]any)
+	if !ok || engine["version"] != "28.5.2" {
+		t.Errorf("engine = %v", report["engine"])
+	}
+	// The data directory's filesystem is measured: it is the one the daemon
+	// can run out of.
+	disks, ok := report["disks"].([]any)
+	if !ok || len(disks) == 0 {
+		t.Errorf("disks = %v", report["disks"])
+	}
+}
+
+func TestSystemHostSurvivesAnUnreachableEngine(t *testing.T) {
+	f := fake.New()
+	f.Fail(fake.OpInfo, docker.NewError(docker.KindUnavailable, "docker.info", "system", "",
+		"cannot reach the Docker daemon"))
+
+	rec := request(t, routerWith(t, f), http.MethodGet, APIPrefix+"/system/host")
+
+	// Host metrics do not come from Docker, and this panel is most useful
+	// precisely when Docker is down.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 even when the daemon is down", rec.Code)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("body is not JSON: %v", err)
+	}
+	if _, present := report["engine"]; present {
+		t.Errorf("engine = %v, want it omitted", report["engine"])
+	}
+	if msg, _ := report["engine_error"].(string); !strings.Contains(msg, "cannot reach") {
+		t.Errorf("engine_error = %v, want the engine's explanation", report["engine_error"])
+	}
+	if memory, _ := report["memory"].(map[string]any); memory == nil || memory["total"] == float64(0) {
+		t.Errorf("memory = %v, want a reading", report["memory"])
+	}
+}
+
 func TestSystemPingReportsReachableEngine(t *testing.T) {
 	rec := request(t, routerWith(t, fake.New()), http.MethodGet, APIPrefix+"/system/ping")
 

@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ibrahimhates/iskele/internal/audit"
 	"github.com/ibrahimhates/iskele/internal/httpx"
+	"github.com/ibrahimhates/iskele/internal/server/middleware"
 	"github.com/ibrahimhates/iskele/internal/service"
 )
 
@@ -76,7 +80,7 @@ func (h *Containers) Inspect(w http.ResponseWriter, r *http.Request) error {
 
 // Start handles POST /containers/{id}/start.
 func (h *Containers) Start(w http.ResponseWriter, r *http.Request) error {
-	if err := h.svc.Start(r.Context(), chi.URLParam(r, "id")); err != nil {
+	if err := h.svc.Start(r.Context(), chi.URLParam(r, "id"), actorOf(r), metaOf(r)); err != nil {
 		return engineError(err)
 	}
 	return h.accepted(w, r, "start")
@@ -88,7 +92,7 @@ func (h *Containers) Stop(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.svc.Stop(r.Context(), chi.URLParam(r, "id"), timeout); err != nil {
+	if err := h.svc.Stop(r.Context(), chi.URLParam(r, "id"), timeout, actorOf(r), metaOf(r)); err != nil {
 		return engineError(err)
 	}
 	return h.accepted(w, r, "stop")
@@ -100,7 +104,7 @@ func (h *Containers) Restart(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.svc.Restart(r.Context(), chi.URLParam(r, "id"), timeout); err != nil {
+	if err := h.svc.Restart(r.Context(), chi.URLParam(r, "id"), timeout, actorOf(r), metaOf(r)); err != nil {
 		return engineError(err)
 	}
 	return h.accepted(w, r, "restart")
@@ -120,7 +124,7 @@ func (h *Containers) Remove(w http.ResponseWriter, r *http.Request) error {
 	err = h.svc.Remove(r.Context(), chi.URLParam(r, "id"), service.RemoveOptions{
 		Force:         force,
 		RemoveVolumes: volumes,
-	})
+	}, actorOf(r), metaOf(r))
 	if err != nil {
 		return engineError(err)
 	}
@@ -144,4 +148,122 @@ func (h *Containers) accepted(w http.ResponseWriter, r *http.Request, action str
 		Status: "ok",
 	})
 	return nil
+}
+
+// Pause handles POST /containers/{id}/pause.
+func (h *Containers) Pause(w http.ResponseWriter, r *http.Request) error {
+	if err := h.svc.Pause(r.Context(), chi.URLParam(r, "id"), actorOf(r), metaOf(r)); err != nil {
+		return engineError(err)
+	}
+	return h.accepted(w, r, "pause")
+}
+
+// Unpause handles POST /containers/{id}/unpause.
+func (h *Containers) Unpause(w http.ResponseWriter, r *http.Request) error {
+	if err := h.svc.Unpause(r.Context(), chi.URLParam(r, "id"), actorOf(r), metaOf(r)); err != nil {
+		return engineError(err)
+	}
+	return h.accepted(w, r, "unpause")
+}
+
+// Kill handles POST /containers/{id}/kill. Optional query parameter: signal.
+func (h *Containers) Kill(w http.ResponseWriter, r *http.Request) error {
+	signal := strings.TrimSpace(r.URL.Query().Get("signal"))
+	if err := h.svc.Kill(r.Context(), chi.URLParam(r, "id"), signal, actorOf(r), metaOf(r)); err != nil {
+		return engineError(err)
+	}
+	return h.accepted(w, r, "kill")
+}
+
+// renameRequest is the body of POST /containers/{id}/rename.
+type renameRequest struct {
+	Name string `json:"name"`
+}
+
+// Rename handles POST /containers/{id}/rename.
+func (h *Containers) Rename(w http.ResponseWriter, r *http.Request) error {
+	req, err := decodeJSON[renameRequest](r)
+	if err != nil {
+		return err
+	}
+	if err := h.svc.Rename(r.Context(), chi.URLParam(r, "id"), req.Name, actorOf(r), metaOf(r)); err != nil {
+		return engineError(err)
+	}
+	return h.accepted(w, r, "rename")
+}
+
+// Redeploy handles POST /containers/{id}/redeploy.
+func (h *Containers) Redeploy(w http.ResponseWriter, r *http.Request) error {
+	result, err := h.svc.Redeploy(r.Context(), chi.URLParam(r, "id"), actorOf(r), metaOf(r))
+	if err != nil {
+		// A rollback means the operator still has a working container, which
+		// is worth saying alongside the failure.
+		return engineError(err)
+	}
+
+	httpx.WriteJSON(w, r, http.StatusOK, result)
+	return nil
+}
+
+// batchRequest is the body of POST /containers/batch.
+type batchRequest struct {
+	IDs    []string `json:"ids"`
+	Action string   `json:"action"`
+}
+
+// Prune handles POST /containers/prune: removing every stopped container.
+func (h *Containers) Prune(w http.ResponseWriter, r *http.Request) error {
+	report, err := h.svc.Prune(r.Context(), actorOf(r), metaOf(r))
+	if err != nil {
+		return engineError(err)
+	}
+
+	httpx.WriteJSON(w, r, http.StatusOK, report)
+	return nil
+}
+
+// Batch handles POST /containers/batch.
+//
+// It answers 207 when some containers failed, so a client can tell "all done"
+// from "mostly done" without inspecting every result.
+func (h *Containers) Batch(w http.ResponseWriter, r *http.Request) error {
+	req, err := decodeJSON[batchRequest](r)
+	if err != nil {
+		return err
+	}
+
+	results, err := h.svc.Batch(r.Context(), req.IDs, req.Action, actorOf(r), metaOf(r))
+	if err != nil {
+		if errors.Is(err, service.ErrEmptyID) {
+			return httpx.ErrBadRequest("%s", err.Error())
+		}
+		return httpx.ErrBadRequest("%s", err.Error())
+	}
+
+	failed := 0
+	for _, res := range results {
+		if !res.OK {
+			failed++
+		}
+	}
+
+	status := http.StatusOK
+	if failed > 0 {
+		status = http.StatusMultiStatus
+	}
+
+	httpx.WriteJSON(w, r, status, map[string]any{
+		"action":    req.Action,
+		"total":     len(results),
+		"succeeded": len(results) - failed,
+		"failed":    failed,
+		"results":   results,
+	})
+	return nil
+}
+
+// actorOf builds the audit actor for the authenticated caller.
+func actorOf(r *http.Request) audit.Actor {
+	id := middleware.IdentityFrom(r.Context())
+	return audit.Actor{UserID: id.UserID, Username: id.Username, Role: id.Role, TokenID: id.TokenID}
 }

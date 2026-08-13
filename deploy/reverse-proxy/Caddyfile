@@ -1,0 +1,35 @@
+# Iskele behind Caddy.
+#
+# Copy to /etc/caddy/Caddyfile (or import it from there), then
+# `caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy`.
+#
+# Caddy obtains and renews the certificate itself; nothing else to do.
+
+panel.example.com {
+	# WebSockets and Server-Sent Events need no special case here: Caddy
+	# forwards the upgrade and streams responses by default, which is most of
+	# why this file is three lines and the nginx one is thirty.
+	reverse_proxy 127.0.0.1:8377 {
+		# Host is passed through unchanged by default, which the WebSocket
+		# origin check depends on. Stated rather than assumed, because
+		# changing it is a one-line edit that breaks the console.
+		header_up Host {host}
+
+		# A log stream is idle whenever the container is quiet, and a build
+		# can run for many minutes.
+		transport http {
+			read_timeout 1h
+			write_timeout 1h
+		}
+	}
+
+	# iskeled sets its own security headers, including a CSP tuned to the
+	# embedded frontend. Only HSTS is added here, because only the proxy knows
+	# TLS is terminated at this hop.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# A build context is streamed as a tar.
+	request_body {
+		max_size 512MB
+	}
+}

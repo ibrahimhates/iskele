@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: "Build a snapshot without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # A tag that fails its own test suite must not become a release. This repeats
+  # a little of CI on purpose: CI runs on the branch, and a tag can point at a
+  # commit no branch build ever saw.
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Test
+        run: make test
+
+      - name: Build the frontend and the binary
+        run: make build
+
+      # The one failure that passes every compile check: a binary that builds
+      # and serves a blank page.
+      - name: The binary serves its own UI
+        run: |
+          set -euo pipefail
+          data=$(mktemp -d)
+          ./bin/iskeled --listen 127.0.0.1:8377 --data-dir "$data" \
+            --secret-key-file "$data/secret.key" --log-level warn &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 50); do
+            curl -fsS http://127.0.0.1:8377/api/v1/health >/dev/null && break
+            sleep 0.2
+          done
+          curl -fsS http://127.0.0.1:8377/api/v1/health | grep -q '"status":"ok"'
+          curl -fsS http://127.0.0.1:8377/ | grep -q '<div id="root">'
+
+  release:
+    name: GoReleaser
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating the release and uploading its artifacts.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # GoReleaser reads the tag history to name the build.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # nfpm needs no external tooling for .deb, but rpm packing does.
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      # Produces the SBOMs GoReleaser attaches to each archive.
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: >-
+            release --clean
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.snapshot) && '--snapshot' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A manual snapshot publishes nothing, so the artifacts are attached to
+      # the workflow run instead — otherwise there is no way to look at what
+      # was built.
+      - name: Upload snapshot artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot
+          path: dist/*
+          retention-days: 7

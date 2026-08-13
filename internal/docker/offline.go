@@ -81,3 +81,162 @@ func (o *offline) ListNetworks(context.Context) ([]Network, error) {
 
 // Close is a no-op: there is no connection to release.
 func (o *offline) Close() error { return nil }
+
+func (o *offline) PauseContainer(context.Context, string) error {
+	return o.err("container.pause", "container")
+}
+
+func (o *offline) UnpauseContainer(context.Context, string) error {
+	return o.err("container.unpause", "container")
+}
+
+func (o *offline) KillContainer(context.Context, string, string) error {
+	return o.err("container.kill", "container")
+}
+
+func (o *offline) RenameContainer(context.Context, string, string) error {
+	return o.err("container.rename", "container")
+}
+
+func (o *offline) CreateContainer(context.Context, CreateSpec) (string, error) {
+	return "", o.err("container.create", "container")
+}
+
+func (o *offline) RawInspectConfig(context.Context, string) (CreateSpec, error) {
+	return CreateSpec{}, o.err("container.inspect", "container")
+}
+
+func (o *offline) PullImage(context.Context, string) error {
+	return o.err("image.pull", "image")
+}
+
+func (o *offline) ContainerLogs(context.Context, string, LogOptions) (<-chan LogLine, <-chan error) {
+	lines := make(chan LogLine)
+	errs := make(chan error, 1)
+	errs <- o.err("container.logs", "container")
+	close(lines)
+	close(errs)
+	return lines, errs
+}
+
+func (o *offline) ContainerStats(context.Context, string) (<-chan Stats, <-chan error) {
+	stats := make(chan Stats)
+	errs := make(chan error, 1)
+	errs <- o.err("container.stats", "container")
+	close(stats)
+	close(errs)
+	return stats, errs
+}
+
+func (o *offline) Exec(context.Context, string, ExecOptions) (*ExecSession, error) {
+	return nil, o.err("container.exec", "container")
+}
+
+func (o *offline) ResizeExec(context.Context, string, uint, uint) error {
+	return o.err("container.exec_resize", "container")
+}
+
+func (o *offline) ExecExitCode(context.Context, string) (int, error) {
+	return 0, o.err("container.exec_inspect", "container")
+}
+
+func (o *offline) Events(context.Context) (<-chan Event, <-chan error) {
+	events := make(chan Event)
+	errs := make(chan error, 1)
+	errs <- o.err("system.events", "system")
+	close(events)
+	close(errs)
+	return events, errs
+}
+
+// Image, volume and network mutations, all equally unavailable.
+
+func (o *offline) PullImageProgress(context.Context, PullOptions) (<-chan PullEvent, <-chan error) {
+	events := make(chan PullEvent)
+	errs := make(chan error, 1)
+	errs <- o.err("image.pull", "image")
+	close(events)
+	close(errs)
+	return events, errs
+}
+
+func (o *offline) RemoveImage(context.Context, string, RemoveImageOptions) ([]ImageDeleted, error) {
+	return nil, o.err("image.remove", "image")
+}
+
+func (o *offline) PruneImages(context.Context, bool) (PruneReport, error) {
+	return PruneReport{}, o.err("image.prune", "image")
+}
+
+func (o *offline) TagImage(context.Context, string, string) error {
+	return o.err("image.tag", "image")
+}
+
+func (o *offline) ImageHistory(context.Context, string) ([]ImageHistoryEntry, error) {
+	return nil, o.err("image.history", "image")
+}
+
+func (o *offline) InspectImageRaw(context.Context, string) (RawInspect, error) {
+	return nil, o.err("image.inspect", "image")
+}
+
+func (o *offline) CreateVolume(context.Context, CreateVolumeOptions) (Volume, error) {
+	return Volume{}, o.err("volume.create", "volume")
+}
+
+func (o *offline) InspectVolume(context.Context, string) (Volume, error) {
+	return Volume{}, o.err("volume.inspect", "volume")
+}
+
+func (o *offline) InspectVolumeRaw(context.Context, string) (RawInspect, error) {
+	return nil, o.err("volume.inspect", "volume")
+}
+
+func (o *offline) RemoveVolume(context.Context, string, bool) error {
+	return o.err("volume.remove", "volume")
+}
+
+func (o *offline) PruneContainers(context.Context) (PruneReport, error) {
+	return PruneReport{}, o.err("container.prune", "container")
+}
+
+func (o *offline) PruneVolumes(context.Context) (PruneReport, error) {
+	return PruneReport{}, o.err("volume.prune", "volume")
+}
+
+func (o *offline) CreateNetwork(context.Context, CreateNetworkOptions) (Network, error) {
+	return Network{}, o.err("network.create", "network")
+}
+
+func (o *offline) InspectNetwork(context.Context, string) (Network, error) {
+	return Network{}, o.err("network.inspect", "network")
+}
+
+func (o *offline) InspectNetworkRaw(context.Context, string) (RawInspect, error) {
+	return nil, o.err("network.inspect", "network")
+}
+
+func (o *offline) RemoveNetwork(context.Context, string) error {
+	return o.err("network.remove", "network")
+}
+
+func (o *offline) PruneNetworks(context.Context) (PruneReport, error) {
+	return PruneReport{}, o.err("network.prune", "network")
+}
+
+func (o *offline) ConnectNetwork(context.Context, string, string, ConnectOptions) error {
+	return o.err("network.connect", "network")
+}
+
+func (o *offline) DisconnectNetwork(context.Context, string, string, bool) error {
+	return o.err("network.disconnect", "network")
+}
+
+func (o *offline) BuildImage(context.Context, BuildOptions) (<-chan BuildEvent, <-chan error) {
+	events := make(chan BuildEvent)
+	errs := make(chan error, 1)
+	errs <- o.err("image.build", "image")
+	close(events)
+	close(errs)
+	return events, errs
+}

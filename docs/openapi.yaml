@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Iskele API
-  version: 0.1.0-M2
+  version: 0.1.0-M5
   description: |
     HTTP API of the Iskele daemon (`iskeled`).
 
@@ -21,6 +21,12 @@ info:
     **CSRF.** State-changing requests must carry the `Authorization` header,
     which a cross-site form cannot set, and a present `Origin` must match the
     server. There is no cookie-based session.
+
+    **Streaming.** The WebSocket and SSE endpoints are the exception to the
+    Bearer rule: a browser cannot set a header on a WebSocket handshake or an
+    `EventSource` request, so they authenticate with a single-use 60-second
+    ticket from `POST /auth/ws-ticket`, passed as the `ticket` query parameter.
+    They enforce the same permissions as the rest of the API.
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -39,9 +45,57 @@ tags:
     description: Daemon health, version and Docker engine status
   - name: containers
     description: Container listing, inspection and lifecycle
+  - name: streaming
+    description: |
+      Long-lived channels: WebSocket for logs and exec, Server-Sent Events for
+      stats and engine events. They authenticate with a single-use ticket
+      rather than a Bearer header, which a browser cannot set on a WebSocket
+      handshake or an `EventSource` request.
   - name: images
+    description: Image listing, pulling, tagging and removal
   - name: volumes
+    description: Volume listing and lifecycle
   - name: networks
+    description: Network listing, lifecycle and container attachment
+  - name: settings
+    description: |
+      Runtime settings, and the installation facts shown beside them. Admin
+      only; the security boundaries are read-only here and live in the config
+      file.
+  - name: audit
+    description: |
+      The audit trail: who did what, when, and whether it worked. Admin-only
+      and read-only — nothing in the API edits or deletes a record.
+  - name: users
+    description: |
+      Account administration. Admin-only: every endpoint here either grants
+      access to this panel or takes it away. Two-factor enrollment is under
+      `auth` instead, because it acts on the caller's own account.
+  - name: registries
+    description: |
+      Private registry credentials. Admin-only: they are the one resource here
+      that grants access to something outside this host.
+  - name: tasks
+    description: Long-running operations — image pulls and builds
+  - name: catalog
+    description: |
+      The app catalog: JSON descriptions of common applications that render
+      into the same container definition the create wizard produces. Twenty
+      ship inside the binary. The schema is documented in
+      `docs/template-schema.md`.
+  - name: stacks
+    description: |
+      Compose stacks: parsing, deploying, scaling and reading back what is
+      running. Iskele parses with compose-go — the same library the CLI uses —
+      and creates the containers itself over the engine socket, so no `docker
+      compose` binary has to be installed. What each compose field does here is
+      documented in `docs/compose-support.md`.
+  - name: builds
+    description: |
+      Image builds from a Dockerfile on the host, the filesystem browser that
+      picks a build context, and the history of what was built. Building runs
+      arbitrary commands as root inside the daemon, so it takes its own
+      permission rather than `operate`.
 
 paths:
   /health:
@@ -147,7 +201,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/Credentials" }
+            schema: { $ref: "#/components/schemas/LoginRequest" }
       responses:
         "200":
           description: Signed in
@@ -157,7 +211,16 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
-          description: Invalid username or password
+          description: |
+            Invalid credentials, or a missing second factor.
+
+            `TOTP_REQUIRED` means the password was correct and the account has
+            two-factor enabled: send the request again with `totp`. It is the
+            one login outcome that is not deliberately vague, because the form
+            has to know to ask, and it tells an attacker who already guessed
+            the password nothing new. A *wrong* code is `INVALID_CREDENTIALS`,
+            indistinguishable from a wrong password, and counts against the
+            per-IP lockout.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -243,6 +306,384 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /auth/totp/setup:
+    post:
+      tags: [auth]
+      summary: Begin two-factor enrollment for the caller's own account
+      description: |
+        Generates a secret and stores it disabled, so the code the browser is
+        about to send can be checked against it. An enrollment abandoned
+        halfway leaves the account exactly as it was, able to sign in with a
+        password alone.
+
+        No permission is required: these endpoints act on the caller's own
+        account and nobody else's, and a second factor only its owner controls
+        is the only kind worth having.
+      responses:
+        "201":
+          description: The secret to scan or type in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TOTPSetup" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Two-factor is already enabled for this account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: The secret key is not configured, so a secret cannot be stored encrypted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/totp/verify:
+    post:
+      tags: [auth]
+      summary: Confirm and enable two-factor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TOTPCode" }
+      responses:
+        "200":
+          description: Enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totp_enabled: { type: boolean }
+        "401":
+          description: The code is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Already enabled, or no enrollment is in progress
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/totp/disable:
+    post:
+      tags: [auth]
+      summary: Turn off two-factor for the caller's own account
+      description: |
+        A current code is required: an unattended browser must not be enough to
+        remove the factor that protects the account from an unattended browser.
+        An operator who lost the device asks an admin to clear it with
+        `DELETE /users/{id}/totp`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TOTPCode" }
+      responses:
+        "200":
+          description: Disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totp_enabled: { type: boolean }
+        "401":
+          description: The code is not valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /audit:
+    get:
+      tags: [audit]
+      summary: Read the audit trail
+      description: |
+        Newest first, paged. `total` counts every match rather than the page,
+        because "200 of 200" and "200 of 12,481" ask an operator for very
+        different next steps.
+
+        Admin only, and read-only: there is no endpoint that edits or deletes a
+        record, because a trail an admin can rewrite is not a trail. Records
+        are kept until an age-based retention sweep removes them; that sweep
+        is not yet configurable.
+      parameters:
+        - { name: user_id, in: query, schema: { type: string }, description: The actor's account ID. }
+        - { name: action, in: query, schema: { type: string }, example: container.stop }
+        - { name: resource_type, in: query, schema: { type: string }, example: container }
+        - { name: resource_id, in: query, schema: { type: string } }
+        - name: result
+          in: query
+          schema: { type: string, enum: [ok, error] }
+          description: A refused action is recorded too; this is how you find them.
+        - name: from
+          in: query
+          schema: { type: string }
+          description: |
+            An RFC 3339 timestamp, or a bare `YYYY-MM-DD` date read as midnight
+            UTC — the only reading that does not silently depend on the
+            server's timezone.
+          example: "2026-08-01"
+        - { name: to, in: query, schema: { type: string }, example: "2026-08-11T23:59:59Z" }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, default: 200, maximum: 1000 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: One page of the trail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditPage" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /audit/facets:
+    get:
+      tags: [audit]
+      summary: The distinct values on record, for building filters
+      description: |
+        Derived from the trail rather than from a fixed list, so a deleted
+        account and a retired action still appear as long as their records do.
+      responses:
+        "200":
+          description: Filter facets
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditFacets" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /audit/export:
+    get:
+      tags: [audit]
+      summary: Download the trail as CSV or JSON
+      description: |
+        Takes the same filters as `GET /audit`, so an operator narrows the
+        screen and then exports what they are looking at. `limit` and `offset`
+        are ignored: an export is the whole result.
+
+        The body is written as the rows are read, in batches, so a year of a
+        busy host does not have to fit in memory.
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [csv, json], default: csv }
+        - { name: user_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: resource_type, in: query, schema: { type: string } }
+        - { name: resource_id, in: query, schema: { type: string } }
+        - { name: result, in: query, schema: { type: string, enum: [ok, error] } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: |
+            The trail as a file download. `Content-Disposition` names it
+            `iskele-audit-<timestamp>.<format>`.
+          content:
+            text/csv:
+              schema: { type: string }
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditEntry" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: Runtime settings and the installation's fixed facts
+      description: |
+        Admin only: the response names the Docker socket and the bind-mount
+        whitelist, which together describe how much of the host this daemon can
+        reach.
+
+        `installation` is read-only here on purpose. The socket path and
+        `allowed_paths` are startup-time security boundaries — an admin who
+        could widen the whitelist from a browser would be one request away from
+        mounting the whole filesystem into a container. Changing them means
+        editing the config file and restarting. `config_file` says which file.
+      responses:
+        "200":
+          description: The current settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsView" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [settings]
+      summary: Change a runtime setting
+      description: |
+        Every field is optional; an absent field is left alone. Unknown fields
+        are refused outright, so a client that thinks it is setting the
+        whitelist is told it is not rather than getting a 200 that did nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsUpdate" }
+      responses:
+        "200":
+          description: The settings after the change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsView" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /users:
+    get:
+      tags: [users]
+      summary: List accounts
+      description: |
+        Admin only, like everything under `/users`: each of these endpoints
+        either grants access to this panel or takes it away.
+      responses:
+        "200":
+          description: Every account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [users]
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "409":
+          description: That username is taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [users]
+      summary: One account
+      responses:
+        "200":
+          description: The account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [users]
+      summary: Change a role, a password, or an account's disabled state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserUpdate" }
+      responses:
+        "200":
+          description: The updated account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `LAST_ADMIN`: the change would leave the panel with no account able
+            to administer it. Stepping down is allowed — once somebody else can
+            take over. A disabled admin does not count.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [users]
+      summary: Delete an account
+      description: |
+        Ends every session the account holds. The account the request came from
+        cannot be deleted: unlike a demotion, that is not a step anybody takes
+        on purpose, and there is always another admin who can do it.
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: That is the account this request came from
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: That is the last account able to administer the panel
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users/{id}/totp:
+    delete:
+      tags: [users]
+      summary: Clear another account's second factor
+      description: |
+        The locked-out case: a device was lost, and somebody with admin rights
+        has to let its owner back in. It ends that account's sessions, which
+        were opened with the factor being removed.
+
+        It cannot be used on one's own account — that is
+        `POST /auth/totp/disable`, which asks for a code.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Cleared
+        "403":
+          description: That is the caller's own account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /system/ping:
     get:
       tags: [system]
@@ -298,6 +739,38 @@ paths:
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
+  /system/host:
+    get:
+      tags: [system]
+      summary: Host CPU, memory and disk usage
+      description: |
+        One reading of the machine iskeled runs on, plus the daemon's own
+        version and uptime.
+
+        Always answers 200. Host metrics do not come from Docker, so an
+        unreachable engine costs the report its `engine` object and nothing
+        else — a panel that goes blank because Docker is down is exactly the
+        panel an operator needs while Docker is down. Individual readings the
+        platform refused are listed in `errors` rather than failing the
+        request.
+
+        `cpu.percent` is measured between consecutive calls; the first call
+        after the daemon starts has nothing to compare against and reports
+        `-1`.
+      responses:
+        "200":
+          description: Host metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostReport"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+
   /containers:
     get:
       tags: [containers]
@@ -346,6 +819,54 @@ paths:
           $ref: "#/components/responses/NotInitialized"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
+    post:
+      tags: [containers]
+      summary: Create a container
+      description: |
+        Takes the whole definition in one request, in operator-facing terms
+        rather than the engine's own structures.
+
+        Two checks run before the engine sees any of it, and both refuse with
+        `403`:
+
+        * every **bind mount** source must be inside the configured
+          `allowed_paths` (`PATH_NOT_ALLOWED`). Named volumes and tmpfs mounts
+          touch no host path, so the whitelist does not apply to them. The
+          check resolves symlinks first, because a link inside an allowed root
+          can point anywhere.
+        * the options under `security`, and `network.name: host`, need the
+          **privileged** permission. Each is, in some configuration, a route
+          from container to host root.
+
+        A definition the engine would reject is caught here where possible, so
+        the error names the field rather than arriving as an opaque daemon
+        message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContainerSpec" }
+      responses:
+        "201":
+          description: |
+            The container was created. `started` reports whether it is running:
+            a container that was created but failed to start is left in place
+            rather than removed, so the operator can inspect why.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/CreateRefused"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
 
   /containers/{id}:
     parameters:
@@ -386,19 +907,12 @@ paths:
           description: Removed
         "404":
           $ref: "#/components/responses/ContainerNotFound"
-        "409":
-          description: |
-            The engine refused, e.g. the container is running and `force` was
-            not set. The engine's own guidance is passed through in `message`.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
-          $ref: "#/components/responses/NotInitialized"
+          $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
@@ -440,17 +954,12 @@ paths:
           $ref: "#/components/responses/ActionResult"
         "404":
           $ref: "#/components/responses/ContainerNotFound"
-        "409":
-          description: The engine refused given the container's current state
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "409":
-          $ref: "#/components/responses/NotInitialized"
+          $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
 
@@ -499,6 +1008,432 @@ paths:
           $ref: "#/components/responses/NotInitialized"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/pause:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Pause a container
+      description: |
+        Freezes every process in the container with the cgroup freezer. The
+        container keeps its memory and its network connections.
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/unpause:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Resume a paused container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/kill:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - name: signal
+        in: query
+        description: |
+          Signal to send. Omitted means `SIGKILL`, which is what makes this
+          different from `/stop`: no grace period, no chance to shut down
+          cleanly.
+        schema: { type: string, example: SIGTERM }
+    post:
+      tags: [containers]
+      summary: Send a signal to a container
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/rename:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Rename a container
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: |
+                    The new name. The engine requires
+                    `[a-zA-Z0-9][a-zA-Z0-9_.-]+` and rejects a name already in
+                    use.
+                  example: web-blue
+      responses:
+        "200":
+          $ref: "#/components/responses/ActionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/{id}/redeploy:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+    post:
+      tags: [containers]
+      summary: Recreate a container from a freshly pulled image
+      description: |
+        Pulls the container's image tag, then recreates the container from its
+        existing configuration. The original is renamed out of the way rather
+        than removed first, so a failure at any step can be rolled back: on
+        `rolled_back: true` the original container is running again under its
+        own name and no changes survive.
+
+        This is not atomic — there is a window in which neither container is
+        serving — and it only carries over what the engine reports about the
+        container. A container created outside iskele with options the inspect
+        payload does not express will not reproduce them.
+      responses:
+        "200":
+          description: |
+            The redeployment finished. Check `rolled_back` before reporting
+            success: a `200` with `rolled_back: true` means the new container
+            failed and the old one was restored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RedeployResult" }
+        "404":
+          $ref: "#/components/responses/ContainerNotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/prune:
+    post:
+      tags: [containers]
+      summary: Remove every stopped container
+      description: |
+        Exactly `docker container prune`: containers in the created, exited or
+        dead states go; running and paused ones stay. The engine decides which
+        those are — a listing this daemon filtered itself would be a moment out
+        of date, and "stopped when I looked" is not "stopped when I deleted it".
+
+        Needs the `prune` permission, which is admin-only: it deletes things
+        nobody named.
+      responses:
+        "200":
+          description: What was reclaimed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PruneReport" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /containers/batch:
+    post:
+      tags: [containers]
+      summary: Apply one lifecycle action to several containers
+      description: |
+        Every container is attempted, whatever happens to the others: a failure
+        halfway through a stop-everything must not leave the rest running
+        because the loop gave up. The per-container outcome is in `results`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BatchRequest" }
+      responses:
+        "200":
+          description: Every container succeeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResponse" }
+        "207":
+          description: |
+            At least one container failed. The status distinguishes "all done"
+            from "mostly done" without the client having to scan every result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /auth/ws-ticket:
+    post:
+      tags: [streaming]
+      summary: Issue a single-use ticket for a streaming channel
+      description: |
+        The ticket carries the caller's identity and permissions, is valid for
+        60 seconds, and dies on first use. It is passed as the `ticket` query
+        parameter to the WebSocket and SSE endpoints, which is the only place a
+        browser can put a credential on those connections.
+      responses:
+        "201":
+          description: Ticket issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticket, expires_in]
+                properties:
+                  ticket: { type: string }
+                  expires_in:
+                    type: integer
+                    description: Seconds until the ticket expires.
+                    example: 60
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/NotInitialized"
+
+  /containers/{id}/logs:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: follow
+        in: query
+        description: |
+          Keep the socket open and send new lines as they arrive. Following is
+          the point of a WebSocket log stream, so it defaults to true;
+          `follow=false` asks for the backlog only.
+        schema: { type: boolean, default: true }
+      - name: tail
+        in: query
+        description: |
+          Lines of history to replay before following. Defaults to 500:
+          replaying a multi-gigabyte log would hang the browser.
+        schema: { type: integer, minimum: 0, default: 500 }
+      - name: timestamps
+        in: query
+        description: Include the engine's per-line timestamp.
+        schema: { type: boolean, default: false }
+      - name: stdout
+        in: query
+        description: Include stdout. Selecting neither stream means both.
+        schema: { type: boolean }
+      - name: stderr
+        in: query
+        description: Include stderr. Selecting neither stream means both.
+        schema: { type: boolean }
+    get:
+      tags: [streaming]
+      summary: Stream container logs (WebSocket)
+      security: []
+      description: |
+        A WebSocket endpoint: send `Upgrade: websocket` and authenticate with a
+        `ticket`. The server writes JSON text frames shaped like `LogFrame` and
+        reads nothing; a client closing the socket stops the engine stream.
+
+        The handshake is rejected when `Origin` does not match `Host`, which is
+        the only defense available here — a WebSocket is not subject to the
+        same-origin policy the way `fetch` is.
+
+        Frame types: `log` for a line, `err` for a stream failure (the socket
+        closes after it), `eof` when the container's stream ends.
+      responses:
+        "101":
+          description: Switching protocols; the log stream follows
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /containers/{id}/exec:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: cmd
+        in: query
+        description: |
+          The command to run, one repeat per argument. Defaults to `/bin/sh`,
+          the one shell every image has.
+        schema: { type: array, items: { type: string } }
+      - name: tty
+        in: query
+        description: Allocate a pseudo-terminal.
+        schema: { type: boolean, default: true }
+      - name: user
+        in: query
+        description: Run as this user, e.g. `root` or `1000:1000`.
+        schema: { type: string }
+      - name: workdir
+        in: query
+        description: Working directory inside the container.
+        schema: { type: string }
+      - name: rows
+        in: query
+        description: Initial terminal height.
+        schema: { type: integer, minimum: 1 }
+      - name: cols
+        in: query
+        description: Initial terminal width.
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [streaming]
+      summary: Interactive exec session (WebSocket)
+      security: []
+      description: |
+        A WebSocket endpoint requiring the `operate` permission. The framing
+        carries the channel: **binary** frames are stdin and the command's raw
+        output, **text** frames are control messages.
+
+        The only control message is a resize: `{"t":"resize","rows":40,"cols":120}`.
+        When the command exits, the server sends a text `{"t":"exit","exit_code":0}`
+        frame and closes.
+
+        Every exec session is written to the audit log with the command, the
+        user and the container.
+      responses:
+        "101":
+          description: Switching protocols; the exec session follows
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /containers/stats:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [streaming]
+      summary: Stream resource usage for every running container (SSE)
+      security: []
+      description: |
+        One `text/event-stream` covering all running containers, each sample
+        tagged with its container ID. The list view needs a figure per row, and
+        a browser will not open more than six connections to one origin, so the
+        daemon fans the per-container engine streams into this one.
+
+        The set of containers is re-scanned every 10 seconds, so one that
+        starts appears within that window and one that stops drops out of it. A
+        single container failing does not end the stream — only an unreachable
+        daemon does.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /containers/{id}/stats:
+    parameters:
+      - $ref: "#/components/parameters/ContainerID"
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [streaming]
+      summary: Stream resource usage (SSE)
+      security: []
+      description: |
+        A `text/event-stream` of one sample per second. Event names: `stats`
+        with a `Stats` payload, `error` with `{code, message}`, and `eof` when
+        the container stops. A comment line is sent every 25 seconds so an idle
+        stream is not closed by a proxy.
+
+        CPU percentage is computed the way `docker stats` computes it: the
+        container's CPU delta over the system delta, multiplied by the number
+        of cores. Memory usage excludes the page cache, so the number matches
+        what the kernel would reclaim under pressure rather than the raw
+        cgroup total.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /system/events:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [streaming]
+      summary: Stream Docker engine events (SSE)
+      security: []
+      description: |
+        A `text/event-stream` of engine events — containers starting and
+        dying, images being pulled, volumes and networks changing. The UI uses
+        it to refresh lists without polling. Event names: `event` with a
+        `DockerEvent` payload, `error` with `{code, message}`.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /images:
     get:
@@ -567,6 +1502,28 @@ paths:
           $ref: "#/components/responses/NotInitialized"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
+    post:
+      tags: [volumes]
+      summary: Create a volume
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VolumeSpec" }
+      responses:
+        "201":
+          description: |
+            The volume. Creating one that already exists returns it rather than
+            failing, which is the engine's own behavior.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Volume" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
 
   /networks:
     get:
@@ -593,6 +1550,1575 @@ paths:
           $ref: "#/components/responses/NotInitialized"
         "503":
           $ref: "#/components/responses/DockerUnavailable"
+    post:
+      tags: [networks]
+      summary: Create a network
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkSpec" }
+      responses:
+        "201":
+          description: The network, read back from the engine
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Network" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /images/pull:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: ref
+        in: query
+        required: true
+        description: The image to pull, e.g. `nginx:1.27` or `ghcr.io/org/app@sha256:…`.
+        schema: { type: string }
+    get:
+      tags: [images, streaming]
+      summary: Pull an image (SSE)
+      security: []
+      description: |
+        A `text/event-stream` of the engine's own progress. Event names:
+
+        * `task` — first, carrying `{id}`: the task this pull registered as, so
+          it can be canceled from the task drawer after the page that started
+          it has gone away.
+        * `progress` — one engine line plus `percent`, summed across every
+          layer. The engine reports each layer separately and never a total, so
+          `percent` is `-1` until at least one layer has announced its size.
+        * `error` — the pull failed. The engine reports a failed pull *inside*
+          a 200 response, so this is the only place the failure appears.
+        * `done` — every layer finished.
+
+        The credential for the image's registry is applied automatically when
+        one is configured; nothing about it appears in the stream.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /images/prune:
+    post:
+      tags: [images]
+      summary: Remove unused images
+      description: |
+        Requires the **prune** permission (admin). `all=false`, the default,
+        removes only untagged images; `all=true` removes every image no
+        container uses, which on a build host is most of them.
+      parameters:
+        - name: all
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: What was reclaimed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PruneReport" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /images/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ImageID"
+    delete:
+      tags: [images]
+      summary: Remove an image
+      parameters:
+        - name: force
+          in: query
+          description: Remove even when a stopped container or another tag references it.
+          schema: { type: boolean, default: false }
+        - name: noprune
+          in: query
+          description: Keep untagged parent layers.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: What the engine removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        deleted: { type: string }
+                        untagged: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ImageNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /images/{id}/tag:
+    parameters:
+      - $ref: "#/components/parameters/ImageID"
+    post:
+      tags: [images]
+      summary: Add a reference to an image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tag]
+              properties:
+                tag:
+                  type: string
+                  example: registry.example.com/app:v2
+      responses:
+        "200":
+          description: The tag was added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  tag: { type: string }
+                  status: { type: string, enum: [ok] }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ImageNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /images/{id}/history:
+    parameters:
+      - $ref: "#/components/parameters/ImageID"
+    get:
+      tags: [images]
+      summary: Image layers, newest first
+      responses:
+        "200":
+          description: The build history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ImageHistoryEntry" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ImageNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /images/{id}/inspect:
+    parameters:
+      - $ref: "#/components/parameters/ImageID"
+    get:
+      tags: [images]
+      summary: Raw engine image payload
+      description: The engine's response, unmodified.
+      responses:
+        "200":
+          description: The engine's own payload
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/ImageNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /volumes/prune:
+    post:
+      tags: [volumes]
+      summary: Remove every volume no container references
+      description: |
+        Requires the **prune** permission (admin). This is the most destructive
+        operation Iskele offers: an unused volume may still be the only copy of
+        a database, and nothing here can tell the difference.
+      responses:
+        "200":
+          description: What was reclaimed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PruneReport" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /volumes/{name}:
+    parameters:
+      - $ref: "#/components/parameters/VolumeName"
+    get:
+      tags: [volumes]
+      summary: One volume
+      responses:
+        "200":
+          description: The volume
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Volume" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/VolumeNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+    delete:
+      tags: [volumes]
+      summary: Remove a volume, with the data in it
+      parameters:
+        - name: force
+          in: query
+          description: Remove one the engine still considers in use.
+          schema: { type: boolean, default: false }
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/VolumeNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /volumes/{name}/inspect:
+    parameters:
+      - $ref: "#/components/parameters/VolumeName"
+    get:
+      tags: [volumes]
+      summary: Raw engine volume payload
+      responses:
+        "200":
+          description: The engine's own payload
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/VolumeNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /networks/prune:
+    post:
+      tags: [networks]
+      summary: Remove user-defined networks with nothing attached
+      description: |
+        Requires the **prune** permission (admin). The engine's own predefined
+        networks (bridge, host, none) are never removed.
+      responses:
+        "200":
+          description: What was removed. Networks occupy no disk, so
+            `space_reclaimed` is always 0.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PruneReport" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /networks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/NetworkID"
+    get:
+      tags: [networks]
+      summary: One network, with its attached containers counted
+      responses:
+        "200":
+          description: The network
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Network" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NetworkNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+    delete:
+      tags: [networks]
+      summary: Remove a network
+      description: The engine refuses while containers are still attached.
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NetworkNotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /networks/{id}/inspect:
+    parameters:
+      - $ref: "#/components/parameters/NetworkID"
+    get:
+      tags: [networks]
+      summary: Raw engine network payload
+      responses:
+        "200":
+          description: The engine's own payload
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NetworkNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /networks/{id}/connect:
+    parameters:
+      - $ref: "#/components/parameters/NetworkID"
+    post:
+      tags: [networks]
+      summary: Attach a container to a network
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [container]
+              properties:
+                container: { type: string }
+                aliases:
+                  type: array
+                  items: { type: string }
+                  description: Extra DNS names for this container on this network.
+                ipv4_address:
+                  type: string
+                  description: |
+                    A static address. Only works on a network with a
+                    user-defined subnet.
+                ipv6_address: { type: string }
+      responses:
+        "200":
+          description: Attached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  network: { type: string }
+                  container: { type: string }
+                  status: { type: string, enum: [connected] }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NetworkNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /networks/{id}/disconnect:
+    parameters:
+      - $ref: "#/components/parameters/NetworkID"
+    post:
+      tags: [networks]
+      summary: Detach a container from a network
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [container]
+              properties:
+                container: { type: string }
+                force: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Detached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  network: { type: string }
+                  container: { type: string }
+                  status: { type: string, enum: [disconnected] }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NetworkNotFound"
+        "503":
+          $ref: "#/components/responses/DockerUnavailable"
+
+  /registries:
+    get:
+      tags: [registries]
+      summary: List configured registries
+      description: |
+        Admin-only. Passwords are never returned by any endpoint —
+        `has_password` is the only thing said about them.
+      responses:
+        "200":
+          description: The registries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Registry" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [registries]
+      summary: Add a registry credential
+      description: |
+        The password is encrypted with the master key from `secret_key_file`
+        before it reaches the database, and is decrypted only to authenticate a
+        pull. The server address is normalized, so `https://index.docker.io/`
+        and `docker.io` are the same entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegistryInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Registry" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: A registry for this server already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /registries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      tags: [registries]
+      summary: Update a registry
+      description: |
+        An omitted or empty `password` keeps the stored one. The UI is never
+        given the value, so a blank field on an edit form must not erase it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegistryInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Registry" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such registry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [registries]
+      summary: Remove a registry
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such registry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /tasks:
+    get:
+      tags: [tasks]
+      summary: Long-running operations
+      description: |
+        What the UI's task drawer shows. Tasks live in memory: restarting
+        iskeled cancels everything in flight, so a persisted task could only
+        ever be one that can never finish. Finished tasks are kept for ten
+        minutes.
+      responses:
+        "200":
+          description: Tasks, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [tasks]
+      summary: One task
+      responses:
+        "200":
+          description: The task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such task; finished tasks are kept for ten minutes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /tasks/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [tasks]
+      summary: Stop a running task
+      responses:
+        "200":
+          description: The task, now canceled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The task has already finished
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /system/allowed-paths:
+    get:
+      tags: [system]
+      summary: Host paths that may be bind-mounted
+      description: |
+        The configured `allowed_paths`. The create wizard's path picker needs
+        them; without this the operator learns what is allowed only by being
+        refused. An empty list means bind mounts are refused entirely.
+      responses:
+        "200":
+          description: The whitelist
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paths]
+                properties:
+                  paths:
+                    type: array
+                    items: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /fs/browse:
+    get:
+      tags: [builds]
+      summary: Browse a whitelisted host directory
+      description: |
+        The same trust boundary as a bind mount, seen from the other side: only
+        directories inside `allowed_paths` open, and a symlink pointing out of
+        one is not followed. Omitting `path` returns the whitelist roots
+        themselves, which is where a picker starts.
+
+        Listings are capped at 2000 entries; `truncated` says when a directory
+        had more. `dockerfiles` names the Dockerfile-looking files in the
+        directory, so the build form can offer them without a second request.
+
+        This takes the `build` permission rather than `read`: it enumerates host
+        directories, and the build form is the only thing that needs it.
+      parameters:
+        - name: path
+          in: query
+          description: Absolute host path. Empty lists the whitelist roots.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The directory listing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DirListing" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The path is outside `allowed_paths`, or the caller lacks the build
+            permission.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No such directory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /build:
+    parameters:
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: context
+        in: query
+        required: true
+        description: |
+          The host directory to build from. Checked against `allowed_paths`
+          before anything is read.
+        schema: { type: string }
+      - name: dockerfile
+        in: query
+        description: Relative to the context directory. Defaults to `Dockerfile`.
+        schema: { type: string }
+      - name: tag
+        in: query
+        description: Tag for the built image, one repeat per tag.
+        schema:
+          type: array
+          items: { type: string }
+      - name: buildargs
+        in: query
+        description: A JSON object of string build arguments.
+        schema: { type: string }
+      - name: labels
+        in: query
+        description: A JSON object of string labels for the built image.
+        schema: { type: string }
+      - name: target
+        in: query
+        description: The multi-stage target to stop at.
+        schema: { type: string }
+      - name: platform
+        in: query
+        description: 'Target platform, e.g. `linux/arm64`.'
+        schema: { type: string }
+      - name: nocache
+        in: query
+        description: Ignore the layer cache.
+        schema: { type: boolean, default: false }
+      - name: pull
+        in: query
+        description: Always re-pull the base image.
+        schema: { type: boolean, default: false }
+    get:
+      tags: [builds]
+      summary: Build an image (WebSocket)
+      security: []
+      description: |
+        A WebSocket endpoint: send `Upgrade: websocket` and authenticate with a
+        `ticket` carrying the `build` permission — a Dockerfile runs arbitrary
+        commands as root inside the daemon, which is why building is not part
+        of `operate`.
+
+        The request is validated and recorded *before* the socket is accepted,
+        so a build that can never run — a directory outside the whitelist, a
+        missing Dockerfile — is refused with an ordinary HTTP error rather than
+        as the first frame of a stream the client then has to interpret.
+
+        The build outlives the socket. Closing the tab stops the frames, not the
+        work; `GET /builds/{id}` and `GET /builds/{id}/log` are how it is picked
+        up again, and `POST /builds/{id}/cancel` is how it is stopped.
+
+        The first frame is always `build`, carrying the id needed to cancel.
+        Then `log` frames for output, `status` frames for the base-image pull,
+        and finally either `done` or `err`.
+      responses:
+        "101":
+          description: Switching protocols; the build stream follows
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          description: |
+            The context directory is outside `allowed_paths`, or the ticket
+            lacks the build permission.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: The build context is larger than the configured limit
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: No Dockerfile at the requested path
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /builds:
+    get:
+      tags: [builds]
+      summary: Build history
+      description: |
+        Newest first. Records are kept for 180 days; the archived logs behind
+        them only for 30, so a record whose `log_archived` is false still says
+        that the build happened and what it produced.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [running, success, failed, canceled]
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Builds, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Build" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /builds/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [builds]
+      summary: One build
+      responses:
+        "200":
+          description: The build record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such build
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /builds/{id}/log:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [builds]
+      summary: Replay a build's output
+      description: |
+        Plain text rather than JSON: this is the build's output verbatim, the
+        same bytes an operator would have seen on a terminal. Capped at 16 MiB.
+      responses:
+        "200":
+          description: The archived output
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such build
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: |
+            The build is known but its log is past the 30-day archive
+            retention.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /builds/{id}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [builds]
+      summary: Stop a running build
+      description: |
+        Cancellation reaches the engine through the build's task: ending it ends
+        the daemon request, which is what actually stops the work. A build left
+        `running` by a daemon restart has no task to cancel and is closed out as
+        canceled instead.
+      responses:
+        "200":
+          description: The build, now canceled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such build
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: The build has already finished
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks:
+    get:
+      tags: [stacks]
+      summary: Every stack
+      description: |
+        The `env` content is withheld from listings — it routinely holds
+        database passwords, and a listing is the response most likely to be
+        logged or cached. Read a single stack to get it.
+      responses:
+        "200":
+          description: Stacks, most recently touched first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Stack" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [stacks]
+      summary: Record a new stack
+      description: |
+        Creating a stack does not deploy it. The name is fixed at creation: it
+        labels every container the stack creates, so changing it later would
+        orphan them all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "201":
+          description: The stack
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stack" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /stacks/validate:
+    post:
+      tags: [stacks]
+      summary: Check a compose file without saving it
+      description: |
+        Answers 200 with a report rather than an error status: an invalid file
+        is the normal state of one being edited, and the editor needs every
+        problem at once rather than the first.
+
+        It runs exactly the checks a deploy runs — the path whitelist and the
+        privileged-option gate — so the button and the deploy agree.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackValidation" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /stacks/discovered:
+    get:
+      tags: [stacks]
+      summary: Compose projects running here that are not stacks yet
+      description: |
+        `docker compose up` on the command line produces the same labelled
+        containers Iskele does, so a stack list that showed only this panel's
+        own work would misrepresent what is running.
+      responses:
+        "200":
+          description: Discovered projects
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/DiscoveredStack" }
+                  total: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /stacks/import:
+    post:
+      tags: [stacks]
+      summary: Adopt a discovered project
+      description: |
+        A record, not a redeploy: the containers keep running untouched. The
+        next deploy is what brings them in line with the file, and that is the
+        operator's decision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: The adopted stack
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stack" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such project is running here
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    get:
+      tags: [stacks]
+      summary: One stack, with what the engine reports for it
+      responses:
+        "200":
+          description: The stack and its live services
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackDetail" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+    put:
+      tags: [stacks]
+      summary: Replace a stack's content
+      description: The name is not editable; it labels the stack's containers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "200":
+          description: The stack
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stack" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [stacks]
+      summary: Forget a stack
+      description: |
+        Removes the record and its working copy, not the containers. Taking
+        those away is `down`; an operator who already stopped them by hand
+        should not have this bring anything back.
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/diff:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: What saving and deploying this content would do
+      description: |
+        Reports the change per service, in compose's own vocabulary, so that
+        "this restarts your database" is knowable before the edit is saved
+        rather than after.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StackInput" }
+      responses:
+        "200":
+          description: The difference
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackDiff" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /stacks/{id}/up:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: pull
+        in: query
+        description: Re-pull every image even when it is already present.
+        schema: { type: boolean, default: false }
+      - name: recreate
+        in: query
+        description: |
+          Replace every container, even ones whose definition has not changed.
+          Without it an unchanged service is left running — which is the
+          difference between restarting one service and restarting all of them.
+        schema: { type: boolean, default: false }
+      - name: service
+        in: query
+        description: Deploy only these services, one repeat per name.
+        schema:
+          type: array
+          items: { type: string }
+    get:
+      tags: [stacks]
+      summary: Deploy a stack (SSE)
+      security: []
+      description: |
+        A stream because deploying pulls images and starts containers one after
+        another, and an operator watching a blank page cannot tell that from a
+        hang. Authentication is by ticket, like the other streaming endpoints.
+
+        Event names are the event's `kind`: `step` for progress, `log` for a
+        line from a build the deploy had to run first, `warn` for a compose
+        field Iskele will not act on, `done` at the end, and `error` for a
+        failure — which carries the per-service `problems` when the deploy was
+        refused rather than attempted.
+
+        The deploy outlives the request: closing the connection stops the
+        events, not the work.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StackEvent" }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "409":
+          description: This stack is already being deployed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}/pull:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+    get:
+      tags: [stacks]
+      summary: Re-pull every image a stack uses (SSE)
+      security: []
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StackEvent" }
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+        "409":
+          description: This stack is busy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}/scale:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: service
+        in: query
+        required: true
+        schema: { type: string }
+      - name: replicas
+        in: query
+        required: true
+        schema: { type: integer, minimum: 0 }
+    get:
+      tags: [stacks]
+      summary: Change how many containers one service runs (SSE)
+      security: []
+      description: |
+        The compose file is not rewritten. It belongs to the operator, and a
+        panel that silently edited it would lose their comments and formatting;
+        the next deploy restores what the file says, which is what makes the
+        file authoritative.
+      responses:
+        "200":
+          description: The event stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/StackEvent" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such stack, or no such service in it
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stacks/{id}/logs:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - $ref: "#/components/parameters/StreamTicket"
+      - name: service
+        in: query
+        description: Read only these services; omit for the whole stack.
+        schema:
+          type: array
+          items: { type: string }
+      - name: follow
+        in: query
+        schema: { type: boolean, default: true }
+      - name: tail
+        in: query
+        schema: { type: integer, minimum: 0, default: 500 }
+      - name: timestamps
+        in: query
+        schema: { type: boolean, default: false }
+    get:
+      tags: [stacks]
+      summary: Stream a whole stack's logs (WebSocket)
+      security: []
+      description: |
+        One socket for every service, interleaved and tagged with the service
+        and container each line came from. One connection per service would
+        make the interleaving the browser's problem, and doing it correctly
+        needs timestamps the operator did not necessarily ask for.
+      responses:
+        "101":
+          description: Switching protocols; the log stream follows
+        "401":
+          $ref: "#/components/responses/TicketRejected"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/down:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+      - name: volumes
+        in: query
+        description: |
+          Remove the stack's named volumes too. Off by default: a volume is the
+          one part of a stack that cannot be recreated.
+        schema: { type: boolean, default: false }
+      - name: networks
+        in: query
+        description: Remove the networks the stack created.
+        schema: { type: boolean, default: true }
+    post:
+      tags: [stacks]
+      summary: Stop and remove a stack's containers
+      responses:
+        "200":
+          description: What was removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/stop:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: Stop a stack's containers
+      description: |
+        In reverse dependency order: a database goes down after the thing using
+        it, not before.
+      responses:
+        "200":
+          description: What was stopped
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/start:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: Start a stack's containers
+      description: In dependency order, so nothing comes up before what it needs.
+      responses:
+        "200":
+          description: What was started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /stacks/{id}/restart:
+    parameters:
+      - $ref: "#/components/parameters/StackID"
+    post:
+      tags: [stacks]
+      summary: Restart a stack's containers
+      responses:
+        "200":
+          description: What was restarted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StackActionResult" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/StackNotFound"
+
+  /templates:
+    get:
+      tags: [catalog]
+      summary: The app catalog
+      description: |
+        Twenty templates ship inside the binary; an operator's own are read
+        from `template_dir` alongside them, and one whose id matches a shipped
+        entry replaces it.
+
+        `problems` lists the custom files that would not load. They are
+        reported rather than swallowed — the operator who wrote one needs to
+        know why it is missing — and a broken file does not take the rest of
+        the catalog with it.
+      responses:
+        "200":
+          description: The catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, categories, problems]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Template" }
+                  total: { type: integer }
+                  categories:
+                    type: array
+                    items: { type: string }
+                  problems:
+                    type: array
+                    items: { $ref: "#/components/schemas/TemplateProblem" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /templates/secret:
+    post:
+      tags: [catalog]
+      summary: Generate a value for a password field
+      description: |
+        Generated on the server, not in the browser: the browser is where an
+        extension, or a machine with a poor entropy source, would quietly
+        produce something guessable. Letters and digits only — a password that
+        travels through a shell, a YAML file and a connection string is one
+        whose punctuation something will eventually mangle.
+      parameters:
+        - name: length
+          in: query
+          description: Clamped to 12–128; the default is 32.
+          schema: { type: integer, minimum: 12, maximum: 128, default: 32 }
+      responses:
+        "201":
+          description: The generated value
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret]
+                properties:
+                  secret: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /templates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [catalog]
+      summary: One template, with its questions
+      responses:
+        "200":
+          description: The template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Template" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No such template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /templates/{id}/deploy:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [catalog]
+      summary: Deploy a template
+      description: |
+        Renders the template with the operator's answers and creates the
+        container through the same service the create wizard uses — so the
+        path whitelist and the privileged-option permission apply exactly as
+        they would to a hand-filled form. A catalog entry is a shortcut through
+        the form, not around the checks.
+
+        Every rejected answer comes back at once under `details.fields`: a
+        nine-field form should not have to be submitted nine times.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TemplateDeploy" }
+      responses:
+        "201":
+          description: The container, with the template's after-deploy notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TemplateDeployResult" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            The caller lacks `create`, a bind path is outside `allowed_paths`,
+            or the template sets an option needing the privileged permission.
+            The message names what stopped it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No such template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: One or more answers were rejected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
 components:
   securitySchemes:
@@ -620,6 +3146,44 @@ components:
         engine's own default (10s).
       schema: { type: integer, minimum: 0 }
 
+    ImageID:
+      name: id
+      in: path
+      required: true
+      description: Image ID or a reference such as `nginx:1.27`.
+      schema: { type: string }
+
+    VolumeName:
+      name: name
+      in: path
+      required: true
+      description: Volume name.
+      schema: { type: string }
+
+    NetworkID:
+      name: id
+      in: path
+      required: true
+      description: Network ID or name.
+      schema: { type: string }
+
+    StreamTicket:
+      name: ticket
+      in: query
+      required: true
+      description: |
+        A single-use ticket from `POST /auth/ws-ticket`. It is consumed on
+        arrival whether or not the permission check that follows passes, so a
+        rejected ticket cannot be retried against another endpoint.
+      schema: { type: string }
+
+    StackID:
+      name: id
+      in: path
+      required: true
+      description: The stack's id.
+      schema: { type: string }
+
   responses:
     ActionResult:
       description: The lifecycle action was applied
@@ -632,10 +3196,63 @@ components:
               id: { type: string }
               action:
                 type: string
-                enum: [start, stop, restart]
+                enum: [start, stop, restart, pause, unpause, kill, rename]
               status:
                 type: string
                 enum: [ok]
+
+    CreateRefused:
+      description: |
+        This installation will not create that container. Two distinct policies
+        produce it, told apart by `code`:
+
+        * `PATH_NOT_ALLOWED` — a bind mount source outside `allowed_paths`.
+          `details` carries the refused `path` and the configured
+          `allowed_paths`.
+        * `FORBIDDEN` — an option needing the `privileged` permission.
+          `details.options` names every one that was used.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: PATH_NOT_ALLOWED
+              message: '"/etc" is outside the allowed paths (/opt/stacks, /srv)'
+              details:
+                path: /etc
+                allowed_paths: [/opt/stacks, /srv]
+
+    ImageNotFound:
+      description: No such image
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    VolumeNotFound:
+      description: No such volume
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    NetworkNotFound:
+      description: No such network
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    TicketRejected:
+      description: |
+        The ticket was missing, already used, or older than 60 seconds. Fetch a
+        fresh one and reconnect.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: >-
+                a valid streaming ticket is required; request one from POST
+                /api/v1/auth/ws-ticket
 
     Unauthorized:
       description: No valid credential was presented
@@ -668,8 +3285,31 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
 
+    Conflict:
+      description: |
+        Two distinct situations share this status, told apart by `code`:
+        `NOT_INITIALIZED` means the installation has no admin account yet, and
+        `CONFLICT` means the engine refused the operation given the container's
+        current state (removing a running container without `force`, say). The
+        engine's own guidance is passed through in `message`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    NotFound:
+      description: No such resource
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
     ValidationFailed:
       description: The request body failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    StackNotFound:
+      description: No such stack
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -755,6 +3395,77 @@ components:
             details:
               type: object
               additionalProperties: true
+
+    LoginRequest:
+      allOf:
+        - $ref: "#/components/schemas/Credentials"
+        - type: object
+          properties:
+            totp:
+              type: string
+              description: |
+                The six-digit code, for an account with two-factor enabled.
+                Spaces are tolerated, so a code pasted as displayed works.
+              example: "492039"
+
+    UserCreate:
+      type: object
+      required: [username, password, role]
+      properties:
+        username: { type: string }
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 1024
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+
+    UserUpdate:
+      type: object
+      description: |
+        Every field is optional, and an absent field is left alone: one form
+        can change a role without also resetting a password.
+      properties:
+        role:
+          type: string
+          enum: [admin, operator, viewer]
+        password:
+          type: string
+          format: password
+          minLength: 12
+          maxLength: 1024
+          description: |
+            Setting this ends every session the account holds. An admin
+            resetting a password is either handing the account back to its
+            owner or taking it away, and both mean the tokens issued before
+            now must stop working.
+        disabled:
+          type: boolean
+          description: Disabling an account also ends its sessions.
+
+    TOTPSetup:
+      type: object
+      required: [secret, uri]
+      properties:
+        secret:
+          type: string
+          description: The base32 secret, grouped in fours for manual entry.
+          example: JBSW Y3DP EHPK 3PXP
+        uri:
+          type: string
+          description: The otpauth:// URI the QR code encodes.
+          example: otpauth://totp/iskele:admin?algorithm=SHA1&digits=6&issuer=iskele&period=30&secret=JBSWY3DPEHPK3PXP
+
+    TOTPCode:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: The six-digit code from an authenticator app.
+          example: "492039"
 
     Credentials:
       type: object
@@ -1040,3 +3751,1315 @@ components:
         containers: { $ref: "#/components/schemas/DiskUsageEntry" }
         volumes: { $ref: "#/components/schemas/DiskUsageEntry" }
         build_cache: { $ref: "#/components/schemas/DiskUsageEntry" }
+
+    SettingsView:
+      type: object
+      required: [audit_retention_days, bind_mount_warning, installation]
+      properties:
+        audit_retention_days:
+          type: integer
+          description: |
+            How long audit entries are kept. `0` keeps everything, which is the
+            default: deleting somebody's audit history because they never
+            opened this page would be the wrong default to pick for them.
+          minimum: 0
+          maximum: 3650
+        bind_mount_warning:
+          type: boolean
+          description: |
+            Warn in the creation wizard whenever a bind mount is added. A
+            nudge, not a control — the path whitelist is what actually decides.
+        installation: { $ref: "#/components/schemas/Installation" }
+
+    SettingsUpdate:
+      type: object
+      description: Every field optional; an absent field is left alone.
+      additionalProperties: false
+      properties:
+        audit_retention_days: { type: integer, minimum: 0, maximum: 3650 }
+        bind_mount_warning: { type: boolean }
+
+    Installation:
+      type: object
+      description: |
+        Facts about this installation that the settings screen shows and cannot
+        change. They come from the config file and take effect at startup.
+      required: [docker_host, allowed_paths, data_dir, listen, tls_enabled, access_ttl, refresh_ttl]
+      properties:
+        config_file:
+          type: string
+          description: Where these values came from; absent for the built-in defaults.
+          example: /etc/iskele/config.yaml
+        docker_host: { type: string, example: "unix:///var/run/docker.sock" }
+        allowed_paths:
+          type: array
+          items: { type: string }
+          description: The only host directories bind mounts and build contexts may use.
+        data_dir: { type: string }
+        template_dir: { type: string }
+        listen: { type: string }
+        tls_enabled: { type: boolean }
+        access_ttl: { type: integer, description: Seconds. }
+        refresh_ttl: { type: integer, description: Seconds. }
+
+    AuditEntry:
+      type: object
+      required: [id, action, result, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: string }
+        username:
+          type: string
+          description: |
+            Stored on the record itself, so an actor survives the deletion of
+            their account — which is the entire point of an audit log.
+        action: { type: string, example: container.stop }
+        resource_type: { type: string, example: container }
+        resource_id: { type: string }
+        result: { type: string, enum: [ok, error] }
+        detail:
+          type: string
+          description: |
+            A JSON object as a string, holding whatever the action thought was
+            worth keeping. Secrets are masked before they get here.
+        ip: { type: string }
+        user_agent: { type: string }
+        created_at: { type: string, format: date-time }
+
+    AuditPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEntry" }
+        total:
+          type: integer
+          description: Every entry matching the filter, not just this page.
+        limit: { type: integer }
+        offset: { type: integer }
+
+    AuditFacets:
+      type: object
+      required: [actions, resource_types, actors]
+      properties:
+        actions:
+          type: array
+          items: { type: string }
+        resource_types:
+          type: array
+          items: { type: string }
+        actors:
+          type: array
+          items:
+            type: object
+            required: [username]
+            properties:
+              user_id: { type: string }
+              username: { type: string }
+
+    HostReport:
+      type: object
+      required: [uptime, cpu, memory, swap, disks, daemon]
+      properties:
+        hostname: { type: string }
+        platform:
+          type: string
+          description: Distribution and version.
+          example: debian 12
+        kernel: { type: string, example: 6.1.0-18-amd64 }
+        uptime:
+          type: integer
+          description: Seconds since the host booted.
+        boot_time: { type: string, format: date-time }
+        cpu: { $ref: "#/components/schemas/HostCPU" }
+        memory: { $ref: "#/components/schemas/HostMemory" }
+        swap:
+          allOf: [{ $ref: "#/components/schemas/HostMemory" }]
+          description: All zeros on a host with no swap, which is not an error.
+        disks:
+          type: array
+          items: { $ref: "#/components/schemas/HostDisk" }
+        load:
+          allOf: [{ $ref: "#/components/schemas/HostLoad" }]
+          description: Absent on platforms without a load average.
+        errors:
+          type: array
+          items: { type: string }
+          description: |
+            Readings the platform refused, e.g. inside a container with no
+            access to the host's `/proc`. The rest of the report is still
+            valid.
+        daemon: { $ref: "#/components/schemas/DaemonInfo" }
+        engine:
+          allOf: [{ $ref: "#/components/schemas/EngineSummary" }]
+          description: Absent when the Docker daemon is unreachable.
+        engine_error:
+          type: string
+          description: Why `engine` is absent.
+
+    HostCPU:
+      type: object
+      required: [cores, percent]
+      properties:
+        cores: { type: integer, description: Logical CPUs. }
+        percent:
+          type: number
+          description: |
+            Busy time since the previous call, 0..100, or `-1` on the first
+            call after the daemon starts.
+        model: { type: string }
+
+    HostMemory:
+      type: object
+      required: [total, used, available, percent]
+      properties:
+        total: { type: integer, description: Bytes. }
+        used: { type: integer, description: Bytes. }
+        available: { type: integer, description: Bytes. }
+        percent: { type: number }
+
+    HostDisk:
+      type: object
+      required: [path, label, total, used, free, percent]
+      properties:
+        path:
+          type: string
+          description: The measured directory, not its mount point.
+          example: /var/lib/iskele
+        label:
+          type: string
+          description: What the directory is.
+          enum: [data, docker]
+        filesystem: { type: string, example: ext4 }
+        total: { type: integer, description: Bytes. }
+        used: { type: integer, description: Bytes. }
+        free: { type: integer, description: Bytes. }
+        percent: { type: number }
+
+    HostLoad:
+      type: object
+      required: [one, five, fifteen]
+      properties:
+        one: { type: number }
+        five: { type: number }
+        fifteen: { type: number }
+
+    DaemonInfo:
+      type: object
+      required: [version, go_version, started_at, uptime]
+      properties:
+        version: { type: string }
+        commit: { type: string }
+        go_version: { type: string }
+        started_at: { type: string, format: date-time }
+        uptime: { type: integer, description: Seconds since iskeled started. }
+
+    EngineSummary:
+      type: object
+      required: [version, api_version, containers, running, paused, stopped, images]
+      properties:
+        version: { type: string, example: 28.5.2 }
+        api_version: { type: string, example: "1.51" }
+        os_type: { type: string, example: linux }
+        root_dir: { type: string, example: /var/lib/docker }
+        containers: { type: integer }
+        running: { type: integer }
+        paused: { type: integer }
+        stopped: { type: integer }
+        images: { type: integer }
+
+    BatchRequest:
+      type: object
+      required: [ids, action]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+          description: Container IDs or names.
+        action:
+          type: string
+          enum: [start, stop, restart, pause, unpause, kill, remove]
+          description: |
+            The action to apply to each container. `remove` does not force:
+            a running container is reported as a `CONFLICT` failure in its own
+            result while the rest of the selection proceeds, so a bulk remove
+            never kills something that was still serving traffic.
+
+    BatchResult:
+      type: object
+      required: [id, ok]
+      properties:
+        id: { type: string }
+        ok: { type: boolean }
+        error:
+          type: string
+          description: Present only when `ok` is false.
+        code:
+          type: string
+          description: The stable error code for this container's failure.
+          example: CONTAINER_NOT_FOUND
+
+    BatchResponse:
+      type: object
+      required: [action, total, succeeded, failed, results]
+      properties:
+        action: { type: string }
+        total: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/BatchResult" }
+
+    RedeployResult:
+      type: object
+      required: [old_id, new_id, image, rolled_back]
+      properties:
+        old_id:
+          type: string
+          description: The container that was replaced.
+        new_id:
+          type: string
+          description: |
+            The container now running. Equal to `old_id` when `rolled_back` is
+            true, because nothing replaced it.
+        image:
+          type: string
+          description: The image tag that was pulled and deployed.
+        rolled_back:
+          type: boolean
+          description: |
+            True when the new container could not be created or started and the
+            original was restored under its own name.
+
+    Stats:
+      type: object
+      description: One sample from the stats stream, taken once a second.
+      required:
+        [
+          timestamp,
+          cpu_percent,
+          memory_usage,
+          memory_limit,
+          memory_percent,
+          network_rx,
+          network_tx,
+          block_read,
+          block_write,
+          pids,
+        ]
+      properties:
+        timestamp: { type: string, format: date-time }
+        cpu_percent:
+          type: number
+          format: double
+          description: |
+            Percent of one host CPU, so a container using two cores fully reads
+            200 on a machine with two or more.
+        memory_usage:
+          type: integer
+          format: int64
+          description: Bytes in use, excluding the reclaimable page cache.
+        memory_limit: { type: integer, format: int64 }
+        memory_percent: { type: number, format: double }
+        network_rx:
+          type: integer
+          format: int64
+          description: Cumulative bytes received across every interface.
+        network_tx: { type: integer, format: int64 }
+        block_read:
+          type: integer
+          format: int64
+          description: Cumulative bytes read from block devices.
+        block_write: { type: integer, format: int64 }
+        pids: { type: integer }
+
+    LogFrame:
+      type: object
+      description: One JSON text frame on the log WebSocket.
+      required: [t]
+      properties:
+        t:
+          type: string
+          enum: [log, err, eof, exit]
+        s:
+          type: string
+          enum: [stdout, stderr]
+          description: Present on `log` frames.
+        ts:
+          type: string
+          format: date-time
+          description: Present when `timestamps=true` was requested.
+        m:
+          type: string
+          description: The line, or the failure message on an `err` frame.
+        code:
+          type: string
+          description: The stable error code, on an `err` frame.
+        exit_code:
+          type: integer
+          description: The command's status, on an `exit` frame from exec.
+
+    DockerEvent:
+      type: object
+      description: One engine event from the SSE event stream.
+      required: [type, action, actor, time]
+      properties:
+        type:
+          type: string
+          description: The object kind the event concerns.
+          example: container
+        action:
+          type: string
+          example: start
+        actor:
+          type: string
+          description: The object's ID.
+        name:
+          type: string
+          description: The object's name, when the engine reports one.
+        scope: { type: string }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        time: { type: string, format: date-time }
+
+    IdentifiedStats:
+      description: |
+        One sample from `/containers/stats`: the same fields as `Stats`, plus
+        the container the sample belongs to.
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string }
+        - $ref: "#/components/schemas/Stats"
+
+    ContainerSpec:
+      type: object
+      description: |
+        A container definition in operator-facing terms. Everything the create
+        wizard collects, in one object.
+      required: [image]
+      properties:
+        name:
+          type: string
+          description: |
+            Container name. The engine requires `[a-zA-Z0-9][a-zA-Z0-9_.-]+`
+            and rejects one already in use. Omitted asks for a random name.
+        image:
+          type: string
+          example: nginx:1.27
+        pull_policy:
+          type: string
+          enum: [missing, always, never]
+          default: missing
+          description: |
+            `missing` leaves the engine to pull an image it does not have,
+            which is its own default. `always` pulls before creating, so a
+            moving tag picks up the new build. `never` fails rather than
+            reaching the network.
+        command:
+          type: array
+          items: { type: string }
+          description: Overrides the image's CMD.
+        entrypoint:
+          type: array
+          items: { type: string }
+        working_dir: { type: string }
+        user:
+          type: string
+          description: '`name`, `uid`, or `uid:gid`.'
+        hostname: { type: string }
+        domain_name: { type: string }
+        tty: { type: boolean }
+        open_stdin: { type: boolean }
+        env:
+          type: array
+          description: |
+            Key and value are kept apart so a value containing `=` — every
+            connection string — survives the round trip.
+          items:
+            type: object
+            required: [key, value]
+            properties:
+              key: { type: string }
+              value: { type: string }
+        labels:
+          type: object
+          additionalProperties: { type: string }
+        ports:
+          type: array
+          items: { $ref: "#/components/schemas/PortMapping" }
+        mounts:
+          type: array
+          items: { $ref: "#/components/schemas/MountSpec" }
+        restart_policy:
+          type: object
+          properties:
+            name:
+              type: string
+              enum: [no, always, unless-stopped, on-failure]
+              default: "no"
+            max_retries:
+              type: integer
+              description: Only valid with `on-failure`.
+        resources:
+          type: object
+          properties:
+            cpus:
+              type: number
+              format: double
+              description: 'Core count, as `docker run --cpus` takes it: 1.5 is one and a half.'
+            cpu_shares: { type: integer, format: int64 }
+            cpuset_cpus: { type: string, example: 0-3 }
+            memory: { type: integer, format: int64, description: Bytes. }
+            memory_reservation: { type: integer, format: int64 }
+            memory_swap:
+              type: integer
+              format: int64
+              description: Combined memory+swap limit; -1 allows unlimited swap.
+            pids_limit: { type: integer, format: int64 }
+            shm_size: { type: integer, format: int64 }
+        network:
+          type: object
+          properties:
+            name:
+              type: string
+              description: |
+                A network name, or `bridge`/`host`/`none`. `host` needs the
+                privileged permission: it shares the host's whole stack,
+                including the loopback an unprotected service listens on.
+            aliases:
+              type: array
+              items: { type: string }
+            ipv4_address:
+              type: string
+              description: Only works on a network with a user-defined subnet.
+            ipv6_address: { type: string }
+            extra_hosts:
+              type: array
+              items: { type: string }
+              description: '`hostname:ip` entries added to /etc/hosts.'
+            dns: { type: array, items: { type: string } }
+            dns_search: { type: array, items: { type: string } }
+            dns_options: { type: array, items: { type: string } }
+            mac_address: { type: string }
+        health_check:
+          $ref: "#/components/schemas/HealthSpec"
+        logging:
+          type: object
+          properties:
+            driver: { type: string, example: json-file }
+            options:
+              type: object
+              additionalProperties: { type: string }
+        security:
+          $ref: "#/components/schemas/SecuritySpec"
+        auto_remove:
+          type: boolean
+          description: Remove the container when it exits.
+        init:
+          type: boolean
+          description: Run an init process as PID 1 to reap zombies.
+        start:
+          type: boolean
+          description: |
+            Start the container as soon as it is created. A container that is
+            created but fails to start is left in place, so the operator can
+            see why.
+
+    PortMapping:
+      type: object
+      required: [container_port]
+      properties:
+        host_ip:
+          type: string
+          description: |
+            Empty publishes on every interface, which is worth noticing on a
+            machine reachable from outside.
+        host_port:
+          type: string
+          description: |
+            A port or a `start-end` range. Empty lets the engine pick one; with
+            no host side at all the port is exposed to other containers but not
+            published.
+        container_port: { type: integer, minimum: 1, maximum: 65535 }
+        protocol:
+          type: string
+          enum: [tcp, udp, sctp]
+          default: tcp
+
+    MountSpec:
+      type: object
+      required: [destination]
+      properties:
+        type:
+          type: string
+          enum: [bind, volume, tmpfs]
+          default: volume
+        source:
+          type: string
+          description: |
+            A host path for `bind` — checked against `allowed_paths` — a volume
+            name for `volume`, and unused for `tmpfs`. An empty source on a
+            volume mount asks for an anonymous one.
+        destination:
+          type: string
+          description: An absolute path inside the container.
+        read_only: { type: boolean }
+        tmpfs_size: { type: integer, format: int64, description: Bytes. }
+        bind_propagation:
+          type: string
+          enum: [rprivate, private, rshared, shared, rslave, slave]
+        create_host_path:
+          type: boolean
+          description: Create a missing bind source rather than failing.
+
+    HealthSpec:
+      type: object
+      properties:
+        test:
+          type: array
+          items: { type: string }
+          description: |
+            One element is run through a shell, which is what an operator
+            typing `curl -f localhost/health` expects. Several are exec'd
+            directly.
+        interval: { type: string, example: 30s }
+        timeout: { type: string, example: 5s }
+        start_period: { type: string, example: 10s }
+        retries: { type: integer }
+        disable:
+          type: boolean
+          description: Turn off a health check inherited from the image.
+
+    SecuritySpec:
+      type: object
+      description: |
+        Every field here needs the **privileged** permission. Each one is, in
+        some configuration, a route from container to host root.
+      properties:
+        privileged: { type: boolean }
+        cap_add: { type: array, items: { type: string } }
+        cap_drop:
+          type: array
+          items: { type: string }
+          description: Dropping capabilities narrows the container, so it is not gated.
+        security_opt: { type: array, items: { type: string } }
+        devices:
+          type: array
+          items: { type: string }
+          description: '`host[:container[:permissions]]`, permissions from r, w, m.'
+        read_only_root_fs: { type: boolean }
+        sysctls:
+          type: object
+          additionalProperties: { type: string }
+
+    VolumeSpec:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Empty asks the engine for an anonymous volume.
+        driver: { type: string, default: local }
+        driver_opts:
+          type: object
+          additionalProperties: { type: string }
+          description: |
+            Driver-specific, e.g. `type`/`device`/`o` for the local driver
+            mounting an NFS share.
+        labels:
+          type: object
+          additionalProperties: { type: string }
+
+    NetworkSpec:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        driver:
+          type: string
+          default: bridge
+          description: bridge, macvlan, ipvlan, overlay, or a plugin's name.
+        internal:
+          type: boolean
+          description: Cut the network off from the outside world.
+        attachable:
+          type: boolean
+          description: Let standalone containers join a swarm-scoped network.
+        enable_ipv6: { type: boolean }
+        ipam:
+          type: array
+          description: Subnets. Empty leaves the engine to pick one.
+          items:
+            type: object
+            properties:
+              subnet: { type: string, example: 172.30.0.0/16 }
+              gateway: { type: string }
+              ip_range: { type: string }
+        options:
+          type: object
+          additionalProperties: { type: string }
+          description: Driver-specific, e.g. `parent=eth0` for macvlan.
+        labels:
+          type: object
+          additionalProperties: { type: string }
+
+    PruneReport:
+      type: object
+      required: [deleted, space_reclaimed]
+      properties:
+        deleted:
+          type: array
+          items: { type: string }
+          description: Image IDs, volume names or network names.
+        space_reclaimed:
+          type: integer
+          format: int64
+          description: Bytes. Always 0 for networks, which occupy no disk.
+
+    ImageHistoryEntry:
+      type: object
+      properties:
+        id: { type: string }
+        created: { type: string, format: date-time }
+        created_by: { type: string }
+        size: { type: integer, format: int64 }
+        comment: { type: string }
+        tags: { type: array, items: { type: string } }
+
+    Registry:
+      type: object
+      description: |
+        A private registry credential. The password is never part of this
+        object in any response.
+      required: [id, name, server, username, has_password, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        server:
+          type: string
+          description: Normalized host, e.g. `ghcr.io` or `docker.io`.
+        username: { type: string }
+        email: { type: string }
+        has_password:
+          type: boolean
+          description: Whether a credential is stored, without revealing it.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        last_used_at:
+          type: string
+          format: date-time
+          description: The last pull that authenticated with this credential.
+
+    RegistryInput:
+      type: object
+      required: [name, server]
+      properties:
+        name: { type: string }
+        server:
+          type: string
+          description: |
+            A host, optionally with a port. A scheme and trailing slash are
+            stripped; every Docker Hub spelling normalizes to `docker.io`.
+          example: ghcr.io
+        username: { type: string }
+        password:
+          type: string
+          description: |
+            Encrypted before storage. On an update, an empty value keeps the
+            stored one.
+        email: { type: string }
+
+    Task:
+      type: object
+      required: [id, kind, target, state, progress, started_at, cancelable]
+      properties:
+        id: { type: string }
+        kind: { type: string, example: image.pull }
+        target:
+          type: string
+          description: What the task acts on — an image reference, a container.
+        state:
+          type: string
+          enum: [running, succeeded, failed, canceled]
+        progress:
+          type: integer
+          description: 0..100, or -1 when the operation cannot report a fraction.
+        message: { type: string }
+        error: { type: string }
+        username:
+          type: string
+          description: Who started it, so a shared installation's drawer is not a mystery.
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        cancelable: { type: boolean }
+
+    DirEntry:
+      type: object
+      description: One entry in a browsed host directory.
+      required: [name, path, is_dir, size, mod_time]
+      properties:
+        name: { type: string }
+        path:
+          type: string
+          description: The absolute path, so a client never has to join paths itself.
+        is_dir: { type: boolean }
+        size: { type: integer, format: int64 }
+        mod_time: { type: string, format: date-time }
+        symlink:
+          type: boolean
+          description: |
+            The entry is a symlink. It is resolved to decide `is_dir`, but
+            browsing into one that leaves the whitelist is still refused.
+
+    DirListing:
+      type: object
+      description: The result of browsing one whitelisted host directory.
+      required: [path, entries, allowed_roots]
+      properties:
+        path:
+          type: string
+          description: The directory listed. Empty when the roots were returned.
+        parent:
+          type: string
+          description: |
+            The directory above, when it is still inside the whitelist. Absent
+            at a root, which is what stops a picker from walking out.
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/DirEntry" }
+        truncated:
+          type: boolean
+          description: The directory held more entries than the 2000-entry cap.
+        dockerfiles:
+          type: array
+          description: Dockerfile-looking files in this directory.
+          items: { type: string }
+        allowed_roots:
+          type: array
+          description: The whitelist, so a picker can always get back to a root.
+          items: { type: string }
+
+    Build:
+      type: object
+      description: One image build started from the panel.
+      required:
+        [id, context_dir, dockerfile, tags, no_cache, pull, status,
+         context_files, context_bytes, started_at, log_archived, duration_ms]
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        username:
+          type: string
+          description: Who started it, so a shared installation's history is not a mystery.
+        context_dir: { type: string }
+        dockerfile:
+          type: string
+          description: Relative to the context directory.
+        tags:
+          type: array
+          items: { type: string }
+        target: { type: string }
+        platform: { type: string }
+        no_cache: { type: boolean }
+        pull: { type: boolean }
+        status:
+          type: string
+          enum: [running, success, failed, canceled]
+        image_id:
+          type: string
+          description: What the build produced, on success.
+        error:
+          type: string
+          description: Why it failed, in the engine's words.
+        context_files:
+          type: integer
+          description: Files sent to the engine, after `.dockerignore`.
+        context_bytes: { type: integer, format: int64 }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        duration_ms:
+          type: integer
+          format: int64
+          description: |
+            How long the build ran, or how long it has been running. Sent so
+            that no client has to get a running build's elapsed time wrong.
+        log_archived:
+          type: boolean
+          description: |
+            The output is still on disk and `GET /builds/{id}/log` will serve
+            it. False once the 30-day archive retention has passed.
+
+    BuildFrame:
+      type: object
+      description: One JSON text frame on the build WebSocket.
+      required: [t]
+      properties:
+        t:
+          type: string
+          enum: [build, log, status, done, err]
+          description: |
+            `build` is the opening frame carrying the id; `log` is a line of
+            output; `status` is base-image pull progress, or the built image's
+            id; `done` and `err` are terminal.
+        id:
+          type: string
+          description: The build's id, on the `build` and `done` frames.
+        line:
+          type: string
+          description: A chunk of build output, on a `log` frame.
+        step:
+          type: integer
+          description: The Dockerfile instruction being run.
+        total_steps:
+          type: integer
+          description: How many instructions the Dockerfile has.
+        status:
+          type: string
+          description: |
+            The engine's pull status on a `status` frame, or the build's final
+            status on `done`.
+        layer_id:
+          type: string
+          description: The layer a pull `status` frame is about.
+        current: { type: integer, format: int64 }
+        total: { type: integer, format: int64 }
+        image_id:
+          type: string
+          description: What the build produced, on the final frames.
+        m:
+          type: string
+          description: The failure message, on an `err` frame.
+        code:
+          type: string
+          description: The stable error code, on an `err` frame.
+
+    StackInput:
+      type: object
+      description: What an operator submits when creating or editing a stack.
+      required: [source]
+      properties:
+        name:
+          type: string
+          description: |
+            Set once, at creation. It labels every container the stack creates,
+            so changing it would orphan them all.
+        source:
+          type: string
+          enum: [editor, file, git]
+          description: |
+            `editor` is a compose file typed into the panel; `file` reads one
+            from this host, inside `allowed_paths`; `git` clones a repository.
+        compose:
+          type: string
+          description: The compose file. Required for an `editor` stack.
+        env:
+          type: string
+          description: |
+            The stack's `.env`, used for interpolation. It is the only thing
+            `${...}` resolves against — never the daemon's own environment.
+        path:
+          type: string
+          description: |
+            The compose file's path for a `file` stack, or its path inside the
+            repository for a `git` one.
+        git_url:
+          type: string
+          description: |
+            `https://`, `ssh://`, `git://` or the scp-style `git@host:org/repo`.
+            `ext::` and local paths are refused.
+        git_ref:
+          type: string
+          description: A branch, tag or commit. Empty takes the default branch.
+
+    Stack:
+      type: object
+      description: One compose project Iskele manages.
+      required: [id, name, source, compose, status, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        source:
+          type: string
+          enum: [editor, file, git]
+        path: { type: string }
+        git_url: { type: string }
+        git_ref: { type: string }
+        git_commit:
+          type: string
+          description: What the working copy is at, so a pull's effect is predictable.
+        compose:
+          type: string
+          description: |
+            The content that was last deployed, whatever the source. For a file
+            or git stack this is the copy that actually ran — the one worth
+            having once the working tree has moved on.
+        env:
+          type: string
+          description: |
+            Present only when a single stack is read. Listings withhold it: it
+            routinely holds database passwords.
+        working_dir:
+          type: string
+          description: What relative paths in the compose file resolve against.
+        status:
+          type: string
+          enum: [created, deploying, deployed, failed, stopped]
+          description: |
+            What the last deploy did — not what the containers are doing now.
+            The engine is the authority on that and is asked directly.
+        last_error: { type: string }
+        last_deployed_at: { type: string, format: date-time }
+        created_by: { type: string }
+        created_by_id: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    StackDetail:
+      allOf:
+        - $ref: "#/components/schemas/Stack"
+        - type: object
+          required: [services, warnings]
+          properties:
+            services:
+              type: array
+              items: { $ref: "#/components/schemas/StackServiceStatus" }
+            warnings:
+              type: array
+              items: { $ref: "#/components/schemas/ComposeWarning" }
+            parse_error:
+              type: string
+              description: |
+                Set when the stored compose file no longer parses. The stack is
+                still listed and still says why — it has containers, and the
+                operator needs to know what is wrong with it.
+            engine_error:
+              type: string
+              description: |
+                Set when the daemon could not be reached. The definition is
+                returned regardless: a stack read is not a Docker operation
+                first, and an operator whose engine is down still needs to read
+                the file they are about to fix.
+
+    StackServiceStatus:
+      type: object
+      description: One service and the containers it currently has.
+      required: [name, replicas, running, containers]
+      properties:
+        name: { type: string }
+        replicas:
+          type: integer
+          description: What the compose file asks for.
+        running:
+          type: integer
+          description: How many containers are actually up.
+        image: { type: string }
+        ports:
+          type: array
+          items: { $ref: "#/components/schemas/Port" }
+        containers:
+          type: array
+          items: { $ref: "#/components/schemas/Container" }
+        drifted:
+          type: boolean
+          description: |
+            A container is running a configuration that no longer matches the
+            compose file, which is what a deploy would replace.
+
+    ComposeWarning:
+      type: object
+      description: |
+        A compose field Iskele read but will not act on. Silence would be worse
+        than a refusal: an operator whose `secrets:` were quietly dropped finds
+        out when the application fails to start, and blames the application.
+      required: [field, message]
+      properties:
+        service:
+          type: string
+          description: Empty for a project-level warning.
+        field: { type: string }
+        message: { type: string }
+
+    StackProblem:
+      type: object
+      description: One reason a stack cannot be deployed.
+      required: [service, field, message]
+      properties:
+        service: { type: string }
+        field: { type: string }
+        message: { type: string }
+
+    StackValidation:
+      type: object
+      required: [valid, warnings, problems]
+      properties:
+        valid: { type: boolean }
+        error:
+          type: string
+          description: A file that would not parse at all.
+        services:
+          type: array
+          items: { type: string }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ComposeWarning" }
+        problems:
+          type: array
+          description: |
+            Why this stack would be refused: a path outside `allowed_paths`, an
+            option the caller may not set.
+          items: { $ref: "#/components/schemas/StackProblem" }
+
+    StackDiff:
+      type: object
+      required: [services, networks, volumes, warnings]
+      properties:
+        services:
+          type: array
+          items:
+            type: object
+            required: [service, kind, recreates]
+            properties:
+              service: { type: string }
+              kind:
+                type: string
+                enum: [added, removed, modified]
+              fields:
+                type: array
+                description: |
+                  What changed, in compose's own vocabulary — reading
+                  "image, ports" beats reading a line-by-line YAML diff.
+                items: { type: string }
+              recreates:
+                type: boolean
+                description: Applying this replaces the container rather than leaving it running.
+        networks:
+          type: array
+          items: { $ref: "#/components/schemas/StackResourceChange" }
+        volumes:
+          type: array
+          items: { $ref: "#/components/schemas/StackResourceChange" }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ComposeWarning" }
+
+    StackResourceChange:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        kind:
+          type: string
+          enum: [added, removed, modified]
+
+    StackEvent:
+      type: object
+      description: One line of a deploy's progress, as an SSE `data` payload.
+      required: [kind, message]
+      properties:
+        kind:
+          type: string
+          enum: [step, log, warn, done]
+        service:
+          type: string
+          description: Empty for project-level work.
+        message: { type: string }
+        container:
+          type: string
+          description: Set when a step produced one.
+
+    StackActionResult:
+      type: object
+      description: What a lifecycle action touched.
+      required: [containers]
+      properties:
+        containers:
+          type: array
+          items: { type: string }
+        networks:
+          type: array
+          items: { type: string }
+        volumes:
+          type: array
+          items: { type: string }
+        failed:
+          type: array
+          description: What could not be done, so a partial result stays legible.
+          items: { type: string }
+
+    StackLogFrame:
+      type: object
+      description: One JSON text frame on the stack log WebSocket.
+      required: [t]
+      properties:
+        t:
+          type: string
+          enum: [log, err, eof]
+        service: { type: string }
+        container: { type: string }
+        s:
+          type: string
+          enum: [stdout, stderr]
+        ts: { type: string, format: date-time }
+        m: { type: string }
+        code: { type: string }
+
+    DiscoveredStack:
+      type: object
+      description: A compose project running here that Iskele has no record of.
+      required: [name, services, containers, running, importable]
+      properties:
+        name: { type: string }
+        services:
+          type: array
+          items: { type: string }
+        containers: { type: integer }
+        running: { type: integer }
+        config_file:
+          type: string
+          description: |
+            The compose file the CLI deployed from, when the containers record
+            one. It is what an import would read.
+        working_dir: { type: string }
+        importable:
+          type: boolean
+          description: |
+            The compose file is readable and inside `allowed_paths`, which is
+            what importing needs.
+        reason:
+          type: string
+          description: Why an unimportable stack cannot be imported.
+        created_at: { type: string, format: date-time }
+
+    TemplateField:
+      type: object
+      description: One question a template asks.
+      required: [name, label, type]
+      properties:
+        name:
+          type: string
+          description: What `{{name}}` substitutes in the template's strings.
+        label: { type: string }
+        type:
+          type: string
+          enum: [text, number, password, select, bool, port, path, volume]
+        help:
+          type: string
+          description: |
+            Shown under the input. This is where a template explains what a
+            value is for, which is most of what makes a catalog usable.
+        default:
+          type: string
+          description: Never set on a password field — a shipped default password is a password everybody has.
+        required: { type: boolean }
+        pattern: { type: string }
+        min: { type: integer }
+        max: { type: integer }
+        options:
+          type: array
+          items:
+            type: object
+            required: [value, label]
+            properties:
+              value: { type: string }
+              label: { type: string }
+        generate:
+          type: boolean
+          description: The UI offers to generate a value, from `POST /templates/secret`.
+        generate_length: { type: integer }
+
+    Template:
+      type: object
+      description: One catalog entry.
+      required: [id, title, category, image]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        category:
+          type: string
+          description: The shipped set uses database, networking and tools.
+        description: { type: string }
+        icon:
+          type: string
+          description: A lucide icon name — names rather than images, so the catalog works offline.
+        website: { type: string }
+        documentation: { type: string }
+        keywords:
+          type: array
+          items: { type: string }
+        image: { type: string }
+        fields:
+          type: array
+          items: { $ref: "#/components/schemas/TemplateField" }
+        notes:
+          type: string
+          description: Shown after a successful deploy, with the answers substituted.
+        source:
+          type: string
+          enum: [builtin, custom]
+          description: Set by the loader, so a shipped entry is distinguishable from an operator's own.
+        deployed:
+          type: integer
+          description: How many containers this template has produced on this host.
+        needs_privileged:
+          type: boolean
+          description: |
+            The template sets capabilities, devices, sysctls or host
+            networking. Declaring them does not grant them — deploying still
+            requires the privileged permission — but the catalog says so in
+            advance rather than after the form is filled in.
+
+    TemplateProblem:
+      type: object
+      description: A custom template file that could not be loaded.
+      required: [path, message]
+      properties:
+        path: { type: string }
+        message: { type: string }
+
+    TemplateDeploy:
+      type: object
+      description: What the catalog form submits.
+      properties:
+        name:
+          type: string
+          description: The container's name. Empty falls back to the template's id.
+        values:
+          type: object
+          additionalProperties: { type: string }
+          description: The answers, keyed by field name.
+        network:
+          type: string
+          description: An existing network to attach to, which is how a deployed database is reached.
+        start:
+          type: boolean
+          description: Run it immediately. Default true.
+
+    TemplateDeployResult:
+      allOf:
+        - $ref: "#/components/schemas/CreateResult"
+        - type: object
+          required: [template]
+          properties:
+            template: { type: string }
+            notes:
+              type: string
+              description: The template's after-deploy instructions, with the operator's own answers substituted.
+
+    CreateResult:
+      type: object
+      description: What creating a container returns.
+      required: [id, name, image, started]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        image: { type: string }
+        started:
+          type: boolean
+          description: |
+            A container that was created but failed to start is left in place
+            rather than removed, so the operator can inspect why.
