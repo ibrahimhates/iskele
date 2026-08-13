@@ -180,7 +180,13 @@ func run(args []string) error {
 		log.Info("closed stack deploys left running by a previous process", slog.Int("count", closed))
 	}
 
-	go housekeeping(ctx, log, db, limiter, builder)
+	// The router builds its own instance over the same table. That is not a
+	// divergence: the service holds no state, reading the setting fresh on
+	// every sweep, so a retention change made in the browser is in force on
+	// the next tick without anything being handed between them.
+	settingsService := service.NewSettings(db.Settings, cfg, recorder)
+
+	go housekeeping(ctx, log, db, limiter, builder, settingsService)
 
 	// The catalog is read once at startup: twenty templates ship inside the
 	// binary, and an operator's own are read alongside them. A broken custom
@@ -202,14 +208,15 @@ func run(args []string) error {
 		Recorder: recorder,
 		Tickets:  auth.NewTicketStore(auth.TicketTTL),
 
-		Users:      db.Users,
-		Sessions:   db.Sessions,
-		Audit:      db.Audit,
-		Registries: db.Registries,
-		SecretBox:  secretBox,
-		Builds:     db.Builds,
-		Stacks:     db.Stacks,
-		Catalog:    catalog,
+		Users:         db.Users,
+		Sessions:      db.Sessions,
+		Audit:         db.Audit,
+		SettingsStore: db.Settings,
+		Registries:    db.Registries,
+		SecretBox:     secretBox,
+		Builds:        db.Builds,
+		Stacks:        db.Stacks,
+		Catalog:       catalog,
 	})
 
 	srv, err := server.New(ctx, cfg, router, log)
@@ -234,7 +241,7 @@ func run(args []string) error {
 // housekeeping sweeps rows that can no longer affect a decision. Failures are
 // logged and retried on the next tick rather than taken as fatal.
 func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB,
-	limiter *auth.Limiter, builder *service.Builder,
+	limiter *auth.Limiter, builder *service.Builder, settings *service.Settings,
 ) {
 	ticker := time.NewTicker(housekeepingInterval)
 	defer ticker.Stop()
@@ -270,6 +277,20 @@ func housekeeping(ctx context.Context, log *slog.Logger, db *store.DB,
 				log.Warn("build history cleanup failed", slog.Any("error", err))
 			} else if n > 0 {
 				log.Debug("removed old build records", slog.Int64("count", n))
+			}
+
+			// Audit retention is read every sweep rather than at startup: an
+			// admin who sets it expects the next sweep to honor it, not the
+			// next restart. Zero keeps everything, which is the default.
+			retention, err := settings.AuditRetention(ctx)
+			if err != nil {
+				log.Warn("could not read the audit retention setting", slog.Any("error", err))
+			} else if retention > 0 {
+				if n, pruneErr := db.Audit.DeleteBefore(ctx, time.Now().Add(-retention)); pruneErr != nil {
+					log.Warn("audit cleanup failed", slog.Any("error", pruneErr))
+				} else if n > 0 {
+					log.Debug("removed expired audit entries", slog.Int64("count", n))
+				}
 			}
 		}
 	}

@@ -737,6 +737,44 @@ volume birinin veritabanıdır ve başka hiçbir yerden geri gelmez.
 **Sonuç:** `POST /containers/prune` bu fazda eklendi (docker katmanında yoktu). Sonuç toast olarak bildiriliyor:
 kaç nesne gitti, ne kadar yer açıldı.
 
+### D-080 — Soket yolu ve yol beyaz listesi ayarlar ekranından değiştirilemez
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** PROMPT ayarlar sayfasında "socket yolu, whitelist, retention" istiyor. Retention'ı çalışma zamanında
+değiştirmek doğal; diğer ikisi değil.
+**Karar:** `docker_host` ve `allowed_paths` ekranda **salt-okunur** gösteriliyor, yanlarında hangi dosyadan
+geldikleri yazıyor. Değiştirmek config dosyasını düzenleyip servisi yeniden başlatmak demek. `PUT /settings`
+bilinmeyen alanı reddediyor (400), yani whitelist'i ayarladığını sanan bir istemciye "ayarlamadın" deniyor —
+hiçbir şey yapmayan bir 200 dönmek yerine.
+**Gerekçe:** Bunlar açılış anında kurulan güvenlik sınırları. `allowed_paths`'i tarayıcıdan genişletebilen bir
+yönetici, tüm dosya sistemini bir container'a bağlamaya tek istek uzaktadır — panel yöneticiliğinden host
+root'una giden bir yol açılırdı. Dosyayı düzenlemek bilinçli bir eylemdir ve kendi izini bırakır (dosyanın mtime'ı).
+**Sonuç:** Ekran yine de bu değerleri *gösteriyor*: "bu panel host'un ne kadarına erişebiliyor" sorusunun cevabı
+operatörün görmesi gereken bir şey. Boş whitelist ayrıca sarı uyarıyla işaretleniyor — her bind mount'u reddeden
+bir yapılandırma kasıtlı olmayabilir.
+
+### D-081 — Retention ayarı her süpürmede okunuyor, açılışta değil
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** M8-F'te denetim kaydının "yaşlanarak düşmesi" doküman edilmişti ama `DeleteBefore` hiçbir yerden
+çağrılmıyordu; ayar da yoktu. O dokümanı düzeltip işi buraya bıraktım.
+**Karar:** `audit_retention_days` settings tablosunda; 0 = sonsuza kadar sakla ve bu varsayılan. Günlük
+housekeeping döngüsü ayarı **her tick'te** yeniden okuyor.
+**Gerekçe:** Ayarı değiştiren yönetici bir sonraki süpürmenin buna uymasını bekler, bir sonraki yeniden
+başlatmanın değil. Varsayılanın "sakla" olması da bilinçli: ayarlar sayfasını hiç açmadığı için birinin denetim
+geçmişini silmek, onun adına verilecek yanlış karardır.
+**Sonuç:** `retention > 0` kapısı testle sabitlendi — sıfırın "şu andan öncekini sil"e dönüşmesi bu işin
+bozulma biçimidir.
+
+### D-082 — Fake build'ler test tarafından tutulabiliyor
+**Durum:** Kabul · **Faz:** M8
+**Bağlam:** `TestCancelStopsARunningBuild` tam suite ağır yük altında koşarken düştü: fake tüm build olaylarını
+testin bir sonraki satırından önce oynatıp bitirmişti, `Cancel` de "bu build zaten başarılı" dedi.
+**Karar:** Fake'e `HoldBuilds()` eklendi; build ilk olaydan önce, test bırakana ya da context iptal edilene kadar
+bekliyor. İptal testi build'i tutuyor, sonra iptal ediyor.
+**Gerekçe:** Test yanlış bir şey iddia etmiyordu; iddiasının ön koşulunu (build'in hâlâ koşuyor olması)
+zamanlamaya bırakmıştı. "Yük altında bazen kırmızı" bir test, kırmızıyken bakılmayan bir testtir.
+**Sonuç:** Dört çekirdek meşgulken 10 kez üst üste geçtiği doğrulandı. Üretim kodunda değişiklik yok — kusur
+testin kendisindeydi.
+
 ---
 
 ## Uygulama Sırasında Doğrulanacak Varsayımlar

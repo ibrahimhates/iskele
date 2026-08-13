@@ -296,6 +296,12 @@ func TestCancelStopsARunningBuild(t *testing.T) {
 	env := newBuildEnv(t, map[string]string{"Dockerfile": simpleDockerfile})
 	ctx := context.Background()
 
+	// Hold the build so it is still running when the cancel lands. Without
+	// this the fake can replay every event before the next line runs, and the
+	// test passes or fails on how loaded the machine is.
+	release := env.docker.HoldBuilds()
+	defer release()
+
 	record, err := env.builder.Start(ctx, BuildRequest{ContextDir: env.root},
 		audit.Actor{Username: "admin"}, RequestMeta{})
 	if err != nil {

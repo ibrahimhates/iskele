@@ -57,6 +57,11 @@ tags:
     description: Volume listing and lifecycle
   - name: networks
     description: Network listing, lifecycle and container attachment
+  - name: settings
+    description: |
+      Runtime settings, and the installation facts shown beside them. Admin
+      only; the security boundaries are read-only here and live in the config
+      file.
   - name: audit
     description: |
       The audit trail: who did what, when, and whether it worked. Admin-only
@@ -487,6 +492,55 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/AuditEntry" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /settings:
+    get:
+      tags: [settings]
+      summary: Runtime settings and the installation's fixed facts
+      description: |
+        Admin only: the response names the Docker socket and the bind-mount
+        whitelist, which together describe how much of the host this daemon can
+        reach.
+
+        `installation` is read-only here on purpose. The socket path and
+        `allowed_paths` are startup-time security boundaries — an admin who
+        could widen the whitelist from a browser would be one request away from
+        mounting the whole filesystem into a container. Changing them means
+        editing the config file and restarting. `config_file` says which file.
+      responses:
+        "200":
+          description: The current settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsView" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [settings]
+      summary: Change a runtime setting
+      description: |
+        Every field is optional; an absent field is left alone. Unknown fields
+        are refused outright, so a client that thinks it is setting the
+        whitelist is told it is not rather than getting a 200 that did nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsUpdate" }
+      responses:
+        "200":
+          description: The settings after the change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsView" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
         "422":
@@ -3697,6 +3751,56 @@ components:
         containers: { $ref: "#/components/schemas/DiskUsageEntry" }
         volumes: { $ref: "#/components/schemas/DiskUsageEntry" }
         build_cache: { $ref: "#/components/schemas/DiskUsageEntry" }
+
+    SettingsView:
+      type: object
+      required: [audit_retention_days, bind_mount_warning, installation]
+      properties:
+        audit_retention_days:
+          type: integer
+          description: |
+            How long audit entries are kept. `0` keeps everything, which is the
+            default: deleting somebody's audit history because they never
+            opened this page would be the wrong default to pick for them.
+          minimum: 0
+          maximum: 3650
+        bind_mount_warning:
+          type: boolean
+          description: |
+            Warn in the creation wizard whenever a bind mount is added. A
+            nudge, not a control — the path whitelist is what actually decides.
+        installation: { $ref: "#/components/schemas/Installation" }
+
+    SettingsUpdate:
+      type: object
+      description: Every field optional; an absent field is left alone.
+      additionalProperties: false
+      properties:
+        audit_retention_days: { type: integer, minimum: 0, maximum: 3650 }
+        bind_mount_warning: { type: boolean }
+
+    Installation:
+      type: object
+      description: |
+        Facts about this installation that the settings screen shows and cannot
+        change. They come from the config file and take effect at startup.
+      required: [docker_host, allowed_paths, data_dir, listen, tls_enabled, access_ttl, refresh_ttl]
+      properties:
+        config_file:
+          type: string
+          description: Where these values came from; absent for the built-in defaults.
+          example: /etc/iskele/config.yaml
+        docker_host: { type: string, example: "unix:///var/run/docker.sock" }
+        allowed_paths:
+          type: array
+          items: { type: string }
+          description: The only host directories bind mounts and build contexts may use.
+        data_dir: { type: string }
+        template_dir: { type: string }
+        listen: { type: string }
+        tls_enabled: { type: boolean }
+        access_ttl: { type: integer, description: Seconds. }
+        refresh_ttl: { type: integer, description: Seconds. }
 
     AuditEntry:
       type: object

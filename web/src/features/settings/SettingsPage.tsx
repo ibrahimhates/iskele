@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { RegistriesPanel } from './RegistriesPanel';
 import { TwoFactorPanel } from './TwoFactorPanel';
 import { PrunePanel } from './PrunePanel';
+import { InstallationPanel } from './InstallationPanel';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { setLanguage } from '../../lib/i18n';
 import { useAuth } from '../../stores/auth';
@@ -58,6 +59,10 @@ export function SettingsPage() {
 
         {/* Prune needs the prune permission, which only an admin has. */}
         {canPrune && <PrunePanel />}
+
+        {/* The settings endpoint names the socket path and the whitelist, so
+            it is admin-only and the panel goes with it. */}
+        {isAdmin && <InstallationPanel />}
 
         <section className="card p-4">
           <h2 className="mb-3 text-sm font-medium">{t('settings.about')}</h2>

@@ -27,6 +27,8 @@ import type {
   Registry,
   RegistryInput,
   CatalogResponse,
+  SettingsUpdate,
+  SettingsView,
   Session,
   Stack,
   StackActionResult,
@@ -266,6 +268,11 @@ export const catalog = {
     api.post<{ secret: string }>(
       `/templates/secret${query({ length: length ? String(length) : undefined })}`,
     ),
+};
+
+export const settings = {
+  get: () => api.get<SettingsView>('/settings'),
+  update: (input: SettingsUpdate) => api.put<SettingsView>('/settings', input),
 };
 
 export const system = {

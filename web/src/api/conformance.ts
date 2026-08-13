@@ -43,6 +43,8 @@ import type {
   StackDiff,
   StackEvent,
   StackValidation,
+  SettingsUpdate,
+  SettingsView,
   Stats,
   SystemInfo,
   TOTPSetup,
@@ -73,6 +75,8 @@ export type ImageConforms = Conforms<Image, Schemas['Image']>;
 export type VolumeConforms = Conforms<Volume, Schemas['Volume']>;
 export type NetworkConforms = Conforms<NetworkResource, Schemas['Network']>;
 export type SystemInfoConforms = Conforms<SystemInfo, Schemas['SystemInfo']>;
+export type SettingsViewConforms = Conforms<SettingsView, Schemas['SettingsView']>;
+export type SettingsUpdateConforms = Conforms<SettingsUpdate, Schemas['SettingsUpdate']>;
 export type AuditEntryConforms = Conforms<AuditEntry, Schemas['AuditEntry']>;
 export type AuditPageConforms = Conforms<AuditPage, Schemas['AuditPage']>;
 export type AuditFacetsConforms = Conforms<AuditFacets, Schemas['AuditFacets']>;

@@ -49,6 +49,8 @@ type Deps struct {
 	// Audit backs the audit screen. Nil leaves /audit unmounted; the recorder
 	// is separate, so the trail is still written either way.
 	Audit *store.AuditRepo
+	// SettingsStore holds the runtime settings. Nil leaves /settings unmounted.
+	SettingsStore *store.SettingsRepo
 	// Tickets issues the short-lived credentials WebSocket and SSE endpoints
 	// use. The router creates one when this is nil.
 	Tickets *auth.TicketStore
@@ -136,6 +138,12 @@ func NewRouter(deps Deps) http.Handler {
 	var audits *handlers.Audit
 	if deps.Audit != nil {
 		audits = handlers.NewAudit(service.NewAudit(deps.Audit))
+	}
+
+	var settings *handlers.Settings
+	if deps.SettingsStore != nil {
+		settings = handlers.NewSettings(
+			service.NewSettings(deps.SettingsStore, deps.Config, deps.Recorder))
 	}
 	containerService := service.NewContainer(dockerClient, deps.Recorder)
 	containers := handlers.NewContainers(containerService)
@@ -293,7 +301,7 @@ func NewRouter(deps Deps) http.Handler {
 
 			// The audit trail is admin-only and read-only: nothing here edits
 			// or deletes a record, because a trail an admin can rewrite is not
-			// a trail. Ageing records out belongs to a retention sweep, which
+			// a trail. Aging records out belongs to a retention sweep, which
 			// is still to come.
 			if audits != nil {
 				r.Route("/audit", func(r chi.Router) {
@@ -302,6 +310,18 @@ func NewRouter(deps Deps) http.Handler {
 					r.Method(http.MethodGet, "/", httpx.Handler(audits.List))
 					r.Method(http.MethodGet, "/facets", httpx.Handler(audits.Facets))
 					r.Method(http.MethodGet, "/export", httpx.Handler(audits.Export))
+				})
+			}
+
+			// Settings are admin-only. Reading them exposes the socket path
+			// and the bind-mount whitelist, which together describe how much
+			// of the host this daemon can reach.
+			if settings != nil {
+				r.Route("/settings", func(r chi.Router) {
+					r.Use(middleware.RequirePermission(middleware.PermAdmin, denyAuth))
+
+					r.Method(http.MethodGet, "/", httpx.Handler(settings.Get))
+					r.Method(http.MethodPut, "/", httpx.Handler(settings.Update))
 				})
 			}
 

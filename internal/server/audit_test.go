@@ -379,3 +379,15 @@ func contains(values []string, want string) bool {
 	}
 	return false
 }
+
+// toJSON renders a decoded body back to a stable string, for comparing two
+// snapshots of the same structure.
+func toJSON(t *testing.T, value any) string {
+	t.Helper()
+
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(encoded)
+}

@@ -69,3 +69,12 @@ tls:
 session:
   access_ttl: "15m"
   refresh_ttl: "168h"
+
+# Not everything is configured here. Settings that an admin changes while the
+# daemon runs — audit log retention, the bind-mount warning — live in the
+# database and are edited from the settings page.
+#
+# The split is deliberate: the values in this file are startup-time security
+# boundaries. An admin who could widen `allowed_paths` from a browser would be
+# one request away from mounting the whole filesystem into a container, so
+# changing it means editing this file and restarting the service (D-080).

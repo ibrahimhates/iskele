@@ -64,6 +64,8 @@ type Client struct {
 	buildEvents []docker.BuildEvent
 	// builtContexts records the tar contexts BuildImage was handed.
 	builtContexts [][]byte
+	// buildGate, when set, holds every build until it is closed.
+	buildGate chan struct{}
 
 	// errs maps an operation name to the error it should return.
 	errs map[string]error
@@ -1270,9 +1272,26 @@ func (c *Client) BuildImage(ctx context.Context, opts docker.BuildOptions) (<-ch
 	}
 	c.mu.Unlock()
 
+	c.mu.Lock()
+	gate := c.buildGate
+	c.mu.Unlock()
+
 	go func() {
 		defer close(events)
 		defer close(errs)
+
+		// A held build stays running until the test releases it or cancels
+		// the context. Without this the replay can finish before the test's
+		// next line runs, and a cancel test becomes a race the machine's load
+		// decides.
+		if gate != nil {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return
+			}
+		}
+
 		for _, e := range replay {
 			select {
 			case events <- e:
@@ -1287,4 +1306,27 @@ func (c *Client) BuildImage(ctx context.Context, opts docker.BuildOptions) (<-ch
 	}()
 
 	return events, errs
+}
+
+// HoldBuilds makes every build started from now on wait before emitting
+// anything. The returned function releases them; calling it twice is safe.
+//
+// It exists so a test about cancellation can be sure the build is still
+// running when it cancels, rather than hoping the scheduler agrees.
+func (c *Client) HoldBuilds() (release func()) {
+	gate := make(chan struct{})
+
+	c.mu.Lock()
+	c.buildGate = gate
+	c.mu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			c.mu.Lock()
+			c.buildGate = nil
+			c.mu.Unlock()
+			close(gate)
+		})
+	}
 }

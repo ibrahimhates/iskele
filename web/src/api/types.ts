@@ -299,6 +299,35 @@ export interface HostReport {
   engine_error?: string;
 }
 
+export interface Installation {
+  /** Where these values came from; absent for the built-in defaults. */
+  config_file?: string;
+  docker_host: string;
+  /** The only host directories bind mounts and build contexts may use. */
+  allowed_paths: string[];
+  data_dir: string;
+  template_dir?: string;
+  listen: string;
+  tls_enabled: boolean;
+  /** Seconds. */
+  access_ttl: number;
+  /** Seconds. */
+  refresh_ttl: number;
+}
+
+export interface SettingsView {
+  /** 0 keeps everything, which is the default. */
+  audit_retention_days: number;
+  bind_mount_warning: boolean;
+  installation: Installation;
+}
+
+/** Every field optional; an absent field is left alone. */
+export interface SettingsUpdate {
+  audit_retention_days?: number;
+  bind_mount_warning?: boolean;
+}
+
 export interface AuditEntry {
   id: number;
   user_id?: string;

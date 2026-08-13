@@ -778,6 +778,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Runtime settings and the installation's fixed facts
+         * @description Admin only: the response names the Docker socket and the bind-mount
+         *     whitelist, which together describe how much of the host this daemon can
+         *     reach.
+         *
+         *     `installation` is read-only here on purpose. The socket path and
+         *     `allowed_paths` are startup-time security boundaries — an admin who
+         *     could widen the whitelist from a browser would be one request away from
+         *     mounting the whole filesystem into a container. Changing them means
+         *     editing the config file and restarting. `config_file` says which file.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The current settings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingsView"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        /**
+         * Change a runtime setting
+         * @description Every field is optional; an absent field is left alone. Unknown fields
+         *     are refused outright, so a client that thinks it is setting the
+         *     whitelist is told it is not rather than getting a 200 that did nothing.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SettingsUpdate"];
+                };
+            };
+            responses: {
+                /** @description The settings after the change */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SettingsView"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                422: components["responses"]["ValidationFailed"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -5697,6 +5778,48 @@ export interface components {
             containers?: components["schemas"]["DiskUsageEntry"];
             volumes?: components["schemas"]["DiskUsageEntry"];
             build_cache?: components["schemas"]["DiskUsageEntry"];
+        };
+        SettingsView: {
+            /**
+             * @description How long audit entries are kept. `0` keeps everything, which is the
+             *     default: deleting somebody's audit history because they never
+             *     opened this page would be the wrong default to pick for them.
+             */
+            audit_retention_days: number;
+            /**
+             * @description Warn in the creation wizard whenever a bind mount is added. A
+             *     nudge, not a control — the path whitelist is what actually decides.
+             */
+            bind_mount_warning: boolean;
+            installation: components["schemas"]["Installation"];
+        };
+        /** @description Every field optional; an absent field is left alone. */
+        SettingsUpdate: {
+            audit_retention_days?: number;
+            bind_mount_warning?: boolean;
+        };
+        /**
+         * @description Facts about this installation that the settings screen shows and cannot
+         *     change. They come from the config file and take effect at startup.
+         */
+        Installation: {
+            /**
+             * @description Where these values came from; absent for the built-in defaults.
+             * @example /etc/iskele/config.yaml
+             */
+            config_file?: string;
+            /** @example unix:///var/run/docker.sock */
+            docker_host: string;
+            /** @description The only host directories bind mounts and build contexts may use. */
+            allowed_paths: string[];
+            data_dir: string;
+            template_dir?: string;
+            listen: string;
+            tls_enabled: boolean;
+            /** @description Seconds. */
+            access_ttl: number;
+            /** @description Seconds. */
+            refresh_ttl: number;
         };
         AuditEntry: {
             /** Format: int64 */

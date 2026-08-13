@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-11 · **Aktif faz:** M8 (devam ediyor) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-13 · **Aktif faz:** M9 (paketleme ve teslim) · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -21,7 +21,7 @@
 | M5 | Oluşturma sihirbazı + Image/Volume/Network | ✅ Bitti | 18/18 | 10 sekmeli sihirbaz, canlı preview, registry, task drawer |
 | M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
 | M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
-| M8 | App Catalog + Dashboard + Ayarlar | 🟡 Devam ediyor | 18/19 | Yalnız ayarlar sayfası kaldı |
+| M8 | App Catalog + Dashboard + Ayarlar | ✅ Bitti | 19/19 | Katalog, dashboard, hesap yönetimi, denetim kaydı, prune, ayarlar |
 | M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
@@ -313,7 +313,7 @@ engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konul
 
 ---
 
-## M8 — App Catalog + Dashboard + Ayarlar  🟡
+## M8 — App Catalog + Dashboard + Ayarlar  ✅
 
 - [x] Template JSON şeması + `internal/templates/schema.go` doğrulama
 - [x] Template motoru (render → container/stack payload)
@@ -333,9 +333,11 @@ engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konul
 - [x] Audit log ekranı: filtre (aktör/aksiyon/tarih) + CSV/JSON export
 - [x] Kullanıcı yönetimi: CRUD, rol atama, parola sıfırlama, devre dışı bırakma
 - [x] TOTP 2FA: setup (QR), verify, disable, login akışına entegrasyon
-- [ ] Ayarlar sayfası: socket yolu, whitelist, retention, tema, dil, bind uyarısı
+- [x] Ayarlar sayfası: socket yolu, whitelist, retention, tema, dil, bind uyarısı
 
-**Testler:** her template için geçerli payload · şema negatif testleri · dashboard aggregate · TOTP
+**Testler:** her template için geçerli payload · şema negatif testleri · host metrikleri (RFC yok, CPU delta ve
+kısmi okuma) · TOTP (RFC 6238 vektörleri) · hesap yönetimi + son yönetici değişmezi · denetim kaydı filtreleri,
+sayfalama, CSV/JSON dışa aktarma · prune izinleri · retention süpürmesi · toast kuyruğu
 **DoD:** katalogdan tek tıkla redis + postgres deploy edilir · commit + push
 
 ---
@@ -367,6 +369,7 @@ engine ile stack ayağa kaldırma hâlâ elle koşulmalı (bkz. Bloke Eden Konul
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-13 | M8 ✅ | App catalog (20 gömülü template + `/etc/iskele/templates`), dashboard host metrikleri, hesap yönetimi + TOTP, denetim ekranı, prune araçları ve ayarlar sayfası. Template'ler betik değil form (D-072): render sonucu sıradan bir `ContainerSpec` ve PathGuard/privileged kapısı aynen işliyor. gopsutil tek pakette ve "elden geldiğince" (D-073) — Docker kapalıyken de makinenin sayıları duruyor. TOTP elde yazılıp RFC 6238 vektörleriyle sabitlendi (D-075). Yol boyunca üç gerçek eksik çıktı: **container yaşam döngüsü hiç kaydedilmiyordu** (D-077) — denetim ekranı olmayan bir güvenceyi gösterecekti; **son yönetici koruması ulaşılamazdı** (D-076), tek değişmeze indirgendi ve devretme mümkün hâle geldi; batch remove'un dokümante edilmiş `force`'u hiç uygulanmamıştı — yıkıcı davranışı sessizce genişletmek yerine spec gerçeğe çekildi. Retention artık gerçekten işliyor (D-081). Lint 0 issue, 119 frontend testi.
 | 2026-08-10 | M7 ✅ | Compose stack yönetimi uçtan uca. `docker compose` binary'si çalıştırılmıyor: dosyalar CLI'ın kullandığı compose-go ile ayrıştırılıp container'lar engine soketi üzerinden oluşturuluyor, böylece kurulu bir CLI'a bağımlılık yok. En önemli iki karar güvenlik tarafında: interpolasyon yalnız stack'in kendi `.env`'ini görüyor — daemon'ın ortamı görünmez (D-065) — ve `privileged`/`cap_add`/`devices` ile bind mount'lar YAML'dan geldiğinde de sihirbazdakiyle aynı kapılardan geçiyor (D-068). Reddedilen bir deploy hiçbir şey yaratmadan duruyor ve hangi servisin hangi alanının takıldığını listeliyor. Deploy, config-hash sayesinde değişmeyen servisi yerinde bırakıyor (D-067): komşusunun etiketi değişti diye veritabanı yeniden başlamıyor. compose-go'nun logrus'a yazdığı "değişken atanmamış, boş string kullanılıyor" uyarısı yakalanıp operatöre gösteriliyor (D-066) — parolası sessizce boşalan bir veritabanı bir satır metne değer. Git klonlama `git` binary'siyle (D-069); `ext::` gibi git'e komut çalıştırtan URL'ler reddediliyor. Monaco gömülü ve budanmış, editör sayfası tembel yükleniyor (D-070). Yol boyunca üç hata düzeltildi: `StackDetail`, gömülü `store.Stack`'in `MarshalJSON`'ını devraldığı için servis listesini sessizce düşürüyordu; `?networks=false` istemcide serileştirilmiyordu; ve stack okuma engine'e bağımlıydı — Docker kapalıyken operatör düzeltmek üzere olduğu dosyayı okuyamıyordu (D-071). Lint 0 issue, coverage %72.5, 100 frontend testi. |
 | 2026-08-09 | M6 ✅ | Dockerfile build uçtan uca. En kritik karar `PathGuard`'ın yeniden kullanılması (D-059): gezinme, bind mount ve build context aynı güven sınırının üç yüzü, ikinci bir uygulama ikinci bir hata kaynağı olurdu. Build context bir `io.Pipe` üzerinden engine'e akıyor, diske ikinci kez yazılmıyor; `.dockerignore` negasyon ve `**/` ile destekleniyor; symlink'ler izlenmeden bağ olarak yazılıyor (D-061). Build, kendisini izleyen soketten uzun yaşıyor: sekme kapanınca yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor, log arşivleniyor ve kayıt kapanıyor (D-062). İki hata yol boyunca yakalandı: `TaskRegistry.Finish` task context'ini iptal ettiği için son `done` frame'i sessizce düşüyordu — gönderim context'i artık task'tan değil kökten türüyor; ve `/fs/browse` `read` izniyle açıktı, host dizinlerini sıralayan bir uç için fazla gevşek, `build`'e çekildi. `WS /build` isteği soket kabul edilmeden önce doğrulanıyor, bu yüzden whitelist dışı bir dizin veya eksik Dockerfile sıradan bir HTTP hatası olarak dönüyor (403/422). Lint 0 issue, coverage %73.3 (`-coverpkg`), 94 frontend testi. Docker soketi olmayan ortamda whitelist/doğrulama yüzeyi canlı binary ile doğrulandı; gerçek bir engine ile build hâlâ elle koşulmalı (G3/G4 🟡). |
 | 2026-08-08 | M5 ✅ | Container oluşturma sihirbazı (10 sekme) ve tüm kaynak yönetimi. En kritik parça `PathGuard`: bind mount kaynakları `allowed_paths`'e karşı, symlink çözülerek ve bileşen bazlı karşılaştırılarak doğrulanıyor; boş whitelist hepsini reddediyor. Privileged seçenekler (`privileged`, `cap_add`, `devices`, `security_opt`, `sysctls`, `network=host`) ayrı bir izin kapısının arkasında ve hata mesajı hangisinin takıldığını söylüyor. Registry parolaları AES-GCM ile şifreli saklanıyor ve hiçbir yanıtta geri dönmüyor. Image pull SSE ile akıyor, bir task olarak kaydediliyor ve drawer'dan iptal edilebiliyor. Sihirbazın canlı `docker run` önizlemesi API'ye gidenle aynı nesneden üretiliyor, bu yüzden ayrışamıyor. Yol boyunca üç hata düzeltildi: pull akışında `done` olayı hata kanalıyla yarışıyordu, registry yanıtları sıfır zaman damgası (`0001-01-01`) yayıyordu, `Create` yazdığı zaman damgalarını çağırana bildirmiyordu. Lint 0 issue, coverage %60.4, 70 frontend testi. |

@@ -16,7 +16,7 @@ import (
 // Audit reads the trail the rest of the daemon writes.
 //
 // It is read-only by design: nothing in the API edits or deletes a record,
-// because an audit log an admin can rewrite is not an audit log. Ageing
+// because an audit log an admin can rewrite is not an audit log. Aging
 // records out is the store's business (AuditRepo.DeleteBefore), driven by a
 // retention setting that does not exist yet — until it does, the trail only
 // grows.

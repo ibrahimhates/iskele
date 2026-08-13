@@ -5,7 +5,7 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 120 · **İşaretli:** 76 · **Kısmi (🟡):** 15 (M7 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 141 · **İşaretli:** 90 · **Kısmi (🟡):** 21 · **Kalan:** 30 (M8 sonu)
 
 > 🟡 = kod yazıldı ve testleri geçiyor, ama son kanıt bu ortamda üretilemiyor (gerçek bir Docker
 > daemon'ı gerektiriyor) ya da madde birden çok milestone'a yayılıyor. Bunlar **işaretli sayılmaz.**
@@ -48,8 +48,8 @@
 | B9 | `operator` build, prune, users, settings çağıramaz (403) | test | M2 | [x] |
 | B10 | API token `Authorization: Bearer` ile çalışır; scope ve expiry uygulanır | test | M2 | [x] |
 | B11 | Başarısız girişte IP bazlı limit devreye girer, kilit süresi uygulanır | test | M2 | [x] |
-| B12 | TOTP 2FA kurulabilir, doğrulanır, devre dışı bırakılabilir; login akışına girer | test | M8 | [ ] |
-| B13 | Kullanıcı CRUD, rol atama, parola sıfırlama, devre dışı bırakma çalışır | manuel | M8 | [ ] |
+| B12 | TOTP 2FA kurulabilir, doğrulanır, devre dışı bırakılabilir; login akışına girer | test | M8 | [x] |
+| B13 | Kullanıcı CRUD, rol atama, parola sıfırlama, devre dışı bırakma çalışır | manuel | M8 | [x] |
 | B14 | Devre dışı kullanıcının mevcut oturumları geçersiz olur | test | M8 | [x] |
 
 ## C. Güvenlik
@@ -150,33 +150,33 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| I1 | Template JSON şeması `docs/template-schema.md`'de belgelenmiş | gözle | M8 | [ ] |
-| I2 | 20 template mevcut: redis, postgres, mysql, mariadb, mongodb, cloudflared, nginx, caddy, traefik, portainer_agent, uptime-kuma, n8n, vaultwarden, minio, rabbitmq, adminer, pgadmin, watchtower, gitea, wg-easy | test | M8 | [ ] |
-| I3 | Her template için "geçerli payload üretir" testi var | test | M8 | [ ] |
-| I4 | Alan tipleri desteklenir: text, number, password, select, bool, port, path, volume | test | M8 | [ ] |
-| I5 | Alan doğrulama (required, regex, help metni) çalışır | test | M8 | [ ] |
-| I6 | Parola alanlarında "rastgele üret" butonu çalışır | gözle | M8 | [ ] |
-| I7 | `/etc/iskele/templates/` altındaki custom template'ler yüklenir | manuel | M8 | [ ] |
-| I8 | Katalogdan deploy edilen container/stack gerçekten ayağa kalkar | manuel | M8 | [ ] |
+| I1 | Template JSON şeması `docs/template-schema.md`'de belgelenmiş | gözle | M8 | [x] |
+| I2 | 20 template mevcut: redis, postgres, mysql, mariadb, mongodb, cloudflared, nginx, caddy, traefik, portainer_agent, uptime-kuma, n8n, vaultwarden, minio, rabbitmq, adminer, pgadmin, watchtower, gitea, wg-easy | test | M8 | [x] |
+| I3 | Her template için "geçerli payload üretir" testi var | test | M8 | [x] |
+| I4 | Alan tipleri desteklenir: text, number, password, select, bool, port, path, volume | test | M8 | [x] |
+| I5 | Alan doğrulama (required, regex, help metni) çalışır | test | M8 | [x] |
+| I6 | Parola alanlarında "rastgele üret" butonu çalışır | gözle | M8 | [x] |
+| I7 | `/etc/iskele/templates/` altındaki custom template'ler yüklenir | test | M8 | [x] |
+| I8 | Katalogdan deploy edilen container/stack gerçekten ayağa kalkar | manuel | M8 | 🟡 |
 
 ## J. Dashboard, Sistem ve Audit
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| J1 | Dashboard container sayıları (running/stopped/unhealthy) doğru | gözle | M8 | [ ] |
-| J2 | Image/volume/network sayıları ve `docker system df` disk kullanımı gösterilir | gözle | M8 | [ ] |
-| J3 | Host CPU/RAM/disk (gopsutil), Docker Engine sürümü, uptime gösterilir | gözle | M8 | [ ] |
-| J4 | `docker events` akışı UI'ya canlı bildirim (toast + activity feed) olarak düşer | manuel | M8 | [ ] |
-| J5 | Prune araçları (dangling image, stopped container, unused volume/network) onay diyaloğuyla çalışır | manuel | M8 | [ ] |
+| J1 | Dashboard container sayıları (running/stopped/unhealthy) doğru | gözle | M8 | 🟡 |
+| J2 | Image/volume/network sayıları ve `docker system df` disk kullanımı gösterilir | gözle | M8 | 🟡 |
+| J3 | Host CPU/RAM/disk (gopsutil), Docker Engine sürümü, uptime gösterilir | gözle | M8 | 🟡 |
+| J4 | `docker events` akışı UI'ya canlı bildirim (toast + activity feed) olarak düşer | manuel | M8 | 🟡 |
+| J5 | Prune araçları (dangling image, stopped container, unused volume/network) onay diyaloğuyla çalışır | manuel | M8 | 🟡 |
 | J6 | Audit log kim/ne zaman/hangi kaynak/hangi işlem bilgisini kaydeder | test | M2 | [x] |
-| J7 | Audit log filtrelenebilir ve dışa aktarılabilir (CSV/JSON) | manuel | M8 | [ ] |
-| J8 | Log ve event retention ayarları uygulanır (budama çalışır) | test | M8 | [ ] |
+| J7 | Audit log filtrelenebilir ve dışa aktarılabilir (CSV/JSON) | manuel | M8 | [x] |
+| J8 | Log ve event retention ayarları uygulanır (budama çalışır) | test | M8 | [x] |
 
 ## K. UI / UX
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M7 sonunda: Dashboard, Containers, Stacks, Images, Build, Volumes, Networks, Settings. Catalog/Audit kendi milestone'larında eklenir. | gözle | M3→M8 | 🟡 |
+| K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M8 sonunda tam: Dashboard, Containers, Stacks, Catalog, Images, Build, Volumes, Networks, Users, Audit, Settings. | gözle | M3→M8 | [x] |
 | K2 | Dark mode varsayılan; light/system toggle çalışır ve kalıcıdır | gözle | M3 | [x] |
 | K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | [ ] |
 | K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [x] |
@@ -185,9 +185,9 @@
 | K7 | Klavye kısayolları: `/` arama, `g c` containers, `g s` stacks | manuel | M4 | [x] |
 | K8 | Bağlantı kopunca "reconnecting" bandı çıkar; WS exponential backoff ile yeniden bağlanır | manuel | M4 | [x] |
 | K9 | Hata mesajları Docker'ın döndürdüğü metni gizlemeden gösterir | gözle | M4 | [x] |
-| K10 | Her liste ekranında empty state tasarımı var | gözle | M8 | [ ] |
+| K10 | Her liste ekranında empty state tasarımı var | gözle | M8 | [x] |
 | K11 | i18n: TR ve EN tam; hard-coded metin yok; anahtar eşitliği testi geçer | test | M3 | [x] |
-| K12 | Erişilebilirlik: ikon butonlarda `aria-label`, klavye ile tam gezinme | gözle | M8 | [ ] |
+| K12 | Erişilebilirlik: ikon butonlarda `aria-label`, klavye ile tam gezinme | gözle | M8 | 🟡 |
 
 ## L. Test ve Kalite
 
@@ -197,7 +197,7 @@
 | L2 | Auth testleri: üretim, doğrulama, expiry, revoke, RBAC matrisi, brute-force | test | M2 | [ ] |
 | L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M5 | [x] |
 | L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [ ] |
-| L5 | Template render: her template için geçerli payload testi | test | M8 | [ ] |
+| L5 | Template render: her template için geçerli payload testi | test | M8 | [x] |
 | L6 | Frontend Vitest: form validasyonu ve log viewer buffer testleri | test | M4 | [x] |
 | L7 | Backend test coverage ≥ %60 ve CI'da raporlanır | CI | M9 | [ ] |
 | L8 | CI'da lint (golangci-lint + eslint + prettier) zorunlu ve yeşil | CI | M9 | [ ] |
