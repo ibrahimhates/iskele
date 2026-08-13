@@ -10,6 +10,9 @@
 #   sudo ./install.sh                 # install or upgrade from ./iskeled
 #   sudo ./install.sh --binary path   # install a binary from somewhere else
 #   sudo ./install.sh --no-start      # install without starting the service
+#   sudo ./install.sh --listen 0.0.0.0:8377
+#                                     # publish on the network instead of
+#                                     # loopback. Read the warning it prints.
 #
 set -euo pipefail
 
@@ -24,13 +27,16 @@ UNIT_NAME="iskeled.service"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BINARY=""
 START=1
+LISTEN_OPT=""
 
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m warning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m error:\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
-    sed -n '3,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    # From the description down to the first line that is not a comment, so
+    # adding an option above does not need a line number corrected here.
+    sed -n '3,${ /^#/!q; s/^# \{0,1\}//p; }' "${BASH_SOURCE[0]}"
     exit 0
 }
 
@@ -38,6 +44,16 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --binary)   BINARY="${2:-}"; shift 2 ;;
         --no-start) START=0; shift ;;
+        --listen)
+            LISTEN_OPT="${2:-}"
+            # Not a full address parser: iskeled validates this properly and
+            # refuses to start on garbage. This only catches the obvious slip
+            # of passing a bare address with no port.
+            case "$LISTEN_OPT" in
+                *:*[0-9]) ;;
+                *) die "--listen wants host:port, for example 0.0.0.0:8377" ;;
+            esac
+            shift 2 ;;
         -h|--help)  usage ;;
         *)          die "unknown option: $1 (try --help)" ;;
     esac
@@ -143,6 +159,30 @@ else
     install -o root -g "$GROUP_NAME" -m 0640 "$CONFIG_SOURCE" "$CONFIG_DIR/config.yaml"
 fi
 
+# --listen is the one thing this script will rewrite in a config it did not
+# author. An operator who types it on the command line is giving a clearer
+# instruction than the file's current contents, and the alternative — printing
+# "now go and edit this file" — is the step people were getting stuck on.
+if [ -n "$LISTEN_OPT" ]; then
+    if grep -qE '^listen:' "$CONFIG_DIR/config.yaml"; then
+        sed -i "s|^listen:.*|listen: \"$LISTEN_OPT\"|" "$CONFIG_DIR/config.yaml"
+    else
+        printf 'listen: "%s"\n' "$LISTEN_OPT" >> "$CONFIG_DIR/config.yaml"
+    fi
+    say "set listen to $LISTEN_OPT"
+
+    case "$LISTEN_OPT" in
+        127.0.0.1:*|localhost:*|"[::1]:"*) ;;
+        *)
+            warn "$LISTEN_OPT is reachable from the network. Anyone who can open"
+            warn "this panel can start a privileged container and read the whole"
+            warn "host, and over plain HTTP the password crosses the network in"
+            warn "the clear. Put TLS in front of it, or enable the built-in"
+            warn "listener in $CONFIG_DIR/config.yaml."
+            ;;
+    esac
+fi
+
 # The secret key is created by iskeled on first start, with mode 0600. It is
 # never touched here: overwriting it would make every stored registry password
 # and every issued token unreadable.
@@ -177,7 +217,6 @@ if [ "$START" -eq 1 ] && systemctl is-active --quiet "$UNIT_NAME"; then
     # install, with no report and a non-zero exit.
     LISTEN="$(grep -E '^listen:' "$CONFIG_DIR/config.yaml" 2>/dev/null | head -1 | sed 's/^listen: *//; s/"//g')" || LISTEN=""
     LISTEN="${LISTEN:-127.0.0.1:8377}"
-    PORT="${LISTEN##*:}"
     say "iskeled is running on $LISTEN"
     cat <<EOF
 
@@ -185,25 +224,6 @@ Next: open the panel and create the first admin account. Until you do, the API
 stays closed — the bootstrap endpoint is the only thing that answers.
 
   http://$LISTEN
-EOF
-
-    # The default bind is loopback, so a fresh install is not reachable from
-    # the machine the operator is sitting at — which is the first thing they
-    # run into. An SSH tunnel is the one way in that needs nothing installed.
-    case "$LISTEN" in
-        127.0.0.1:*|localhost:*|"[::1]:"*)
-            HOST_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')" || HOST_ADDR=""
-            cat <<EOF
-
-That address is loopback. From your workstation, tunnel to it and open
-http://127.0.0.1:$PORT there:
-
-  ssh -L $PORT:127.0.0.1:$PORT ${SUDO_USER:-<user>}@${HOST_ADDR:-<this-host>}
-EOF
-            ;;
-    esac
-
-    cat <<EOF
 
 Anyone who can reach this panel can start a privileged container and read the
 whole host. Keep 'listen' on 127.0.0.1 and terminate TLS in front of it.

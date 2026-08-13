@@ -162,7 +162,17 @@ will hang.
 
 ### Binding to the LAN — convenient, and a real decision
 
-Editing `listen` in `/etc/iskele/config.yaml` puts the panel on the network:
+The installer takes it directly, on a first install or a later run:
+
+```sh
+sudo ./deploy/install.sh --listen 192.168.1.50:8377
+```
+
+That is the one setting `install.sh` will rewrite in a config it did not write,
+because typing it on the command line says more than the file's current
+contents do. It prints what it is handing you before it starts the service.
+
+By hand it is the same thing — `listen` in `/etc/iskele/config.yaml`:
 
 ```yaml
 listen: "192.168.1.50:8377"     # the host's own address, not 0.0.0.0
