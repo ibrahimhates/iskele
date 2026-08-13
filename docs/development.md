@@ -50,6 +50,11 @@ make check && make lint && make web-test && make web-lint
 CI runs all of it plus a bundle check (the binary must actually serve its own
 UI) and three cross-compiles.
 
+It runs on pull requests targeting `main` and on `main` itself — nowhere else.
+A work-in-progress branch can be pushed as often as you like without queueing a
+build, which also means **nothing checks a branch until you open the pull
+request**; the command above is what stands in for it until then.
+
 Two failure modes are worth knowing in advance:
 
 **API types drift.** `make gen-api` regenerates TypeScript from

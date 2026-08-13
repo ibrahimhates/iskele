@@ -2,9 +2,9 @@ name: CodeQL
 
 on:
   push:
-    branches: ["master", "main"]
+    branches: ["main"]
   pull_request:
-    branches: ["master", "main"]
+    branches: ["main"]
   schedule:
     # Weekly, so a new query pack finds old code without waiting for a push.
     # Monday 04:17 UTC — an odd minute, because every project that picks :00

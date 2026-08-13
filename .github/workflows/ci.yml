@@ -2,8 +2,12 @@ name: CI
 
 on:
   push:
-    branches: ["master", "main", "claude/**"]
+    branches: ["main"]
+  # Scoped to the same branch: a change is checked once on the pull request
+  # that proposes it and once on main after it lands, and nowhere else. Push a
+  # work-in-progress branch as often as you like without queueing a build.
   pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
