@@ -60,6 +60,44 @@ jobs:
           curl -fsS http://127.0.0.1:8377/api/v1/health | grep -q '"status":"ok"'
           curl -fsS http://127.0.0.1:8377/ | grep -q '<div id="root">'
 
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          install-only: true
+
+      # v0.1.0 published nothing because four deploy/ entries shared one
+      # destination in the archive, so three were dropped and the fourth became
+      # a *file* named deploy that deploy/reverse-proxy/ could not be written
+      # under. GoReleaser only warns about a dropped file; the first hard error
+      # came from syft, minutes later, and read as an SBOM problem. So the
+      # archive is built and extracted here, where a bad one stops the release
+      # job from starting rather than failing it halfway through.
+      - name: The release archive extracts
+        run: |
+          set -euo pipefail
+          # web/dist and the module cache are already warm from the steps above,
+          # so `before` is skipped; nfpm and the SBOM say nothing about the
+          # archive layout and would need rpm and syft installed in this job.
+          goreleaser release --snapshot --clean --skip=before,nfpm,sbom
+
+          for archive in dist/*.tar.gz; do
+            out=$(mktemp -d)
+            # Extraction, not `tar tzf`: listing an archive with a file where a
+            # directory belongs succeeds, and unpacking it is what an operator
+            # actually does.
+            tar xzf "$archive" -C "$out"
+            for f in deploy/iskeled.service deploy/config.example.yaml \
+                     deploy/install.sh deploy/uninstall.sh \
+                     deploy/reverse-proxy/nginx.conf LICENSE README.md; do
+              if [ ! -f "$out/$f" ]; then
+                echo "::error::$(basename "$archive") is missing $f" >&2
+                exit 1
+              fi
+            done
+            rm -rf "$out"
+          done
+
   release:
     name: GoReleaser
     needs: verify
