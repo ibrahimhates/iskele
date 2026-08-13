@@ -6,6 +6,11 @@ Notable changes to Iskele. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-08-13
+
+The first release with artifacts. v0.1.0 was tagged, but its release job failed
+before publishing anything, on the first of the two defects below.
+
 ### Fixed
 
 - Release archives were unextractable. Four `deploy/` entries shared one
@@ -153,5 +158,6 @@ serving its own web UI, running as a systemd service.
   one module path, so daemon advisories land on anything that links the client.
   The move to `github.com/moby/moby/v2` waits for that module to leave beta.
 
-[Unreleased]: https://github.com/ibrahimhates/iskele/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ibrahimhates/iskele/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ibrahimhates/iskele/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ibrahimhates/iskele/releases/tag/v0.1.0
