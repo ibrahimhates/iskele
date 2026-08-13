@@ -15,8 +15,7 @@ networks and Compose stacks from a web UI that is embedded in the binary itself.
 
 > **Status: v0.1.2.** Every planned feature is implemented and tested. What has
 > not happened yet is long-running use on many different hosts — see
-> [Known limitations](CHANGELOG.md#known-limitations) and
-> [`PROGRESS.md`](PROGRESS.md).
+> [Known limitations](CHANGELOG.md#known-limitations).
 
 ---
 
@@ -458,8 +457,8 @@ cannot set a header on a WebSocket handshake or an `EventSource` request, so
 they take a ticket from `POST /auth/ws-ticket` as the `ticket` query parameter:
 single-use, 60 seconds, consumed on arrival whether or not the permission check
 that follows passes. They enforce the same permissions as everything else, and
-the WebSocket handshake is rejected when `Origin` does not match `Host`. The full specification is [`docs/openapi.yaml`](docs/openapi.yaml), and
-the planned surface is in [`PLAN.md`](PLAN.md#6-api-yüzeyi).
+the WebSocket handshake is rejected when `Origin` does not match `Host`. The
+full specification is [`docs/openapi.yaml`](docs/openapi.yaml).
 
 ### Getting started
 
@@ -520,10 +519,7 @@ also cost you the panel that would tell you so.
 
 | File | Purpose |
 |---|---|
-| [`PLAN.md`](PLAN.md) | Architecture, data model, API surface, milestone plan |
-| [`PROGRESS.md`](PROGRESS.md) | Live milestone and task status |
 | [`DECISIONS.md`](DECISIONS.md) | Design decisions and assumptions (ADR style) |
-| [`ACCEPTANCE.md`](ACCEPTANCE.md) | Acceptance criteria for v0.1.0 |
 | [`CHANGELOG.md`](CHANGELOG.md) | What shipped, and the known limitations |
 | [`SECURITY.md`](SECURITY.md) | Threat model and how to report a vulnerability |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup and house style |

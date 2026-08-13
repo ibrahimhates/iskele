@@ -21,7 +21,7 @@ func load(t *testing.T) *Catalog {
 	return catalog
 }
 
-// expected is the catalog PLAN.md commits to. Naming them here means a
+// expected is the catalog the project commits to. Naming them here means a
 // template that disappears in a refactor fails a test rather than a release.
 var expected = []string{
 	"redis", "postgres", "mysql", "mariadb", "mongodb",

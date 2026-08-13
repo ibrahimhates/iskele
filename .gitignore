@@ -29,6 +29,14 @@ secret.key
 *.swp
 .DS_Store
 
+# Build-time planning documents. The work they specify is shipped, so they
+# describe the past rather than the code, and a reader who finds them in the
+# repository has to work out which one is still true. Kept locally, not here.
+/PROMPT.md
+/PLAN.md
+/PROGRESS.md
+/ACCEPTANCE.md
+
 # Local config overrides
 config.local.yaml
 .env

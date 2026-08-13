@@ -1,7 +1,7 @@
 # Iskele — Kararlar ve Varsayımlar (DECISIONS.md)
 
-> `PROMPT.md` §0.1 gereği: belirsizlik olduğunda burada varsayım yazılır, en makul seçenek uygulanır
-> ve durulmaz. Her karar kısa ADR formatındadır: **Bağlam → Karar → Gerekçe → Sonuç**.
+> Belirsizlik olduğunda varsayım burada yazılır, en makul seçenek uygulanır ve durulmaz.
+> Her karar kısa ADR formatındadır: **Bağlam → Karar → Gerekçe → Sonuç**.
 >
 > Durum: `Kabul` (uygulanacak/uygulandı) · `Öneri` (uygulama sırasında doğrulanacak) · `Değişti` (yerine yeni karar geçti)
 

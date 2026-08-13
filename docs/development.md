@@ -132,8 +132,7 @@ If a PR description contains "we should probably…", that is a decision.
 ## Cutting a release
 
 1. Update `CHANGELOG.md` — move `[Unreleased]` into a version with a date.
-2. Make sure `ACCEPTANCE.md` reflects reality.
-3. Commit, tag, push:
+2. Commit, tag, push:
 
 ```sh
 git tag -a v0.1.0 -m "Iskele v0.1.0"
