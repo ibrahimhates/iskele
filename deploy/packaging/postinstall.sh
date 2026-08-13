@@ -11,7 +11,10 @@ chown -R iskele:iskele /var/lib/iskele
 chmod 0750 /var/lib/iskele
 
 chown root:iskele /etc/iskele /etc/iskele/config.yaml 2>/dev/null || true
-chmod 0750 /etc/iskele 2>/dev/null || true
+# 2770 so iskeled, which runs as the iskele user, can create
+# /etc/iskele/secret.key on first start. At 0750 the daemon exits with
+# "create key file: permission denied" before it listens.
+chmod 2770 /etc/iskele 2>/dev/null || true
 chmod 0640 /etc/iskele/config.yaml 2>/dev/null || true
 [ -d /etc/iskele/templates ] && chown root:iskele /etc/iskele/templates && chmod 0750 /etc/iskele/templates
 

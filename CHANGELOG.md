@@ -6,6 +6,19 @@ Notable changes to Iskele. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Release archives were unextractable. Four `deploy/` entries shared one
+  destination, so three were dropped and the fourth became a *file* named
+  `deploy`, which `deploy/reverse-proxy/` could not be written under. `tar xzf`
+  failed, `deploy/install.sh` was absent, and the SBOM step could not read the
+  archive — which is what failed the v0.1.0 release job.
+- iskeled could not start on a fresh install. `/etc/iskele` was created
+  `root:iskele 0750`, leaving the daemon — which runs as `iskele` and creates
+  `/etc/iskele/secret.key` on first start — without write permission on the
+  directory. It exited with `create key file: permission denied` before
+  listening. Both `install.sh` and the `.deb`/`.rpm` packages were affected.
+
 ## [0.1.0] — 2026-08-13
 
 First release. A single static binary that manages Docker on one Linux host,
