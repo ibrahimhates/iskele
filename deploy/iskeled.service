@@ -1,0 +1,94 @@
+[Unit]
+Description=Iskele — Docker management panel
+Documentation=https://github.com/ibrahimhates/iskele
+# Docker is not a hard requirement: iskeled starts without it and every
+# Docker-backed route answers DOCKER_UNAVAILABLE until the daemon returns, so
+# the operator can still reach the panel that tells them Docker is down.
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# iskeled sends READY=1 once the listener is up, so units ordered after this
+# one do not start against a socket that is not accepting yet. It has no
+# reload: there is no ExecReload, because SIGHUP's default action would kill
+# the service rather than reload it.
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/bin/iskeled --config /etc/iskele/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+# The daemon pings this while it is alive; it deliberately does not depend on
+# the Docker daemon, since staying up to report that Docker is down is the
+# whole job. STOPPING=1 is sent on shutdown so a slow drain is not mistaken
+# for a hang.
+WatchdogSec=60s
+# Long enough for SQLite to finish a checkpoint and in-flight streams to close;
+# iskeled's own shutdown deadline is shorter than this on purpose.
+TimeoutStopSec=30s
+
+User=iskele
+Group=iskele
+# The panel talks to the engine over a socket owned by root:docker. This is the
+# whole privilege of the service, and it is equivalent to root on this host.
+SupplementaryGroups=docker
+
+# --- Filesystem ---------------------------------------------------------
+# ProtectSystem=strict makes everything read-only except what is listed below,
+# so a compromised daemon cannot rewrite /usr or /etc.
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/iskele
+# The secret key is created on first start, so /etc/iskele has to be writable.
+# It holds one file, mode 0600.
+ReadWritePaths=/etc/iskele
+PrivateTmp=yes
+
+# Bind mounts and build contexts are restricted to `allowed_paths` in the
+# config, but systemd cannot know what those are. If yours live outside the
+# defaults below, add them here as well — ProtectSystem=strict would otherwise
+# make them read-only to the container runtime's caller.
+ReadWritePaths=-/opt/stacks
+ReadWritePaths=-/srv
+
+# --- Kernel and privileges ---------------------------------------------
+NoNewPrivileges=yes
+# iskeled binds a port above 1024 and needs no capability of its own: what it
+# can do, it does through the Docker socket.
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+
+# --- Network ------------------------------------------------------------
+# Unix for the Docker socket, INET for the listener and for registry pulls
+# (which the engine makes, but a TCP docker_host is also supported).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# --- Syscalls -----------------------------------------------------------
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+
+# --- Resources ----------------------------------------------------------
+# A build streams a tar context through memory; 512M is generous for that and
+# still bounds a runaway.
+MemoryMax=512M
+TasksMax=512
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

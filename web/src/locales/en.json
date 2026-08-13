@@ -222,6 +222,7 @@
     "data_dir": "Data directory",
     "days": "days",
     "docker_host": "Docker socket",
+    "exposed_warning": "This panel is bound to an address other than loopback and is not serving TLS. Anyone who can reach it can start a privileged container and read the whole host. Put a TLS reverse proxy in front of it, or enable the built-in TLS listener.",
     "installation": "Installation",
     "installation_defaults": "No config file: these are the built-in defaults.",
     "installation_hint": "These come from {{file}} and take effect at startup. Change them there and restart.",

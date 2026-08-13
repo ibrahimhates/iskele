@@ -103,8 +103,8 @@ func TestAuditRetentionAsADuration(t *testing.T) {
 	}
 
 	days := 7
-	if _, err := svc.Set(ctx, Update{AuditRetentionDays: &days}, Identity{}, RequestMeta{}); err != nil {
-		t.Fatalf("Set() error = %v", err)
+	if _, setErr := svc.Set(ctx, Update{AuditRetentionDays: &days}, Identity{}, RequestMeta{}); setErr != nil {
+		t.Fatalf("Set() error = %v", setErr)
 	}
 
 	got, err = svc.AuditRetention(ctx)

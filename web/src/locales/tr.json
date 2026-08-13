@@ -222,6 +222,7 @@
     "data_dir": "Veri dizini",
     "days": "gün",
     "docker_host": "Docker soketi",
+    "exposed_warning": "Panel loopback dışında bir adrese bağlı ve TLS sunmuyor. Buraya erişebilen herkes ayrıcalıklı bir container başlatıp tüm makineyi okuyabilir. Önüne TLS sonlandıran bir ters vekil koyun ya da yerleşik TLS dinleyicisini açın.",
     "installation": "Kurulum",
     "installation_defaults": "Yapılandırma dosyası yok: bunlar gömülü varsayılanlar.",
     "installation_hint": "Bunlar {{file}} dosyasından gelir ve açılışta uygulanır. Değiştirmek için dosyayı düzenleyip servisi yeniden başlatın.",

@@ -568,3 +568,64 @@ func TestRedeployNeedsOperatePermission(t *testing.T) {
 		t.Errorf("status = %d, want 403", rec.Code)
 	}
 }
+
+// A WebSocket is not covered by the same-origin policy the way fetch is, so
+// the handshake's Origin check is the only cross-origin defense these
+// endpoints have. It is provided by the websocket library rather than by code
+// here, which is exactly why it is worth a test: an AcceptOptions change while
+// tidying up would remove it silently.
+func TestWebSocketRefusesAForeignOrigin(t *testing.T) {
+	env := newEnv(t, fake.New())
+	ticket := env.issueTicket(t, store.RoleAdmin)
+
+	srv := httptest.NewServer(env.raw)
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") +
+		APIPrefix + "/containers/" + runningID + "/logs?ticket=" + ticket + "&follow=false"
+
+	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{ //nolint:bodyclose // closed below
+		HTTPHeader: http.Header{"Origin": []string{"https://evil.example"}},
+	})
+	if err == nil {
+		_ = conn.CloseNow()
+		t.Fatal("the handshake succeeded with a foreign Origin")
+	}
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("status = %d, want 403", resp.StatusCode)
+		}
+	}
+}
+
+// The same request without the header is what a browser on the panel's own
+// origin sends, and it has to work — a check that refuses everything is not a
+// check.
+func TestWebSocketAcceptsItsOwnOrigin(t *testing.T) {
+	env := newEnv(t, fake.New())
+	ticket := env.issueTicket(t, store.RoleAdmin)
+
+	srv := httptest.NewServer(env.raw)
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") +
+		APIPrefix + "/containers/" + runningID + "/logs?ticket=" + ticket + "&follow=false"
+
+	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{ //nolint:bodyclose // owned by conn
+		HTTPHeader: http.Header{"Origin": []string{srv.URL}},
+	})
+	if err != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		t.Fatalf("the handshake was refused from its own origin: %v", err)
+	}
+	_ = conn.CloseNow()
+}

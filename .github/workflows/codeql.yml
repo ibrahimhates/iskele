@@ -1,0 +1,69 @@
+name: CodeQL
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+  schedule:
+    # Weekly, so a new query pack finds old code without waiting for a push.
+    # Monday 04:17 UTC — an odd minute, because every project that picks :00
+    # queues at the same time.
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      # Uploading the results to the security tab.
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-extended adds the queries that are worth a false positive
+          # or two on a codebase whose whole job is reaching the Docker socket.
+          queries: security-extended
+
+      - uses: actions/setup-go@v5
+        if: matrix.language == 'go'
+        with:
+          go-version: "1.25"
+          cache: true
+
+      # Manual rather than autobuild: the binary embeds web/dist through
+      # go:embed, and autobuild would fail on the missing directory. The
+      # committed .gitkeep satisfies the embed without a Node install, which is
+      # all CodeQL needs to see the Go code.
+      - name: Build
+        if: matrix.language == 'go'
+        run: go build ./...
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

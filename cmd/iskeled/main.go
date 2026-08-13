@@ -22,6 +22,7 @@ import (
 	"github.com/ibrahimhates/iskele/internal/server"
 	"github.com/ibrahimhates/iskele/internal/service"
 	"github.com/ibrahimhates/iskele/internal/store"
+	"github.com/ibrahimhates/iskele/internal/systemd"
 	"github.com/ibrahimhates/iskele/internal/templates"
 	"github.com/ibrahimhates/iskele/internal/version"
 )
@@ -228,7 +229,29 @@ func run(args []string) error {
 	if cfg.TLS.Enabled {
 		scheme = "https"
 	}
-	log.Info("listening", slog.String("url", fmt.Sprintf("%s://%s", scheme, srv.Addr())))
+	url := fmt.Sprintf("%s://%s", scheme, srv.Addr())
+	log.Info("listening", slog.String("url", url))
+
+	// Under systemd the unit is Type=notify: until READY=1 arrives the service
+	// counts as still starting, and anything ordered after it waits. Outside
+	// systemd every call here is a no-op.
+	notifier := systemd.New(os.LookupEnv)
+	defer func() { _ = notifier.Close() }()
+
+	if notifier.Enabled() {
+		if err := notifier.Ready(); err != nil {
+			// Not fatal: the daemon is serving. But systemd will eventually
+			// give up on the unit, and this line is the only warning of that.
+			log.Warn("could not notify systemd that we are ready", slog.Any("error", err))
+		}
+		_ = notifier.Status("serving " + url)
+
+		// One goroutine for both jobs: telling systemd the shutdown was
+		// deliberate, and — when the unit asked for it — feeding the watchdog
+		// until then. STOPPING=1 has to be sent whether or not there is a
+		// watchdog, or a slow drain reads as a hang.
+		go notifyUntilStopped(ctx, log, notifier, notifier.WatchdogInterval(os.LookupEnv))
+	}
 
 	if err := srv.Run(ctx); err != nil {
 		return err
@@ -236,6 +259,39 @@ func run(args []string) error {
 
 	log.Info("stopped")
 	return nil
+}
+
+// notifyUntilStopped feeds systemd's watchdog, then reports the shutdown.
+//
+// A ping only establishes that this goroutine is still scheduled and the
+// process has not deadlocked, which is what a watchdog can actually tell. It
+// deliberately does not depend on the Docker daemon: iskeled restarting every
+// time Docker hiccups is the opposite of what this service is for — it is the
+// thing that stays up to say Docker is down.
+//
+// every may be zero, which means the unit asked for no watchdog; the shutdown
+// notification still happens.
+func notifyUntilStopped(ctx context.Context, log *slog.Logger, notifier *systemd.Notifier, every time.Duration) {
+	var pings <-chan time.Time
+	if every > 0 {
+		ticker := time.NewTicker(every)
+		defer ticker.Stop()
+		pings = ticker.C
+		log.Debug("systemd watchdog enabled", slog.Duration("interval", every))
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			_ = notifier.Stopping()
+			_ = notifier.Status("shutting down")
+			return
+		case <-pings:
+			if err := notifier.Watchdog(); err != nil {
+				log.Warn("watchdog ping failed", slog.Any("error", err))
+			}
+		}
+	}
 }
 
 // housekeeping sweeps rows that can no longer affect a decision. Failures are

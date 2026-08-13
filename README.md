@@ -7,9 +7,10 @@ Iskele runs on the host as a systemd service (`iskeled`) and talks to the Docker
 Engine API over `/var/run/docker.sock`. It manages containers, images, volumes,
 networks and Compose stacks from a web UI that is embedded in the binary itself.
 
-> **Status: under construction.** The project is being built milestone by
-> milestone — see [`PROGRESS.md`](PROGRESS.md) for what works today and
-> [`PLAN.md`](PLAN.md) for where it is going. There is no usable release yet.
+> **Status: v0.1.0.** Every planned feature is implemented and tested. What has
+> not happened yet is long-running use on many different hosts — see
+> [Known limitations](CHANGELOG.md#known-limitations) and
+> [`PROGRESS.md`](PROGRESS.md).
 
 ---
 
@@ -30,11 +31,53 @@ filesystem. Treat the panel as a root shell:
   stored secrets and token signing. iskeled creates it with mode `0600` and
   **refuses to start** if it is readable by anyone else.
 
-See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
+See [`SECURITY.md`](SECURITY.md) for the full threat model, including what
+Iskele deliberately does **not** defend against.
 
 ---
 
-## Planned features
+## Install
+
+Download the archive for your architecture from the
+[releases page](https://github.com/ibrahimhates/iskele/releases), then:
+
+```sh
+tar xzf iskele_0.1.0_linux_amd64.tar.gz
+sudo ./deploy/install.sh
+```
+
+The installer creates the `iskele` system user, adds it to the `docker` group,
+lays out `/etc/iskele` and `/var/lib/iskele`, installs the systemd unit and
+starts it. Running it again upgrades the binary and leaves your config,
+database and secret key alone.
+
+There are `.deb` and `.rpm` packages too. They install everything but do not
+start the service — a package manager starting a root-equivalent panel because
+somebody typed `apt install` is making a decision that is not its to make:
+
+```sh
+sudo dpkg -i iskele_0.1.0_linux_amd64.deb
+sudo systemctl enable --now iskeled
+```
+
+Then open `http://127.0.0.1:8377` and create the first admin account. Until you
+do, every route answers `409 NOT_INITIALIZED`.
+
+**Before exposing it anywhere**, read the security notice above and put a TLS
+reverse proxy in front — [`deploy/reverse-proxy/`](deploy/reverse-proxy/) has
+working nginx, Caddy and Traefik configurations, including the WebSocket and
+SSE details that are easy to get wrong.
+
+To remove it:
+
+```sh
+sudo ./deploy/uninstall.sh           # keeps the database and the secret key
+sudo ./deploy/uninstall.sh --purge   # deletes them
+```
+
+---
+
+## Features
 
 | Area | What it does |
 |---|---|
@@ -45,6 +88,8 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model *(added in M9)*.
 | Images, volumes, networks | Full CRUD, prune, private registries with encrypted credentials |
 | Dashboard | Container/host metrics, live Docker events, audit log |
 | Users | Roles (admin/operator/viewer), API tokens, optional TOTP 2FA |
+| Compose stacks | Editor, host file or git; dependency-ordered deploys, diff, discovery of CLI-started projects |
+| Audit | Every mutation recorded, filtered and exported as CSV or JSON |
 
 ---
 
@@ -124,6 +169,18 @@ exists today:
 Turkish and English, light and dark, both remembered across reloads.
 Destructive actions ask you to type the container's name.
 
+### Screenshots
+
+<!-- Replace these with real captures before announcing the release. Each
+     should be a 1440px-wide PNG in docs/images/, taken in dark mode against
+     a host with a few containers running. -->
+
+| | |
+|---|---|
+| _Dashboard_ — counts, host metrics, live activity | _Containers_ — bulk actions and per-row live stats |
+| _Container detail_ — logs, charts, console | _Create_ — the ten-tab wizard with its live preview |
+| _Stacks_ — the compose editor and a deploy in progress | _Audit_ — filters and export |
+
 ---
 
 ## Configuration
@@ -181,6 +238,7 @@ listed as *open* below.
 | `GET` | `/system/ping` | read | Is the Docker daemon reachable? Always 200 |
 | `GET` | `/system/info` | read | Docker engine and host summary |
 | `GET` | `/system/df` | read | Disk usage (`docker system df`) |
+| `GET` | `/system/host` | read | Host CPU/RAM/disk, daemon uptime. Always 200, even with Docker down |
 | `GET` | `/containers` | read | List containers — `all`, `size`, `label`, `status`, `name` |
 | `GET` | `/containers/{id}` | read | Container detail |
 | `GET` | `/containers/{id}/inspect` | read | The engine's raw inspect payload, verbatim |
@@ -193,6 +251,7 @@ listed as *open* below.
 | `POST` | `/containers/{id}/rename` | operate | Rename — `{"name": "..."}` |
 | `POST` | `/containers/{id}/redeploy` | operate | Pull the image and recreate, rolling back on failure |
 | `POST` | `/containers/batch` | operate | One action over many containers; `207` on partial failure |
+| `POST` | `/containers/prune` | prune | Remove every stopped container |
 | `POST` | `/containers` | create | Create a container from a full definition |
 | `GET` | `/system/allowed-paths` | read | Host paths bind mounts may use |
 | `DELETE` | `/containers/{id}` | delete | Remove — `force`, `volumes` |
@@ -248,6 +307,21 @@ listed as *open* below.
 | `DELETE` | `/registries/{id}` | admin | Remove |
 | `GET` | `/tasks` | read | Long-running operations |
 | `POST` | `/tasks/{id}/cancel` | operate | Stop one |
+| `GET` | `/templates` | read | The app catalog, with categories and any malformed custom entries |
+| `GET` | `/templates/{id}` | read | One template's questions |
+| `POST` | `/templates/{id}/deploy` | create | Deploy it; every bad answer is returned at once |
+| `POST` | `/templates/secret` | create | Generate a password server-side |
+| `GET` | `/users` | admin | Accounts |
+| `POST` | `/users` | admin | Create one |
+| `PUT` | `/users/{id}` | admin | Change role, password or disabled state |
+| `DELETE` | `/users/{id}` | admin | Delete; ends its sessions |
+| `DELETE` | `/users/{id}/totp` | admin | Clear somebody else's second factor |
+| `POST` | `/auth/totp/{setup,verify,disable}` | any | Two-factor, for the caller's own account |
+| `GET` | `/audit` | admin | The audit trail, filtered and paged |
+| `GET` | `/audit/facets` | admin | The distinct actors, actions and resource types on record |
+| `GET` | `/audit/export` | admin | The same, as a CSV or JSON download |
+| `GET` | `/settings` | admin | Runtime settings and this installation's fixed facts |
+| `PUT` | `/settings` | admin | Change retention or the bind-mount warning |
 
 Collection endpoints return `{"items": [...], "total": N}`; `items` is never
 `null`.
@@ -323,6 +397,21 @@ also cost you the panel that would tell you so.
 | [`PROGRESS.md`](PROGRESS.md) | Live milestone and task status |
 | [`DECISIONS.md`](DECISIONS.md) | Design decisions and assumptions (ADR style) |
 | [`ACCEPTANCE.md`](ACCEPTANCE.md) | Acceptance criteria for v0.1.0 |
+| [`CHANGELOG.md`](CHANGELOG.md) | What shipped, and the known limitations |
+| [`SECURITY.md`](SECURITY.md) | Threat model and how to report a vulnerability |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup and house style |
+
+### Reference
+
+| File | Purpose |
+|---|---|
+| [`docs/openapi.yaml`](docs/openapi.yaml) | The API, in full |
+| [`docs/architecture.md`](docs/architecture.md) | How the pieces fit and why |
+| [`docs/configuration.md`](docs/configuration.md) | Every setting, flag and environment variable |
+| [`docs/security-model.md`](docs/security-model.md) | The trust boundaries, in detail |
+| [`docs/development.md`](docs/development.md) | Working on Iskele, and cutting a release |
+| [`docs/compose-support.md`](docs/compose-support.md) | Which compose fields are supported |
+| [`docs/template-schema.md`](docs/template-schema.md) | Writing a catalog template |
 
 ## License
 

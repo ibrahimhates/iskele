@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FolderLock, Lock, Save, ServerCog } from 'lucide-react';
+import { FolderLock, Lock, Save, ServerCog, ShieldAlert } from 'lucide-react';
 
 import { settings as settingsApi } from '../../api/endpoints';
 import { ErrorPanel } from '../../components/ErrorPanel';
@@ -127,6 +127,16 @@ export function InstallationPanel() {
             : t('settings.installation_defaults')}
         </p>
 
+        {exposed(install.listen, install.tls_enabled) && (
+          // The daemon logs this at startup, where nobody rereads it. An
+          // operator who moved `listen` off loopback months ago should still
+          // be told, on the screen that shows them the address.
+          <div className="mb-3 flex items-start gap-2 rounded border border-warn/40 bg-warn/10 p-3 text-xs">
+            <ShieldAlert size={14} className="mt-0.5 shrink-0 text-warn" aria-hidden />
+            <span>{t('settings.exposed_warning')}</span>
+          </div>
+        )}
+
         <dl className="space-y-1.5 text-sm">
           <Row label={t('settings.docker_host')} value={install.docker_host} />
           <Row label={t('settings.listen')} value={install.listen} />
@@ -161,6 +171,25 @@ export function InstallationPanel() {
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * Whether the panel is reachable from off this host without TLS.
+ *
+ * A hostname that is not a loopback literal counts as exposed: it may well
+ * resolve to one, but assuming so is the wrong way to be wrong about a
+ * root-equivalent API.
+ */
+function exposed(listen: string, tls: boolean): boolean {
+  if (tls) return false;
+
+  const host = listen.replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+  return !(
+    host === '127.0.0.1' ||
+    host === 'localhost' ||
+    host === '::1' ||
+    host.startsWith('127.')
   );
 }
 

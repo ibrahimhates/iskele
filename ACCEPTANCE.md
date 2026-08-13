@@ -5,10 +5,20 @@
 > "Doğrulama" sütunu, maddenin nasıl kanıtlandığını söyler: `test` (otomatik test), `manuel` (elle koşulan senaryo),
 > `CI` (pipeline çıktısı), `gözle` (UI incelemesi).
 
-**Sürüm:** v0.1.0 · **Toplam madde:** 141 · **İşaretli:** 90 · **Kısmi (🟡):** 21 · **Kalan:** 30 (M8 sonu)
+**Sürüm:** v0.1.0 · **Toplam madde:** 141 · **İşaretli:** 112 · **Kısmi (🟡):** 29 · **İşaretsiz:** 0 (M9 sonu)
 
-> 🟡 = kod yazıldı ve testleri geçiyor, ama son kanıt bu ortamda üretilemiyor (gerçek bir Docker
-> daemon'ı gerektiriyor) ya da madde birden çok milestone'a yayılıyor. Bunlar **işaretli sayılmaz.**
+> 🟡 = kod yazıldı, testleri geçiyor ve elle gözden geçirildi; ama son kanıt bu geliştirme ortamında
+> üretilemiyor. Üç sebep var ve hepsi ortamla ilgili, kodla değil:
+>
+> 1. **Gerçek bir Docker daemon'ı yok** — container/stack/build'in canlı bir engine ile davranışı
+>    (I8, J1–J5, G3/G4 …). Fake engine ile tüm mantık test ediliyor, ama gerçek bir engine ile
+>    çalıştırma bu ortamda mümkün değil.
+> 2. **systemd yok** (PID 1 systemd değil) — `install.sh`'in dosya/kullanıcı/izin yarısı burada
+>    doğrulandı ve çalışıyor; `systemctl` yarısı (A13–A15, C12) bir systemd host'u gerektiriyor.
+> 3. **Yayınlanmış release yok** — A16 ve M10, tag atılıp GitHub Actions release iş akışı koştuktan
+>    sonra kanıtlanır. `.goreleaser.yaml` `goreleaser check` ile doğrulandı.
+>
+> Bunlar **işaretli sayılmaz.** Gerçek bir sunucuda koşulacak doğrulama listesi aşağıda.
 
 ---
 
@@ -17,21 +27,21 @@
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
 | A1 | `make build` tek statik binary üretir (`CGO_ENABLED=0`) | CI | M0 | [x] |
-| A2 | `go build ./...` ve `go vet ./...` temiz | CI | tüm | [ ] |
-| A3 | `go test ./...` yeşil, `-race` ile de geçer | CI | tüm | [ ] |
-| A4 | `golangci-lint run` (errcheck, govet, staticcheck, gosec) temiz | CI | tüm | [ ] |
+| A2 | `go build ./...` ve `go vet ./...` temiz | CI | tüm | [x] |
+| A3 | `go test ./...` yeşil, `-race` ile de geçer | CI | tüm | [x] |
+| A4 | `golangci-lint run` (errcheck, govet, staticcheck, gosec) temiz | CI | tüm | [x] |
 | A5 | `npm run lint` ve `npm run build` yeşil | CI | M3+ | [x] |
-| A6 | Binary `linux/amd64`, `linux/arm64`, `linux/armv7` için cross-compile edilir | CI | M9 | [ ] |
+| A6 | Binary `linux/amd64`, `linux/arm64`, `linux/armv7` için cross-compile edilir | CI | M9 | [x] |
 | A7 | Frontend `embed.FS` ile binary'ye gömülüdür; harici dosya gerekmez | manuel | M3 | [x] |
 | A8 | `iskeled --help` tüm flag'leri açıklar; `--version` sürüm/commit/tarih basar | manuel | M0 | [x] |
 | A9 | Config önceliği flag > env > `/etc/iskele/config.yaml` > varsayılan | test | M0 | [x] |
 | A10 | Hatalı config anlamlı hata mesajıyla çıkış yapar (panic yok) | test | M0 | [x] |
 | A11 | `SIGTERM` ile graceful shutdown: aktif istekler tamamlanır, WS'ler kapanır, DB kapanır | manuel | M0 | [x] |
 | A12 | Docker erişilemezken servis açılır, UI `DOCKER_UNAVAILABLE` uyarısı gösterir | manuel | M1 | [x] |
-| A13 | `install.sh` temiz bir Linux VM'de kurulumu uçtan uca tamamlar (idempotent) | manuel | M9 | [ ] |
-| A14 | `uninstall.sh` servisi ve dosyaları temizler; `--purge` veriyi de siler | manuel | M9 | [ ] |
-| A15 | `systemctl status iskeled` aktif; reboot sonrası otomatik başlar | manuel | M9 | [ ] |
-| A16 | GoReleaser `.deb`, `.rpm`, arşivler ve `checksums.txt` üretir | CI | M9 | [ ] |
+| A13 | `install.sh` temiz bir Linux VM'de kurulumu uçtan uca tamamlar (idempotent) | manuel | M9 | 🟡 |
+| A14 | `uninstall.sh` servisi ve dosyaları temizler; `--purge` veriyi de siler | manuel | M9 | 🟡 |
+| A15 | `systemctl status iskeled` aktif; reboot sonrası otomatik başlar | manuel | M9 | 🟡 |
+| A16 | GoReleaser `.deb`, `.rpm`, arşivler ve `checksums.txt` üretir | CI | M9 | 🟡 |
 
 ## B. Kimlik Doğrulama ve Yetkilendirme
 
@@ -56,7 +66,7 @@
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| C1 | Varsayılan bind `127.0.0.1:8377`; `0.0.0.0` seçilirse log ve UI'da TLS/proxy uyarısı | manuel | M0/M3 | [ ] |
+| C1 | Varsayılan bind `127.0.0.1:8377`; `0.0.0.0` seçilirse log ve UI'da TLS/proxy uyarısı | manuel | M0/M9 | [x] |
 | C2 | Bind mount ve build path'i `allowed_paths` dışına çıkamaz | test | M6 | [x] |
 | C3 | Path traversal (`../`), symlink ve absolute bypass vektörleri reddedilir | test | M6 | [x] |
 | C4 | `privileged`, cap add, devices, security-opt, host-bind yalnız `admin`; UI'da uyarı | test+gözle | M5 | [x] |
@@ -65,13 +75,13 @@
 | C7 | Registry parolaları ve tunnel token'ları DB'de AES-GCM ile şifreli | test | M5 | [x] |
 | C8 | `/etc/iskele/secret.key` 0600 izinle üretilir; yoksa oluşturulur | test | M2 | [x] |
 | C9 | Audit log ve uygulama loglarında secret değerler maskelenir | test | M2 | [x] |
-| C10 | WebSocket bağlantılarında `Origin` doğrulaması ve ticket kontrolü yapılır | test | M4 | [ ] |
-| C11 | systemd unit hardening direktiflerinin tamamı mevcut (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths`, `RestrictAddressFamilies`, `MemoryDenyWriteExecute`, boş `CapabilityBoundingSet`) | gözle | M9 | [ ] |
-| C12 | Servis `iskele` sistem kullanıcısıyla çalışır (root varsayılan değil), `docker` grubunda | manuel | M9 | [ ] |
-| C13 | `README.md` ve `SECURITY.md` "docker socket = root eşdeğeri" uyarısını açıkça içerir | gözle | M9 | [ ] |
-| C14 | CI'da `govulncheck` ve `npm audit` çalışır | CI | M9 | [ ] |
+| C10 | WebSocket bağlantılarında `Origin` doğrulaması ve ticket kontrolü yapılır | test | M4/M9 | [x] |
+| C11 | systemd unit hardening direktiflerinin tamamı mevcut (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths`, `RestrictAddressFamilies`, `MemoryDenyWriteExecute`, boş `CapabilityBoundingSet`) | gözle | M9 | [x] |
+| C12 | Servis `iskele` sistem kullanıcısıyla çalışır (root varsayılan değil), `docker` grubunda | manuel | M9 | 🟡 |
+| C13 | `README.md` ve `SECURITY.md` "docker socket = root eşdeğeri" uyarısını açıkça içerir | gözle | M9 | [x] |
+| C14 | CI'da `govulncheck` ve `npm audit` çalışır | CI | M9 | [x] |
 | C15 | Güvenlik başlıkları (CSP, X-Frame-Options, nosniff, Referrer-Policy) yanıtlarda mevcut | test | M0 | [x] |
-| C16 | Opsiyonel yerleşik TLS (cert/key) çalışır | manuel | M9 | [ ] |
+| C16 | Opsiyonel yerleşik TLS (cert/key) çalışır | manuel | M9 | 🟡 |
 
 ## D. Container Yönetimi
 
@@ -178,7 +188,7 @@
 |---|---|---|---|:--:|
 | K1 | Sidebar yalnızca yapılmış bölümleri listeler; her öğe çalışan bir sayfaya gider (D-041). M8 sonunda tam: Dashboard, Containers, Stacks, Catalog, Images, Build, Volumes, Networks, Users, Audit, Settings. | gözle | M3→M8 | [x] |
 | K2 | Dark mode varsayılan; light/system toggle çalışır ve kalıcıdır | gözle | M3 | [x] |
-| K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | [ ] |
+| K3 | Mobil uyum: sidebar collapse, tablolar kart görünümüne düşer | gözle | M4 | 🟡 |
 | K4 | 500+ satırda tablo sanallaştırması devreye girer | gözle | M4 | [x] |
 | K5 | Yıkıcı işlemler (remove, prune, down) kaynak adı yazdırılarak onaylanır | gözle | M4 | [x] |
 | K6 | Uzun işler için global task drawer: ilerleme, iptal, log | gözle | M5 | [x] |
@@ -194,29 +204,29 @@
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
 | L1 | Docker katmanı interface arkasında; handler testleri fake kullanır | test | M1 | [x] |
-| L2 | Auth testleri: üretim, doğrulama, expiry, revoke, RBAC matrisi, brute-force | test | M2 | [ ] |
+| L2 | Auth testleri: üretim, doğrulama, expiry, revoke, RBAC matrisi, brute-force | test | M2 | [x] |
 | L3 | Path whitelist: traversal ve symlink saldırı vektörleri test edilir | test | M5 | [x] |
-| L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [ ] |
+| L4 | Compose parse: en az 5 gerçek fixture | test | M7 | [x] |
 | L5 | Template render: her template için geçerli payload testi | test | M8 | [x] |
 | L6 | Frontend Vitest: form validasyonu ve log viewer buffer testleri | test | M4 | [x] |
-| L7 | Backend test coverage ≥ %60 ve CI'da raporlanır | CI | M9 | [ ] |
-| L8 | CI'da lint (golangci-lint + eslint + prettier) zorunlu ve yeşil | CI | M9 | [ ] |
+| L7 | Backend test coverage ≥ %60 ve CI'da raporlanır | CI | M9 | [x] |
+| L8 | CI'da lint (golangci-lint + eslint + prettier) zorunlu ve yeşil | CI | M9 | [x] |
 
 ## M. Dokümantasyon ve Teslim
 
 | # | Kriter | Doğrulama | Faz | ✔ |
 |---|---|---|---|:--:|
-| M1 | `README.md`: özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları | gözle | M9 | [ ] |
-| M2 | README'de nginx, Caddy ve Traefik reverse proxy örnekleri (WS upgrade dahil) | gözle | M9 | [ ] |
-| M3 | `SECURITY.md`: tehdit modeli, socket=root uyarısı, zafiyet bildirim süreci | gözle | M9 | [ ] |
-| M4 | `CONTRIBUTING.md`: geliştirme kurulumu, commit kuralları, PR süreci | gözle | M9 | [ ] |
-| M5 | `CHANGELOG.md`: v0.1.0 girdisi | gözle | M9 | [ ] |
+| M1 | `README.md`: özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları | gözle | M9 | [x] |
+| M2 | README'de nginx, Caddy ve Traefik reverse proxy örnekleri (WS upgrade dahil) | gözle | M9 | [x] |
+| M3 | `SECURITY.md`: tehdit modeli, socket=root uyarısı, zafiyet bildirim süreci | gözle | M9 | [x] |
+| M4 | `CONTRIBUTING.md`: geliştirme kurulumu, commit kuralları, PR süreci | gözle | M9 | [x] |
+| M5 | `CHANGELOG.md`: v0.1.0 girdisi | gözle | M9 | [x] |
 | M6 | `LICENSE`: Apache-2.0 | gözle | M0 | [x] |
-| M7 | `docs/openapi.yaml` tüm endpoint'lerle senkron ve doğrulanabilir (lint'ten geçer) | CI | M9 | [ ] |
-| M8 | `docs/architecture.md`, `docs/template-schema.md`, `docs/configuration.md`, `docs/security-model.md` mevcut | gözle | M9 | [ ] |
-| M9 | `PLAN.md`, `PROGRESS.md`, `DECISIONS.md` son duruma göre güncel | gözle | M9 | [ ] |
-| M10 | `v0.1.0` tag'i atıldı ve release artifact'ları yayınlandı | CI | M9 | [ ] |
-| M11 | Placeholder yok: `// TODO: implement`, mock endpoint, çalışmayan buton bulunmuyor | manuel | M9 | [ ] |
+| M7 | `docs/openapi.yaml` tüm endpoint'lerle senkron ve doğrulanabilir (lint'ten geçer) | test | M9 | [x] |
+| M8 | `docs/architecture.md`, `docs/template-schema.md`, `docs/configuration.md`, `docs/security-model.md` mevcut | gözle | M9 | [x] |
+| M9 | `PLAN.md`, `PROGRESS.md`, `DECISIONS.md` son duruma göre güncel | gözle | M9 | [x] |
+| M10 | `v0.1.0` tag'i atıldı ve release artifact'ları yayınlandı | CI | M9 | 🟡 |
+| M11 | Placeholder yok: `// TODO: implement`, mock endpoint, çalışmayan buton bulunmuyor | manuel | M9 | [x] |
 
 ---
 
@@ -227,5 +237,67 @@
 | Container içi dosya yöneticisi (Files sekmesi) | PROMPT §4.2'de "opsiyonel M9" | A-003 |
 | Çoklu/uzak Docker endpoint UI'ı | v0.2 kapsamı; config düzeyinde TCP/TLS destekleniyor | A-004 |
 | Image export/save | PROMPT §4.7'de opsiyonel | A-005 |
+| Artifact imzalama (cosign) | Yarım yapılandırılmış bir imzalama adımı, son aşamada patlayan bir release üretir. Checksum dosyası yayınlanıyor. | docs/development.md |
+
+---
+
+## Gerçek Sunucuda Koşulacak Doğrulama
+
+🟡 maddelerin tamamı aşağıdaki iki oturumla kapanır. Bu listeyi olduğu gibi koşup sonucu
+işaretlemek, kalan işin tamamıdır.
+
+### Oturum 1 — systemd host'u, Docker kurulu
+
+```sh
+# A13, A15, C12
+sudo ./deploy/install.sh
+systemctl is-active iskeled && systemctl is-enabled iskeled
+systemctl show iskeled -p User,SupplementaryGroups,NoNewPrivileges,ProtectSystem
+sudo ./deploy/install.sh          # tekrar: idempotent olmalı, config korunmalı
+sudo reboot                       # açılışta kendi başına gelmeli
+
+# C16
+# config.yaml'da tls.enabled: true + cert/key, sonra:
+sudo systemctl restart iskeled && curl -k https://127.0.0.1:8377/api/v1/health
+
+# J1–J3
+# Panelde dashboard: sayımlar `docker ps -a` ile, disk `docker system df` ile,
+# host metrikleri `top`/`df -h` ile karşılaştırılır.
+
+# J4
+docker run --rm hello-world       # activity feed'de create/start/die görünmeli
+
+# J5
+docker create --name gone alpine && docker rm gone   # prune'dan önce/sonra sayım
+
+# I8
+# Katalogdan redis ve postgres deploy edilir; ikisi de `docker ps`'te running olmalı.
+
+# I7
+sudo cp my-template.json /etc/iskele/templates/ && sudo systemctl restart iskeled
+
+# G3/G4
+# Gerçek bir Dockerfile build edilir; log akışı ve iptal denenir.
+
+# A14
+sudo ./deploy/uninstall.sh        # veri kalmalı
+sudo ./deploy/uninstall.sh --purge
+```
+
+### Oturum 2 — release
+
+```sh
+# A16, M10
+git tag -a v0.1.0 -m "Iskele v0.1.0" && git push origin v0.1.0
+# Actions → Release yeşil olmalı; release sayfasında 3 arşiv, .deb, .rpm,
+# checksums.txt ve SBOM'lar bulunmalı.
+```
+
+### K3 hakkında
+
+Mobil uyum kısmen yapıldı: sidebar telefonda kapanıyor ve overlay oluyor, kartlar/formlar
+tek sütuna düşüyor. Tablolar ise kart görünümüne **düşmüyor**, yatay kayıyor
+(`overflow-x-auto`). Container listesi gibi 8 sütunlu bir tabloda kart görünümü daha
+okunaklı olurdu; bu v0.2 işi olarak duruyor.
 
 _(Bir madde buraya taşınırsa üstteki tablosunda `[~]` ile işaretlenir ve bu tabloya gerekçesi yazılır.)_

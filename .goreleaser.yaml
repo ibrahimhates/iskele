@@ -1,0 +1,161 @@
+# GoReleaser configuration for Iskele.
+#
+# The frontend is not built here: `before.hooks` runs `make web` first, because
+# the binary embeds web/dist through go:embed and a release built without it
+# would serve a blank page — the one failure that passes every compile check.
+#
+# Try it without publishing:
+#   goreleaser release --snapshot --clean
+version: 2
+
+project_name: iskele
+
+before:
+  hooks:
+    - go mod download
+    # Produces web/dist, which cmd/iskeled embeds.
+    - make web
+
+builds:
+  - id: iskeled
+    main: ./cmd/iskeled
+    binary: iskeled
+    # No cgo anywhere: modernc.org/sqlite is pure Go, which is what makes the
+    # arm cross-compiles work without a toolchain per architecture.
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      # armv6 and below are not built: the target is a Raspberry Pi 2 or
+      # newer, and shipping an untested binary is worse than not shipping one.
+      - goarch: arm
+        goarm: "6"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/ibrahimhates/iskele/internal/version.Version={{ .Version }}
+      - -X github.com/ibrahimhates/iskele/internal/version.Commit={{ .FullCommit }}
+      - -X github.com/ibrahimhates/iskele/internal/version.BuildDate={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: iskeled
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_
+      {{- if eq .Arch "arm" }}armv{{ .Arm }}{{ else }}{{ .Arch }}{{ end }}
+    # Everything needed to install by hand is in the archive: the unit file,
+    # the example config and the scripts, so an operator who does not want the
+    # .deb has the same result.
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - SECURITY.md
+      - src: deploy/iskeled.service
+        dst: deploy/
+      - src: deploy/config.example.yaml
+        dst: deploy/
+      - src: deploy/install.sh
+        dst: deploy/
+      - src: deploy/uninstall.sh
+        dst: deploy/
+      - src: deploy/reverse-proxy/*
+        dst: deploy/reverse-proxy/
+      - src: docs/*.md
+        dst: docs/
+
+nfpms:
+  - id: packages
+    package_name: iskele
+    vendor: Iskele
+    homepage: https://github.com/ibrahimhates/iskele
+    maintainer: Iskele maintainers <noreply@example.com>
+    description: |
+      Native Docker management panel for a single Linux host.
+      One static binary, no container, no runtime dependencies.
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    # docker is a recommendation rather than a dependency: iskeled starts
+    # without it and every engine route answers DOCKER_UNAVAILABLE until it
+    # returns, which is exactly what an operator with a broken Docker needs.
+    recommends:
+      - docker-ce
+    contents:
+      - src: deploy/iskeled.service
+        dst: /usr/lib/systemd/system/iskeled.service
+      - src: deploy/config.example.yaml
+        dst: /etc/iskele/config.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0640
+      - src: deploy/reverse-proxy
+        dst: /usr/share/doc/iskele/reverse-proxy
+      - src: docs
+        dst: /usr/share/doc/iskele
+      - dst: /var/lib/iskele
+        type: dir
+        file_info:
+          mode: 0750
+      - dst: /etc/iskele/templates
+        type: dir
+        file_info:
+          mode: 0750
+    scripts:
+      preinstall: deploy/packaging/preinstall.sh
+      postinstall: deploy/packaging/postinstall.sh
+      preremove: deploy/packaging/preremove.sh
+      postremove: deploy/packaging/postremove.sh
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+sboms:
+  - id: archive
+    artifacts: archive
+
+# Signing is left off deliberately rather than half-configured: a cosign
+# keyless signature needs the release to run in a workflow with id-token
+# permission, and a config that references a key nobody has produces a release
+# that fails at the last step. See docs/development.md.
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # The tag message is the changelog: CHANGELOG.md is written by hand, and a
+  # generated list of commits beside it would only disagree with it.
+  disable: true
+
+release:
+  draft: false
+  prerelease: auto
+  header: |
+    ## Iskele {{ .Version }}
+
+    See [CHANGELOG.md](https://github.com/ibrahimhates/iskele/blob/{{ .Tag }}/CHANGELOG.md).
+  footer: |
+    ---
+
+    **Access to the Docker socket is equivalent to root on the host.** Keep the
+    panel on loopback behind a TLS proxy, and read `SECURITY.md` before
+    exposing it.
+
+    ### Install
+
+    ```
+    tar xzf iskele_{{ .Version }}_linux_amd64.tar.gz
+    sudo ./deploy/install.sh
+    ```

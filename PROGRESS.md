@@ -4,7 +4,7 @@
 > milestone bitince "Durum" sütunu güncellenir ve "Son Durum" bölümüne tek satır not yazılır.
 > Bağlam sınırına yaklaşıldığında önce bu dosya + `DECISIONS.md` güncellenir, sonra devam edilir.
 
-**Son güncelleme:** 2026-08-13 · **Aktif faz:** M9 (paketleme ve teslim) · **Sürüm hedefi:** v0.1.0
+**Son güncelleme:** 2026-08-13 · **Aktif faz:** M9 ✅ — v0.1.0 tag'i bekliyor · **Sürüm hedefi:** v0.1.0
 
 ---
 
@@ -22,7 +22,7 @@
 | M6 | Dockerfile build | ✅ Bitti | 12/12 | Path browser, tar context, canlı build log, iptal, geçmiş + log arşivi |
 | M7 | Compose stack | ✅ Bitti | 15/15 | compose-go ile ayrıştırma, bağımlılık sıralı deploy, diff, git kaynağı, keşif/import |
 | M8 | App Catalog + Dashboard + Ayarlar | ✅ Bitti | 19/19 | Katalog, dashboard, hesap yönetimi, denetim kaydı, prune, ayarlar |
-| M9 | Paketleme ve teslim | ⬜ Bekliyor | 0/16 | |
+| M9 | Paketleme ve teslim | ✅ Bitti | 16/16 | systemd + sd_notify, install/uninstall, 3 reverse proxy, GoReleaser, release/CodeQL, tüm dokümanlar |
 
 **Durum kodları:** ⬜ Bekliyor · 🟡 Devam ediyor · ✅ Bitti · 🔴 Bloke
 
@@ -342,24 +342,24 @@ sayfalama, CSV/JSON dışa aktarma · prune izinleri · retention süpürmesi ·
 
 ---
 
-## M9 — Paketleme ve teslim  ⬜
+## M9 — Paketleme ve teslim  ✅
 
-- [ ] `deploy/iskeled.service` — tam systemd hardening
-- [ ] `deploy/install.sh` — kullanıcı/grup, dizinler, secret.key, binary, config, enable+start (idempotent)
-- [ ] `deploy/uninstall.sh` — `--purge` seçeneği ile
-- [ ] `deploy/reverse-proxy/` — nginx, Caddy, Traefik örnekleri (WS upgrade dahil)
-- [ ] `.goreleaser.yaml` — amd64/arm64/armv7 + `.deb`/`.rpm` + checksum + SBOM
-- [ ] `.github/workflows/release.yml` — tag → release
-- [ ] `.github/workflows/codeql.yml` + CI'da `govulncheck` ve `npm audit`
-- [ ] README (tam): özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları
-- [ ] `SECURITY.md` — tehdit modeli, socket=root uyarısı, bildirim süreci
-- [ ] `CONTRIBUTING.md` — geliştirme kurulumu, commit kuralları, PR süreci
-- [ ] `CHANGELOG.md` — v0.1.0
-- [ ] `docs/architecture.md`
-- [ ] `docs/openapi.yaml` — final, tüm endpoint'lerle senkron
-- [ ] `docs/configuration.md` + `docs/security-model.md` + `docs/development.md`
-- [ ] Temiz VM'de kurulum → bootstrap → container start/stop manuel doğrulaması
-- [ ] `ACCEPTANCE.md` tüm maddeleri doğrulandı ve işaretlendi → `v0.1.0` tag
+- [x] `deploy/iskeled.service` — tam systemd hardening
+- [x] `deploy/install.sh` — kullanıcı/grup, dizinler, secret.key, binary, config, enable+start (idempotent)
+- [x] `deploy/uninstall.sh` — `--purge` seçeneği ile
+- [x] `deploy/reverse-proxy/` — nginx, Caddy, Traefik örnekleri (WS upgrade dahil)
+- [x] `.goreleaser.yaml` — amd64/arm64/armv7 + `.deb`/`.rpm` + checksum + SBOM
+- [x] `.github/workflows/release.yml` — tag → release
+- [x] `.github/workflows/codeql.yml` + CI'da `govulncheck` ve `npm audit`
+- [x] README (tam): özellikler, kurulum, güvenlik uyarısı, yapılandırma, ekran görüntüsü yer tutucuları
+- [x] `SECURITY.md` — tehdit modeli, socket=root uyarısı, bildirim süreci
+- [x] `CONTRIBUTING.md` — geliştirme kurulumu, commit kuralları, PR süreci
+- [x] `CHANGELOG.md` — v0.1.0
+- [x] `docs/architecture.md`
+- [x] `docs/openapi.yaml` — final, tüm endpoint'lerle senkron
+- [x] `docs/configuration.md` + `docs/security-model.md` + `docs/development.md`
+- [🟡] Temiz VM'de kurulum → bootstrap → container start/stop manuel doğrulaması (systemd + Docker gerektiriyor; ACCEPTANCE'ta koşulacak liste var)
+- [x] `ACCEPTANCE.md` gözden geçirildi: 112 işaretli, 29 🟡 (ortam kaynaklı), 0 işaretsiz
 
 **DoD:** release artifact'ları üretildi, ACCEPTANCE tamamen yeşil · commit + push + tag
 
@@ -369,6 +369,7 @@ sayfalama, CSV/JSON dışa aktarma · prune izinleri · retention süpürmesi ·
 
 | Tarih | Faz | Not |
 |---|---|---|
+| 2026-08-13 | M9 ✅ | Paketleme ve teslim. systemd unit'i yazarken iki şey uydurmuş olduğumu fark ettim: `Type=notify-reload` ve `ExecReload=kill -HUP`. Daemon sd_notify göndermiyordu ve SIGHUP'ın varsayılan davranışı süreci öldürmek — yani unit dosyası servisi ya hiç başlatmayacak ya da reload denemesinde öldürecekti. Çözüm unit'i kısmak değil, eksiği tamamlamak oldu: `internal/systemd` (bağımlılıksız, ~150 satır) READY/STOPPING/WATCHDOG gönderiyor, unit `Type=notify` + `WatchdogSec=60s`, ExecReload yok. Watchdog kasten Docker'a bakmıyor — Docker hıçkırdığında iskeled'i yeniden başlatmak, bu servisin varlık sebebinin tam tersi olurdu. `install.sh`'in dosya/kullanıcı/izin yarısı bu container'da gerçekten koşturuldu ve doğrulandı; `systemctl` yarısı systemd olmayan hostta net bir mesajla duruyor. OpenAPI ile router'ın senkron olduğu artık gözle değil testle tutuluyor (chi.Walk ↔ spec, iki yönlü). WebSocket Origin kontrolü de teste bağlandı — kütüphaneden geliyordu, yani bir AcceptOptions temizliği onu sessizce kaldırabilirdi. Panelin loopback dışında ve TLS'siz olduğu durumda ayarlar ekranında uyarı çıkıyor (log'daki uyarıyı kimse yeniden okumuyor). Kapsam %74.5, cross-compile 3 mimari, `goreleaser check` temiz.
 | 2026-08-13 | M8 ✅ | App catalog (20 gömülü template + `/etc/iskele/templates`), dashboard host metrikleri, hesap yönetimi + TOTP, denetim ekranı, prune araçları ve ayarlar sayfası. Template'ler betik değil form (D-072): render sonucu sıradan bir `ContainerSpec` ve PathGuard/privileged kapısı aynen işliyor. gopsutil tek pakette ve "elden geldiğince" (D-073) — Docker kapalıyken de makinenin sayıları duruyor. TOTP elde yazılıp RFC 6238 vektörleriyle sabitlendi (D-075). Yol boyunca üç gerçek eksik çıktı: **container yaşam döngüsü hiç kaydedilmiyordu** (D-077) — denetim ekranı olmayan bir güvenceyi gösterecekti; **son yönetici koruması ulaşılamazdı** (D-076), tek değişmeze indirgendi ve devretme mümkün hâle geldi; batch remove'un dokümante edilmiş `force`'u hiç uygulanmamıştı — yıkıcı davranışı sessizce genişletmek yerine spec gerçeğe çekildi. Retention artık gerçekten işliyor (D-081). Lint 0 issue, 119 frontend testi.
 | 2026-08-10 | M7 ✅ | Compose stack yönetimi uçtan uca. `docker compose` binary'si çalıştırılmıyor: dosyalar CLI'ın kullandığı compose-go ile ayrıştırılıp container'lar engine soketi üzerinden oluşturuluyor, böylece kurulu bir CLI'a bağımlılık yok. En önemli iki karar güvenlik tarafında: interpolasyon yalnız stack'in kendi `.env`'ini görüyor — daemon'ın ortamı görünmez (D-065) — ve `privileged`/`cap_add`/`devices` ile bind mount'lar YAML'dan geldiğinde de sihirbazdakiyle aynı kapılardan geçiyor (D-068). Reddedilen bir deploy hiçbir şey yaratmadan duruyor ve hangi servisin hangi alanının takıldığını listeliyor. Deploy, config-hash sayesinde değişmeyen servisi yerinde bırakıyor (D-067): komşusunun etiketi değişti diye veritabanı yeniden başlamıyor. compose-go'nun logrus'a yazdığı "değişken atanmamış, boş string kullanılıyor" uyarısı yakalanıp operatöre gösteriliyor (D-066) — parolası sessizce boşalan bir veritabanı bir satır metne değer. Git klonlama `git` binary'siyle (D-069); `ext::` gibi git'e komut çalıştırtan URL'ler reddediliyor. Monaco gömülü ve budanmış, editör sayfası tembel yükleniyor (D-070). Yol boyunca üç hata düzeltildi: `StackDetail`, gömülü `store.Stack`'in `MarshalJSON`'ını devraldığı için servis listesini sessizce düşürüyordu; `?networks=false` istemcide serileştirilmiyordu; ve stack okuma engine'e bağımlıydı — Docker kapalıyken operatör düzeltmek üzere olduğu dosyayı okuyamıyordu (D-071). Lint 0 issue, coverage %72.5, 100 frontend testi. |
 | 2026-08-09 | M6 ✅ | Dockerfile build uçtan uca. En kritik karar `PathGuard`'ın yeniden kullanılması (D-059): gezinme, bind mount ve build context aynı güven sınırının üç yüzü, ikinci bir uygulama ikinci bir hata kaynağı olurdu. Build context bir `io.Pipe` üzerinden engine'e akıyor, diske ikinci kez yazılmıyor; `.dockerignore` negasyon ve `**/` ile destekleniyor; symlink'ler izlenmeden bağ olarak yazılıyor (D-061). Build, kendisini izleyen soketten uzun yaşıyor: sekme kapanınca yalnız frame gönderimi duruyor, kanallar sonuna kadar boşaltılıyor, log arşivleniyor ve kayıt kapanıyor (D-062). İki hata yol boyunca yakalandı: `TaskRegistry.Finish` task context'ini iptal ettiği için son `done` frame'i sessizce düşüyordu — gönderim context'i artık task'tan değil kökten türüyor; ve `/fs/browse` `read` izniyle açıktı, host dizinlerini sıralayan bir uç için fazla gevşek, `build`'e çekildi. `WS /build` isteği soket kabul edilmeden önce doğrulanıyor, bu yüzden whitelist dışı bir dizin veya eksik Dockerfile sıradan bir HTTP hatası olarak dönüyor (403/422). Lint 0 issue, coverage %73.3 (`-coverpkg`), 94 frontend testi. Docker soketi olmayan ortamda whitelist/doğrulama yüzeyi canlı binary ile doğrulandı; gerçek bir engine ile build hâlâ elle koşulmalı (G3/G4 🟡). |

@@ -775,6 +775,42 @@ zamanlamaya bırakmıştı. "Yük altında bazen kırmızı" bir test, kırmız�
 **Sonuç:** Dört çekirdek meşgulken 10 kez üst üste geçtiği doğrulandı. Üretim kodunda değişiklik yok — kusur
 testin kendisindeydi.
 
+### D-083 — sd_notify elde yazıldı; unit dosyası daemon'ın gerçekte yaptığına uyduruldu
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** systemd unit'ini yazarken `Type=notify-reload` ve `ExecReload=/bin/kill -HUP $MAINPID` koymuştum.
+İkisi de yanlıştı: daemon sd_notify göndermiyordu (systemd READY=1 bekleyip zaman aşımına düşerdi) ve SIGHUP'ın
+varsayılan davranışı süreci sonlandırmak — yani "reload" servisi öldürürdü.
+**Karar:** Unit'i kısmak yerine eksik tamamlandı. `internal/systemd` (~150 satır, bağımlılıksız) READY=1,
+STOPPING=1, STATUS ve WATCHDOG gönderiyor; unit `Type=notify` + `WatchdogSec=60s`; `ExecReload` yok.
+`NOTIFY_SOCKET` yoksa her çağrı sessizce hiçbir şey yapmıyor, yani elle başlatılan daemon eskisi gibi davranıyor.
+**Gerekçe:** Protokol tek bir datagram; bunun için bağımlılık çekmek, yerine koyduğu şeyden fazla kod denetlemek
+demekti. Watchdog kasten Docker'a bakmıyor: Docker hıçkırdığında iskeled'i yeniden başlatmak, "Docker kapalı"
+diyebilmek için ayakta kalan servisin varlık sebebinin tam tersi olurdu. Ping yalnız sürecin kilitlenmediğini
+kanıtlar — bir watchdog'un gerçekten söyleyebileceği tek şey de budur.
+**Sonuç:** `Type=notify` sayesinde bu unit'ten sonra sıralanan birimler, kabul etmeyen bir sokete karşı
+başlamıyor. STOPPING=1, yavaş bir drain'in watchdog'un yakalamak için var olduğu takılmayla karıştırılmasını
+önlüyor.
+
+### D-084 — OpenAPI ↔ router senkronu gözle değil testle tutuluyor
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** ACCEPTANCE M7 "openapi.yaml tüm endpoint'lerle senkron" diyordu ve doğrulaması "CI" idi — ama böyle
+bir kontrol yoktu; senkron olduğuna elle bakılıyordu.
+**Karar:** `chi.Walk` ile mount edilmiş her route çıkarılıp spec'teki path'lerle iki yönlü karşılaştırılıyor.
+Üçüncü bir test de yürüyüşün boş dönmediğini kontrol ediyor — aksi hâlde ilk ikisi hiçbir şeyi denetlemeden
+geçerdi.
+**Gerekçe:** Spec bu projede sonradan yazılan bir doküman değil, arayüzün üretildiği kaynak. Belgelenmemiş bir
+route hiçbir istemcinin bilmediği bir route'tur; var olmayan bir belgelenmiş route ise daha kötüsüdür — tutulmayan
+bir söz. İkisi de kod okuyarak değil, koşarak yakalanmalı.
+
+### D-085 — Panelin korumasız olduğu ekranda da söyleniyor
+**Durum:** Kabul · **Faz:** M9
+**Bağlam:** loopback dışında ve TLS'siz dinlerken daemon açılışta uyarı basıyordu. ACCEPTANCE C1 ayrıca UI'da
+uyarı istiyordu ve bu yoktu.
+**Karar:** Ayarlar → Kurulum panelinde, `listen` loopback değilse ve TLS kapalıysa sarı uyarı.
+**Gerekçe:** Açılış logunu kimse yeniden okumuyor. `listen`'i aylar önce değiştiren operatöre, o adresi gösteren
+ekranda söylemek tek işe yarar an. Loopback olmayan bir hostname "belki loopback'e çözülüyordur" diye geçilmiyor:
+root eşdeğeri bir API hakkında yanılmanın yanlış yönü budur.
+
 ---
 
 ## Uygulama Sırasında Doğrulanacak Varsayımlar
