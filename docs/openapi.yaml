@@ -6,9 +6,8 @@ info:
   description: |
     HTTP API of the Iskele daemon (`iskeled`).
 
-    This document is kept in sync with the implementation milestone by
-    milestone; only the endpoints listed here exist today. The full planned
-    surface is in `PLAN.md` §6.
+    This document is kept in sync with the implementation; only the endpoints
+    listed here exist today.
 
     **Authentication.** Every endpoint requires a `Bearer` credential — either
     a JWT access token from `/auth/login`, or an API token (`isk_<prefix>_<secret>`)
