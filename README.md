@@ -1,5 +1,11 @@
 # Iskele
 
+[![Release](https://img.shields.io/github/v/release/ibrahimhates/iskele?logo=github&color=success)](https://github.com/ibrahimhates/iskele/releases/latest)
+[![CI](https://github.com/ibrahimhates/iskele/actions/workflows/ci.yml/badge.svg)](https://github.com/ibrahimhates/iskele/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/ibrahimhates/iskele?logo=github)](https://github.com/ibrahimhates/iskele/stargazers)
+
 Native Docker management panel for a single Linux host — one static binary, no
 container, no runtime dependencies.
 
@@ -7,7 +13,7 @@ Iskele runs on the host as a systemd service (`iskeled`) and talks to the Docker
 Engine API over `/var/run/docker.sock`. It manages containers, images, volumes,
 networks and Compose stacks from a web UI that is embedded in the binary itself.
 
-> **Status: v0.1.0.** Every planned feature is implemented and tested. What has
+> **Status: v0.1.2.** Every planned feature is implemented and tested. What has
 > not happened yet is long-running use on many different hosts — see
 > [Known limitations](CHANGELOG.md#known-limitations) and
 > [`PROGRESS.md`](PROGRESS.md).
@@ -42,7 +48,7 @@ Download the archive for your architecture from the
 [releases page](https://github.com/ibrahimhates/iskele/releases), then:
 
 ```sh
-tar xzf iskele_0.1.0_linux_amd64.tar.gz
+tar xzf iskele_0.1.2_linux_amd64.tar.gz
 sudo ./deploy/install.sh
 ```
 
@@ -56,17 +62,26 @@ start the service — a package manager starting a root-equivalent panel because
 somebody typed `apt install` is making a decision that is not its to make:
 
 ```sh
-sudo dpkg -i iskele_0.1.0_linux_amd64.deb
+sudo dpkg -i iskele_0.1.2_linux_amd64.deb
 sudo systemctl enable --now iskeled
+```
+
+Iskele binds `127.0.0.1:8377`, so it is not reachable from another machine
+until you decide how it should be. The quickest way in needs nothing installed
+— tunnel from your workstation:
+
+```sh
+ssh -L 8377:127.0.0.1:8377 you@your-host
 ```
 
 Then open `http://127.0.0.1:8377` and create the first admin account. Until you
 do, every route answers `409 NOT_INITIALIZED`.
 
-**Before exposing it anywhere**, read the security notice above and put a TLS
-reverse proxy in front — [`deploy/reverse-proxy/`](deploy/reverse-proxy/) has
-working nginx, Caddy and Traefik configurations, including the WebSocket and
-SSE details that are easy to get wrong.
+**Before exposing it anywhere**, read the security notice above. Iskele does
+not ship or configure a proxy: terminate TLS in whatever you already run —
+nginx, Caddy, Traefik — and keep `listen` on loopback. It needs WebSocket
+upgrade and unbuffered SSE to be passed through for logs, stats and the
+terminal.
 
 To remove it:
 
@@ -412,6 +427,20 @@ also cost you the panel that would tell you so.
 | [`docs/development.md`](docs/development.md) | Working on Iskele, and cutting a release |
 | [`docs/compose-support.md`](docs/compose-support.md) | Which compose fields are supported |
 | [`docs/template-schema.md`](docs/template-schema.md) | Writing a catalog template |
+
+---
+
+## Star the project
+
+Iskele is built and maintained in the open. If it earns a place on your host,
+a star makes it findable for the next person looking for a panel that is not a
+container:
+
+**<https://github.com/ibrahimhates/iskele>**
+
+Bug reports and pull requests are welcome — [`CONTRIBUTING.md`](CONTRIBUTING.md)
+has the development setup. Security issues go through
+[`SECURITY.md`](SECURITY.md) rather than the public issue tracker.
 
 ## License
 

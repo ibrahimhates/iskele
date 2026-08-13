@@ -172,21 +172,47 @@ fi
 
 echo
 if [ "$START" -eq 1 ] && systemctl is-active --quiet "$UNIT_NAME"; then
-    LISTEN="$(grep -E '^listen:' "$CONFIG_DIR/config.yaml" 2>/dev/null | head -1 | sed 's/^listen: *//; s/"//g')"
-    say "iskeled is running on ${LISTEN:-127.0.0.1:8377}"
+    # `|| LISTEN=""`, because pipefail makes a grep that matches nothing fail
+    # the assignment, and errexit would end the script here — after a complete
+    # install, with no report and a non-zero exit.
+    LISTEN="$(grep -E '^listen:' "$CONFIG_DIR/config.yaml" 2>/dev/null | head -1 | sed 's/^listen: *//; s/"//g')" || LISTEN=""
+    LISTEN="${LISTEN:-127.0.0.1:8377}"
+    PORT="${LISTEN##*:}"
+    say "iskeled is running on $LISTEN"
     cat <<EOF
 
 Next: open the panel and create the first admin account. Until you do, the API
 stays closed — the bootstrap endpoint is the only thing that answers.
 
-  http://${LISTEN:-127.0.0.1:8377}
+  http://$LISTEN
+EOF
+
+    # The default bind is loopback, so a fresh install is not reachable from
+    # the machine the operator is sitting at — which is the first thing they
+    # run into. An SSH tunnel is the one way in that needs nothing installed.
+    case "$LISTEN" in
+        127.0.0.1:*|localhost:*|"[::1]:"*)
+            HOST_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')" || HOST_ADDR=""
+            cat <<EOF
+
+That address is loopback. From your workstation, tunnel to it and open
+http://127.0.0.1:$PORT there:
+
+  ssh -L $PORT:127.0.0.1:$PORT ${SUDO_USER:-<user>}@${HOST_ADDR:-<this-host>}
+EOF
+            ;;
+    esac
+
+    cat <<EOF
 
 Anyone who can reach this panel can start a privileged container and read the
-whole host. Keep 'listen' on 127.0.0.1 and put a TLS reverse proxy in front of
-it; see deploy/reverse-proxy/ for nginx, Caddy and Traefik examples.
+whole host. Keep 'listen' on 127.0.0.1 and terminate TLS in front of it.
 
   systemctl status iskeled
   journalctl -u iskeled -f
+
+Docs and issues: https://github.com/ibrahimhates/iskele
+If Iskele is useful here, a star helps other people find it.
 EOF
 else
     say "installed. Start it with: systemctl enable --now $UNIT_NAME"

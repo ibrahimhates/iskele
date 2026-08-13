@@ -68,11 +68,11 @@ jobs:
 
       # v0.1.0 published nothing because four deploy/ entries shared one
       # destination in the archive, so three were dropped and the fourth became
-      # a *file* named deploy that deploy/reverse-proxy/ could not be written
-      # under. GoReleaser only warns about a dropped file; the first hard error
-      # came from syft, minutes later, and read as an SBOM problem. So the
-      # archive is built and extracted here, where a bad one stops the release
-      # job from starting rather than failing it halfway through.
+      # a *file* named deploy that nothing else could be written under.
+      # GoReleaser only warns about a dropped file; the first hard error came
+      # from syft, minutes later, and read as an SBOM problem. So the archive is
+      # built and extracted here, where a bad one stops the release job from
+      # starting rather than failing it halfway through.
       - name: The release archive extracts
         run: |
           set -euo pipefail
@@ -89,7 +89,7 @@ jobs:
             tar xzf "$archive" -C "$out"
             for f in deploy/iskeled.service deploy/config.example.yaml \
                      deploy/install.sh deploy/uninstall.sh \
-                     deploy/reverse-proxy/nginx.conf LICENSE README.md; do
+                     docs/configuration.md LICENSE README.md; do
               if [ ! -f "$out/$f" ]; then
                 echo "::error::$(basename "$archive") is missing $f" >&2
                 exit 1

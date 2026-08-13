@@ -46,8 +46,9 @@ at startup when it is bound to a non-loopback address, because at that point
 the only thing between the internet and a root-equivalent API is a password
 form.
 
-Put a TLS reverse proxy in front instead — see
-[`deploy/reverse-proxy/`](../deploy/reverse-proxy/).
+Put a TLS reverse proxy in front instead. Iskele ships no proxy configuration
+— use whatever the host already runs; it needs WebSocket upgrades and
+unbuffered SSE passed through.
 
 ### `allowed_paths`
 
