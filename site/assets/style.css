@@ -1,0 +1,184 @@
+/* Iskele documentation site.
+ *
+ * Light is the base; the dark palette only redefines the tokens, so a colour
+ * is never defined solely inside a media query.
+ */
+
+:root {
+  --bg:       #ffffff;
+  --fg:       #1f2328;
+  --muted:    #59636e;
+  --link:     #0969da;
+  --border:   #d1d9e0;
+  --code-bg:  #f6f8fa;
+  --warn-bg:  #fff8c5;
+  --warn-fg:  #4a3c00;
+  /* Wide enough that the configuration reference table does not have to be
+   * scrolled to read a default value, narrow enough to stay readable prose. */
+  --measure:  50rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:      #0d1117;
+    --fg:      #e6edf3;
+    --muted:   #9198a1;
+    --link:    #4493f8;
+    --border:  #30363d;
+    --code-bg: #161b22;
+    --warn-bg: #272115;
+    --warn-fg: #d6cf9a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+        Helvetica, Arial, sans-serif;
+}
+
+.wrap {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* Visible only once tabbed to, so the nav is skippable without a mouse. */
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+.skip:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 1;
+  padding: .5rem .75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.top {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2.5rem;
+}
+.top .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+  align-items: baseline;
+  padding-block: 1rem;
+}
+.brand {
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: var(--fg);
+  text-decoration: none;
+  margin-right: auto;
+}
+.top nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: .925rem;
+}
+
+a { color: var(--link); }
+a:hover { text-decoration: underline; }
+
+main { padding-bottom: 3rem; }
+
+h1, h2, h3, h4 {
+  line-height: 1.25;
+  margin: 2.25rem 0 .75rem;
+}
+h1 { font-size: 2rem;    margin-top: 0; }
+h2 { font-size: 1.45rem; padding-bottom: .3rem; border-bottom: 1px solid var(--border); }
+h3 { font-size: 1.15rem; }
+
+p, ul, ol, blockquote { margin: 0 0 1rem; }
+li { margin-bottom: .3rem; }
+
+blockquote {
+  margin-left: 0;
+  padding: .1rem 1rem;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+  font-size: .875em;
+}
+code {
+  background: var(--code-bg);
+  padding: .15em .35em;
+  border-radius: 5px;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .9rem 1rem;
+  /* Long shell lines scroll inside the block; the page itself must not. */
+  overflow-x: auto;
+}
+pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Wide tables scroll rather than pushing the body sideways. */
+.table-scroll, table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: .925rem;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: .4rem .7rem;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: var(--code-bg); }
+
+img { max-width: 100%; height: auto; }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  padding-block: 1.5rem 3rem;
+  color: var(--muted);
+  font-size: .875rem;
+}
+footer p { margin-bottom: .6rem; }
+
+.warn {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-radius: 6px;
+  padding: .6rem .85rem;
+}
+
+/* The landing page's lead paragraph. */
+.lead {
+  font-size: 1.15rem;
+  color: var(--muted);
+}

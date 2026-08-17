@@ -1,0 +1,46 @@
+# Jekyll configuration for the Iskele documentation site.
+#
+# The site is not built from this directory alone: .github/workflows/pages.yml
+# copies the repository's Markdown in beside it and injects the front matter
+# Jekyll needs. Those documents also ship inside the .tar.gz and the .deb, and
+# an operator reading /usr/share/doc/iskele/architecture.md over ssh should not
+# find three lines of YAML at the top of it.
+#
+# Preview it the way the workflow does:
+#   bundle exec jekyll serve --source build
+title: Iskele
+tagline: Docker management panel for a single Linux host
+description: >-
+  Self-hosted Docker management panel for a single Linux host. One static Go
+  binary with an embedded web UI, no container and no runtime dependencies.
+  Containers, images, volumes, networks and Compose stacks, with live logs, an
+  exec console and image builds.
+
+url: https://ibrahimhates.github.io
+baseurl: /iskele
+repository: ibrahimhates/iskele
+lang: en
+
+# No `theme:` on purpose. _layouts/default.html owns the whole document, so
+# what lands in <head> — canonical, Open Graph, JSON-LD — is decided here
+# rather than inherited from a theme that may or may not call {% seo %}.
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-relative-links
+
+# Turns [x](configuration.md) into a link to the built page. Without it every
+# cross-reference in the copied documents would 404, since they are written to
+# be read as Markdown on GitHub.
+relative_links:
+  enabled: true
+  collections: false
+
+# openapi.yaml is served verbatim, so it stays a usable URL to feed to a client
+# generator rather than something to look at.
+include:
+  - openapi.yaml
+
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge

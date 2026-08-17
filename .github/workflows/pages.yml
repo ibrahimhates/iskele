@@ -1,0 +1,136 @@
+name: Pages
+
+# Publishes the documentation site to https://ibrahimhates.github.io/iskele/.
+#
+# The Markdown under docs/ is the source of truth and is not edited here: those
+# same files ship inside the .tar.gz and the .deb, and an operator reading
+# /usr/share/doc/iskele/architecture.md over ssh should not find three lines of
+# Jekyll front matter at the top of it. The build copies them into build/ and
+# adds the front matter there, so the site and the shipped documents never
+# drift apart and neither one is written for the other's benefit.
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "SECURITY.md"
+      - "CONTRIBUTING.md"
+      - "CHANGELOG.md"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  # deploy-pages authenticates to the Pages service with an OIDC token rather
+  # than a secret.
+  id-token: write
+
+# One deploy at a time, and a queued one is not cancelled: cancelling a deploy
+# half way leaves the site serving whatever was last uploaded.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the site source
+        run: |
+          set -euo pipefail
+          cp -r site build
+
+          # Written to be read as Markdown on GitHub, so the cross-references
+          # point at repository paths. Two of those targets are published under
+          # a different name here, and DECISIONS.md is not published at all —
+          # it is an internal ADR log, and a link to it has to leave the site.
+          # The remaining ../ links point at source files and directories the
+          # site does not carry — a unit file, a script, the reverse-proxy
+          # examples — so they are sent to the repository rather than left to
+          # 404. Order matters: the two named targets are rewritten before the
+          # catch-all sees them.
+          repo=https://github.com/ibrahimhates/iskele
+          rewrite() {
+            sed -e "s|](\(\.\./\)\?SECURITY\.md)|](security.md)|g" \
+                -e "s|](DECISIONS\.md)|]($repo/blob/main/DECISIONS.md)|g" \
+                -e "s|](\.\./\([A-Za-z0-9_./-]*\)/)|]($repo/tree/main/\1/)|g" \
+                -e "s|](\.\./\([A-Za-z0-9_./-]*\))|]($repo/blob/main/\1)|g" \
+                "$1"
+          }
+
+          # A page needs front matter or Jekyll copies it through untouched,
+          # and jekyll-seo-tag needs the title and the description to produce a
+          # <title> and a meta description that are not the same on every page.
+          page() {
+            src=$1 dst=$2 title=$3 description=$4
+            {
+              printf -- '---\n'
+              printf -- 'layout: default\n'
+              printf -- 'title: %s\n' "$title"
+              # Every copied document opens with its own `# Heading`, so the
+              # layout must not print a second one above it. The title is
+              # still what jekyll-seo-tag puts in <title>.
+              printf -- 'hide_title: true\n'
+              printf -- 'description: >-\n  %s\n' "$description"
+              printf -- '---\n\n'
+              rewrite "$src"
+            } > "build/$dst"
+          }
+
+          page docs/architecture.md architecture.md \
+            'Architecture' \
+            'How Iskele is put together: the Go daemon, the embedded React UI, the SQLite store and the Docker Engine client.'
+          page docs/configuration.md configuration.md \
+            'Configuration' \
+            'Every Iskele setting, flag and environment variable, and the precedence between them.'
+          page docs/security-model.md security-model.md \
+            'Security model' \
+            "Iskele's trust boundaries in detail: the Docker socket, the bind-mount whitelist, tokens and the privileged permission."
+          page docs/compose-support.md compose-support.md \
+            'Compose support' \
+            'Which Docker Compose fields Iskele supports, which it refuses, and why.'
+          page docs/template-schema.md template-schema.md \
+            'Template schema' \
+            'Writing an app catalog template for Iskele, field by field.'
+          page docs/development.md development.md \
+            'Development' \
+            'Building Iskele from source, running the test suite, and cutting a release.'
+          page SECURITY.md security.md \
+            'Security policy' \
+            "Iskele's threat model, what it deliberately does not defend against, and how to report a vulnerability."
+          page CONTRIBUTING.md contributing.md \
+            'Contributing' \
+            'Development setup and house style for contributing to Iskele.'
+          page CHANGELOG.md changelog.md \
+            'Changelog' \
+            'What shipped in each Iskele release, and the known limitations.'
+
+          # Served verbatim: this URL is meant to be fed to a client generator,
+          # not looked at.
+          cp docs/openapi.yaml build/openapi.yaml
+
+      - uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./build
+          destination: ./_site
+
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
