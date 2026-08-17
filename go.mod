@@ -2,6 +2,17 @@ module github.com/ibrahimhates/iskele
 
 go 1.25.0
 
+// The minimum language version stays 1.25.0; this is the minimum toolchain the
+// binary is *built* with. 1.25.13 carries the fixes for GO-2026-5026,
+// GO-2026-5972, GO-2026-6089, GO-2026-6090 and GO-2026-6218 — five standard
+// library advisories that `make vuln` reaches from the daemon, in net/url,
+// net/http, crypto/tls, encoding/asn1 and x/net/idna.
+//
+// Declaring it here rather than pinning go-version in each workflow keeps one
+// source of truth: a contributor running `make vuln` locally on an older 1.25
+// gets the same answer CI does, because the go command upgrades itself.
+toolchain go1.25.13
+
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/compose-spec/compose-go/v2 v2.14.0
