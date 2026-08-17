@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="{{ site.lang | default: 'en' }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+
+{%- comment -%}
+  jekyll-seo-tag writes the title, the meta description, the canonical link,
+  the Open Graph and Twitter cards and the JSON-LD block. It is the reason
+  this layout exists instead of a theme's.
+{%- endcomment -%}
+{%- seo -%}
+
+<link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>&#9875;</text></svg>">
+<link rel="alternate" type="application/atom+xml" href="https://github.com/{{ site.repository }}/releases.atom" title="Iskele releases">
+</head>
+
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="{{ '/' | relative_url }}">Iskele</a>
+    <nav>
+      <a href="{{ '/configuration.html' | relative_url }}">Configuration</a>
+      <a href="{{ '/security-model.html' | relative_url }}">Security</a>
+      <a href="{{ '/architecture.html' | relative_url }}">Architecture</a>
+      <a href="https://github.com/{{ site.repository }}">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  {%- unless page.hide_title -%}
+  <h1>{{ page.title }}</h1>
+  {%- endunless -%}
+  {{ content }}
+</main>
+
+<footer class="wrap">
+  <p>
+    <a href="https://github.com/{{ site.repository }}">Source</a> ·
+    <a href="https://github.com/{{ site.repository }}/releases">Releases</a> ·
+    <a href="{{ '/security.html' | relative_url }}">Report a vulnerability</a> ·
+    <a href="https://github.com/{{ site.repository }}/blob/main/LICENSE">Apache-2.0</a>
+  </p>
+  <p class="warn">
+    Access to the Docker socket is equivalent to root on the host. Keep the
+    panel on loopback behind a TLS proxy.
+  </p>
+</footer>
+</body>
+</html>

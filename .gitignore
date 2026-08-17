@@ -11,6 +11,13 @@
 !/web/dist/.gitkeep
 /web/.vite/
 
+# Documentation site. `build` is site/ with the repository's Markdown copied in
+# and front matter added; `_site` is what Jekyll renders from it. Both are
+# produced by .github/workflows/pages.yml and neither belongs in the tree.
+/build/
+/_site/
+/.jekyll-cache/
+
 # Test & coverage
 *.out
 *.test

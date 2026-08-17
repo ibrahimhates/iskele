@@ -55,6 +55,15 @@ before publishing anything, on the first of the two defects below.
   directory. It exited with `create key file: permission denied` before
   listening. Both `install.sh` and the `.deb`/`.rpm` packages were affected.
 
+### Security
+
+- Built with Go 1.25.13 or newer, declared as a `toolchain` directive in
+  `go.mod`. It carries the fixes for five standard library advisories the
+  daemon reaches — GO-2026-5026, GO-2026-5972, GO-2026-6089, GO-2026-6090 and
+  GO-2026-6218, in `x/net/idna`, `encoding/asn1`, `net/http`, `crypto/tls` and
+  `net/url`. No Iskele code changed; the vulnerable code was the standard
+  library the binary was linked against.
+
 ## [0.1.0] — 2026-08-13
 
 First release. A single static binary that manages Docker on one Linux host,
