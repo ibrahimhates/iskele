@@ -27,7 +27,7 @@ Download the archive for your architecture from the
 [releases page](https://github.com/ibrahimhates/iskele/releases), then:
 
 ```sh
-tar xzf iskele_0.1.1_linux_amd64.tar.gz
+tar xzf iskele_0.1.2_linux_amd64.tar.gz
 sudo ./deploy/install.sh
 ```
 
@@ -41,7 +41,7 @@ start the service — a package manager starting a root-equivalent panel because
 somebody typed `apt install` is making a decision that is not its to make:
 
 ```sh
-sudo dpkg -i iskele_0.1.1_linux_amd64.deb
+sudo dpkg -i iskele_0.1.2_linux_amd64.deb
 sudo systemctl enable --now iskeled
 ```
 

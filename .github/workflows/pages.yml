@@ -49,11 +49,10 @@ jobs:
           # point at repository paths. Two of those targets are published under
           # a different name here, and DECISIONS.md is not published at all —
           # it is an internal ADR log, and a link to it has to leave the site.
-          # The remaining ../ links point at source files and directories the
-          # site does not carry — a unit file, a script, the reverse-proxy
-          # examples — so they are sent to the repository rather than left to
-          # 404. Order matters: the two named targets are rewritten before the
-          # catch-all sees them.
+          # The remaining ../ links point at source files the site does not
+          # carry — a unit file, a script — so they are sent to the repository
+          # rather than left to 404. Order matters: the two named targets are
+          # rewritten before the catch-all sees them.
           repo=https://github.com/ibrahimhates/iskele
           rewrite() {
             sed -e "s|](\(\.\./\)\?SECURITY\.md)|](security.md)|g" \
@@ -114,7 +113,15 @@ jobs:
           # not looked at.
           cp docs/openapi.yaml build/openapi.yaml
 
+      # enablement turns Pages on for the repository if it is off, which is
+      # what the first run met: configure-pages expects a Pages site to already
+      # exist and fails with "Get Pages site failed … Not Found" when it does
+      # not. Doing it here rather than in the settings UI means the workflow is
+      # the whole story — nobody has to know about a checkbox for the site to
+      # deploy. It is idempotent once Pages is on.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
