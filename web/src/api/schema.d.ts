@@ -5967,13 +5967,27 @@ export interface components {
             /** @description Container IDs or names. */
             ids: string[];
             /**
-             * @description The action to apply to each container. `remove` does not force:
-             *     a running container is reported as a `CONFLICT` failure in its own
-             *     result while the rest of the selection proceeds, so a bulk remove
-             *     never kills something that was still serving traffic.
+             * @description The action to apply to each container. `remove` does not force
+             *     unless `force` is set: a running container is reported as a
+             *     `CONFLICT` failure in its own result while the rest of the
+             *     selection proceeds, so a bulk remove never kills something that
+             *     was still serving traffic by accident. `remove` requires the
+             *     `delete` permission.
              * @enum {string}
              */
             action: "start" | "stop" | "restart" | "pause" | "unpause" | "kill" | "remove";
+            /**
+             * @description `remove` only: kill running containers before removing them. Sent
+             *     with any other action, the request is rejected with 400.
+             * @default false
+             */
+            force: boolean;
+            /**
+             * @description `remove` only: also remove each container's anonymous volumes.
+             *     Sent with any other action, the request is rejected with 400.
+             * @default false
+             */
+            volumes: boolean;
         };
         BatchResult: {
             id: string;

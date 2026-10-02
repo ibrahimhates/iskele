@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -98,19 +99,43 @@ type BatchResult struct {
 	Code  string `json:"code,omitempty"`
 }
 
+// BatchOptions tunes a bulk action. Only "remove" reads them; every other
+// action rejects them rather than silently ignoring a flag the caller set.
+type BatchOptions struct {
+	// Force removes running containers by killing them first.
+	Force bool
+	// RemoveVolumes removes each container's anonymous volumes with it.
+	RemoveVolumes bool
+}
+
+// ErrBatchOptions reports remove-only options sent with another action.
+var ErrBatchOptions = errors.New("force and volumes apply only to the remove action")
+
 // Batch applies one action to several containers.
 //
 // It never stops at the first failure: an operator who selected twenty
 // containers wants the eighteen that can stop to stop, and a precise list of
 // the two that could not.
-func (s *Container) Batch(ctx context.Context, ids []string, action string, actor audit.Actor, meta RequestMeta) ([]BatchResult, error) {
+func (s *Container) Batch(ctx context.Context, ids []string, action string, opts BatchOptions,
+	actor audit.Actor, meta RequestMeta,
+) ([]BatchResult, error) {
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("%w: no containers selected", ErrEmptyID)
 	}
+	if action != "remove" && (opts.Force || opts.RemoveVolumes) {
+		return nil, ErrBatchOptions
+	}
 
-	apply, err := s.actionFunc(action)
+	apply, err := s.actionFunc(action, opts)
 	if err != nil {
 		return nil, err
+	}
+
+	var detail map[string]any
+	if action == "remove" {
+		detail = map[string]any{"batch": true, "force": opts.Force, "volumes": opts.RemoveVolumes}
+	} else {
+		detail = map[string]any{"batch": true}
 	}
 
 	results := make([]BatchResult, 0, len(ids))
@@ -129,7 +154,7 @@ func (s *Container) Batch(ctx context.Context, ids []string, action string, acto
 			ResourceType: "container",
 			ResourceID:   id,
 			Err:          batchError(result),
-			Detail:       map[string]any{"batch": true},
+			Detail:       detail,
 			IP:           meta.IP,
 			UserAgent:    meta.UserAgent,
 		})
@@ -167,7 +192,7 @@ func kindCode(err error) string {
 }
 
 // actionFunc maps an action name onto the operation that performs it.
-func (s *Container) actionFunc(action string) (func(context.Context, string) error, error) {
+func (s *Container) actionFunc(action string, opts BatchOptions) (func(context.Context, string) error, error) {
 	// These are the unrecorded primitives: Batch writes its own audit entry
 	// per container, and going through the recorded methods would put every
 	// bulk action in the trail twice.
@@ -186,7 +211,7 @@ func (s *Container) actionFunc(action string) (func(context.Context, string) err
 		return func(ctx context.Context, id string) error { return s.kill(ctx, id, "") }, nil
 	case "remove":
 		return func(ctx context.Context, id string) error {
-			return s.remove(ctx, id, RemoveOptions{})
+			return s.remove(ctx, id, RemoveOptions(opts))
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown batch action %q", action)

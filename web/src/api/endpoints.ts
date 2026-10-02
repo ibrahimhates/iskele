@@ -150,8 +150,11 @@ export const containers = {
     api.post<RedeployResult>(`/containers/${encodeURIComponent(id)}/redeploy`),
   remove: (id: string, opts: { force?: boolean; volumes?: boolean } = {}) =>
     api.delete<void>(`/containers/${encodeURIComponent(id)}${query({ ...opts })}`),
-  batch: (ids: string[], action: ContainerAction) =>
-    api.post<BatchResponse>('/containers/batch', { ids, action }),
+  batch: (
+    ids: string[],
+    action: ContainerAction,
+    opts: { force?: boolean; volumes?: boolean } = {},
+  ) => api.post<BatchResponse>('/containers/batch', { ids, action, ...opts }),
   create: (spec: ContainerSpec) => api.post<CreateResult>('/containers', spec),
   prune: () => api.post<PruneReport>('/containers/prune'),
 };
