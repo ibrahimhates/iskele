@@ -6,6 +6,32 @@ Notable changes to Iskele. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Removing a running, paused or restarting container from its detail page no
+  longer fails with a 409 by default: the force option is pre-selected for those
+  states, and a failed remove keeps the dialog open instead of raising an
+  unhandled error in the browser.
+- The remove dialog no longer claims anonymous volumes are always removed; that
+  only happens when the option is ticked.
+- The bulk-action success toast reads correctly in both languages ("Remove: 2
+  containers" instead of "2 containers removeed"), and the dialog title
+  pluralizes.
+- The partial-failure banner after a bulk action names containers instead of
+  ID prefixes, can be dismissed, and is cleared when the next action starts.
+
+### Added
+
+- `POST /containers/batch` accepts `force` and `volumes` for `remove`, so
+  running containers can be bulk-removed. Without `force` the behavior is
+  unchanged. Either flag on another action is a 400, and a bulk `remove` now
+  checks the `delete` permission like `DELETE /containers/{id}` does.
+- The bulk remove dialog lists the selected containers with their state, offers
+  force and volume options, and warns how many are running.
+- Remove dialogs warn when a container belongs to a compose stack, since
+  deploying the stack again recreates it.
+- Each row in the container list has a start/stop toggle and a remove button.
+
 ## [0.1.2] — 2026-08-13
 
 ### Removed

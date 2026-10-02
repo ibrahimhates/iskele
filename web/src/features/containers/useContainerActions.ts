@@ -75,14 +75,32 @@ export function useContainerBatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ ids, action }: { ids: string[]; action: ContainerAction }) =>
-      containersApi.batch(ids, action),
+    mutationFn: async ({
+      ids,
+      action,
+      force,
+      volumes,
+    }: {
+      ids: string[];
+      action: ContainerAction;
+      force?: boolean;
+      volumes?: boolean;
+    }) =>
+      containersApi.batch(
+        ids,
+        action,
+        // The server rejects these on any action but remove.
+        action === 'remove' ? { force, volumes } : {},
+      ),
     onSuccess: (result) => {
       // A bulk action is the case a toast exists for: the operator selected
       // twelve rows and cannot check each one.
       if (result.failed === 0) {
         toast.success(
-          t('containers.batch_done', { count: result.succeeded, action: result.action }),
+          t('containers.batch_done', {
+            count: result.succeeded,
+            action: t(`containers.actions.${result.action}`),
+          }),
         );
         return;
       }

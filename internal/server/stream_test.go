@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/ibrahimhates/iskele/internal/docker"
 	"github.com/ibrahimhates/iskele/internal/docker/fake"
 	"github.com/ibrahimhates/iskele/internal/httpx"
 	"github.com/ibrahimhates/iskele/internal/store"
@@ -469,6 +470,77 @@ func TestBatchRejectsEmptySelection(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestBatchRemoveLeavesRunningContainersWithoutForce(t *testing.T) {
+	f := fake.New()
+	env := newEnv(t, f)
+
+	body := `{"ids":["` + runningID + `","` + stoppedID + `"],"action":"remove"}`
+	rec := postJSON(t, env.raw, http.MethodPost, APIPrefix+"/containers/batch", body, env.tokens[store.RoleAdmin])
+
+	if rec.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want 207: %s", rec.Code, rec.Body.String())
+	}
+	var result struct {
+		Results []struct {
+			ID   string `json:"id"`
+			OK   bool   `json:"ok"`
+			Code string `json:"code"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("body is not JSON: %v", err)
+	}
+	for _, r := range result.Results {
+		switch r.ID {
+		case runningID:
+			if r.OK || r.Code != "CONFLICT" {
+				t.Errorf("running container = %+v, want a CONFLICT failure", r)
+			}
+		case stoppedID:
+			if !r.OK {
+				t.Errorf("stopped container = %+v, want removed", r)
+			}
+		}
+	}
+}
+
+func TestBatchRemoveForceRemovesRunningContainers(t *testing.T) {
+	f := fake.New()
+	env := newEnv(t, f)
+
+	body := `{"ids":["` + runningID + `","` + stoppedID + `"],"action":"remove","force":true,"volumes":true}`
+	rec := postJSON(t, env.raw, http.MethodPost, APIPrefix+"/containers/batch", body, env.tokens[store.RoleAdmin])
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	calls := f.CallsFor(fake.OpRemoveContainer)
+	if len(calls) != 2 {
+		t.Fatalf("engine remove called %d times, want 2", len(calls))
+	}
+	for _, call := range calls {
+		opts, ok := call.Opts.(docker.RemoveContainerOptions)
+		if !ok || !opts.Force || !opts.RemoveVolumes {
+			t.Errorf("remove %s opts = %+v, want force and volumes", call.ID, call.Opts)
+		}
+	}
+}
+
+func TestBatchRejectsRemoveOptionsOnOtherActions(t *testing.T) {
+	f := fake.New()
+	env := newEnv(t, f)
+
+	body := `{"ids":["` + runningID + `"],"action":"stop","force":true}`
+	rec := postJSON(t, env.raw, http.MethodPost, APIPrefix+"/containers/batch", body, env.tokens[store.RoleAdmin])
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if n := len(f.CallsFor(fake.OpStopContainer)); n != 0 {
+		t.Errorf("engine stop called %d times, want none", n)
 	}
 }
 

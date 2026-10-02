@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -209,6 +208,10 @@ func (h *Containers) Redeploy(w http.ResponseWriter, r *http.Request) error {
 type batchRequest struct {
 	IDs    []string `json:"ids"`
 	Action string   `json:"action"`
+	// Force and Volumes apply to "remove" only, mirroring the query
+	// parameters of DELETE /containers/{id}.
+	Force   bool `json:"force"`
+	Volumes bool `json:"volumes"`
 }
 
 // Prune handles POST /containers/prune: removing every stopped container.
@@ -232,11 +235,25 @@ func (h *Containers) Batch(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	results, err := h.svc.Batch(r.Context(), req.IDs, req.Action, actorOf(r), metaOf(r))
-	if err != nil {
-		if errors.Is(err, service.ErrEmptyID) {
-			return httpx.ErrBadRequest("%s", err.Error())
+	// The route admits any caller who may operate, but a bulk remove deletes
+	// containers, so it takes the same permission as DELETE /containers/{id}.
+	if req.Action == "remove" {
+		identity := middleware.IdentityFrom(r.Context())
+		if !middleware.RoleHas(identity.Role, middleware.PermDelete) {
+			perm := &middleware.PermissionError{Role: identity.Role, Permission: middleware.PermDelete}
+			return httpx.NewError(http.StatusForbidden, httpx.CodeForbidden, "%s", perm.Error()).
+				WithDetails(map[string]any{
+					"role":                string(identity.Role),
+					"required_permission": string(middleware.PermDelete),
+				})
 		}
+	}
+
+	results, err := h.svc.Batch(r.Context(), req.IDs, req.Action, service.BatchOptions{
+		Force:         req.Force,
+		RemoveVolumes: req.Volumes,
+	}, actorOf(r), metaOf(r))
+	if err != nil {
 		return httpx.ErrBadRequest("%s", err.Error())
 	}
 

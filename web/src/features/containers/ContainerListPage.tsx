@@ -12,7 +12,9 @@ import { ErrorPanel } from '../../components/ErrorPanel';
 import { Spinner } from '../../components/Spinner';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { StateBadge } from './StateBadge';
-import { useContainerBatch } from './useContainerActions';
+import { RemoveOptions } from './RemoveOptions';
+import { needsForce, stackOf } from './removal';
+import { useContainerAction, useContainerBatch } from './useContainerActions';
 import { cn } from '../../lib/cn';
 import { formatBytes, formatPort, formatRelative, shortID } from '../../lib/format';
 import { useAllStats } from './useAllStats';
@@ -34,7 +36,9 @@ export function ContainerListPage() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortAsc, setSortAsc] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [pendingBatch, setPendingBatch] = useState<ContainerAction | null>(null);
+  const [pending, setPending] = useState<{ action: ContainerAction; ids: string[] } | null>(null);
+  const [forceRemove, setForceRemove] = useState(false);
+  const [removeVolumes, setRemoveVolumes] = useState(false);
 
   const query = useQuery({
     queryKey: ['containers', { all: showAll }],
@@ -43,6 +47,12 @@ export function ContainerListPage() {
   });
 
   const batch = useContainerBatch();
+  const action = useContainerAction();
+
+  const byID = useMemo(
+    () => new Map((query.data?.items ?? []).map((c) => [c.id, c])),
+    [query.data],
+  );
 
   // Live CPU and memory for the rows on screen, over one shared connection.
   const stats = useAllStats(!query.isLoading && !query.error);
@@ -90,11 +100,42 @@ export function ContainerListPage() {
     );
   }
 
-  async function runBatch(action: ContainerAction) {
-    await batch.mutateAsync({ ids: selectedIDs, action });
-    setPendingBatch(null);
-    setSelected(new Set());
+  function openPending(next: ContainerAction, ids: string[]) {
+    // A new action starts clean: the previous result's banner and options
+    // describe a different set of containers.
+    batch.reset();
+    setForceRemove(false);
+    setRemoveVolumes(false);
+    setPending({ action: next, ids });
   }
+
+  function runPending() {
+    if (!pending) return;
+    const { action: next, ids } = pending;
+    batch.mutate(
+      { ids, action: next, force: forceRemove, volumes: removeVolumes },
+      {
+        onSuccess: () => {
+          setPending(null);
+          setSelected((current) => {
+            const remaining = new Set(current);
+            for (const id of ids) remaining.delete(id);
+            return remaining;
+          });
+        },
+        // A failed request is reported by the hook's toast; the dialog stays
+        // open so the operator can retry.
+      },
+    );
+  }
+
+  const pendingTargets = (pending?.ids ?? [])
+    .map((id) => byID.get(id))
+    .filter((c): c is Container => c !== undefined);
+  const pendingRunning = pendingTargets.filter((c) => needsForce(c.state)).length;
+  const pendingStacks = [
+    ...new Set(pendingTargets.map(stackOf).filter((s): s is string => s !== undefined)),
+  ];
 
   if (query.isLoading) {
     return (
@@ -177,18 +218,34 @@ export function ContainerListPage() {
           <div className="flex-1" />
           {canOperate && (
             <>
-              <BatchButton action="start" icon={<Play size={14} />} onClick={setPendingBatch} />
-              <BatchButton action="stop" icon={<Square size={14} />} onClick={setPendingBatch} />
+              <BatchButton
+                action="start"
+                icon={<Play size={14} />}
+                onClick={(a) => openPending(a, selectedIDs)}
+              />
+              <BatchButton
+                action="stop"
+                icon={<Square size={14} />}
+                onClick={(a) => openPending(a, selectedIDs)}
+              />
               <BatchButton
                 action="restart"
                 icon={<RotateCw size={14} />}
-                onClick={setPendingBatch}
+                onClick={(a) => openPending(a, selectedIDs)}
               />
-              <BatchButton action="pause" icon={<Pause size={14} />} onClick={setPendingBatch} />
+              <BatchButton
+                action="pause"
+                icon={<Pause size={14} />}
+                onClick={(a) => openPending(a, selectedIDs)}
+              />
             </>
           )}
           {canDelete && (
-            <button type="button" className="btn-danger" onClick={() => setPendingBatch('remove')}>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => openPending('remove', selectedIDs)}
+            >
               <Trash2 size={14} aria-hidden />
               {t('containers.actions.remove')}
             </button>
@@ -201,18 +258,28 @@ export function ContainerListPage() {
 
       {batch.data && batch.data.failed > 0 && (
         <div className="mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm">
-          <p className="font-medium text-warn">
-            {t('containers.batchPartial', {
-              succeeded: batch.data.succeeded,
-              failed: batch.data.failed,
-            })}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-medium text-warn">
+              {t('containers.batchPartial', {
+                succeeded: batch.data.succeeded,
+                failed: batch.data.failed,
+              })}
+            </p>
+            <button
+              type="button"
+              className="text-muted hover:text-fg"
+              onClick={() => batch.reset()}
+              aria-label={t('containers.batchDismiss')}
+            >
+              <X size={14} aria-hidden />
+            </button>
+          </div>
           <ul className="mt-1 space-y-0.5 text-xs text-muted">
             {batch.data.results
               .filter((r) => !r.ok)
               .map((r) => (
                 <li key={r.id} className="font-mono">
-                  {shortID(r.id)}: {r.error}
+                  {byID.get(r.id)?.name || shortID(r.id)}: {r.error}
                 </li>
               ))}
           </ul>
@@ -236,6 +303,11 @@ export function ContainerListPage() {
           onToggleAll={toggleAll}
           sortKey={sortKey}
           sortAsc={sortAsc}
+          canOperate={canOperate}
+          canDelete={canDelete}
+          busyID={action.isPending ? action.variables?.id : undefined}
+          onAction={(id, next) => action.mutate({ id, action: next })}
+          onRemove={(id) => openPending('remove', [id])}
           onSort={(key) => {
             if (key === sortKey) setSortAsc((v) => !v);
             else {
@@ -247,19 +319,43 @@ export function ContainerListPage() {
       )}
 
       <ConfirmDialog
-        open={pendingBatch !== null}
-        destructive={pendingBatch === 'remove' || pendingBatch === 'kill'}
+        open={pending !== null}
+        destructive={pending?.action === 'remove' || pending?.action === 'kill'}
         busy={batch.isPending}
-        title={t('containers.batchTitle', { count: selectedIDs.length })}
+        title={t('containers.batchTitle', { count: pending?.ids.length ?? 0 })}
         description={
-          pendingBatch
-            ? `${t(`containers.actions.${pendingBatch}`)} — ${selectedIDs.length}`
+          pending
+            ? `${t(`containers.actions.${pending.action}`)} — ${pending.ids.length}`
             : undefined
         }
-        confirmLabel={pendingBatch ? t(`containers.actions.${pendingBatch}`) : undefined}
-        onCancel={() => setPendingBatch(null)}
-        onConfirm={() => void (pendingBatch && runBatch(pendingBatch))}
-      />
+        confirmLabel={pending ? t(`containers.actions.${pending.action}`) : undefined}
+        onCancel={() => setPending(null)}
+        onConfirm={runPending}
+      >
+        {pending?.action === 'remove' && (
+          <div className="space-y-3">
+            <div>
+              <p className="mb-1 text-xs text-muted">{t('containers.removeTargets')}</p>
+              <ul className="max-h-32 space-y-0.5 overflow-y-auto font-mono text-xs">
+                {pendingTargets.map((c) => (
+                  <li key={c.id} className="flex justify-between gap-2">
+                    <span className="truncate">{c.name || shortID(c.id)}</span>
+                    <span className="text-muted">{c.state}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <RemoveOptions
+              force={forceRemove}
+              volumes={removeVolumes}
+              onForce={setForceRemove}
+              onVolumes={setRemoveVolumes}
+              running={pendingRunning}
+              stacks={pendingStacks}
+            />
+          </div>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
@@ -290,6 +386,12 @@ interface TableProps {
   onToggleAll: () => void;
   sortKey: SortKey;
   sortAsc: boolean;
+  canOperate: boolean;
+  canDelete: boolean;
+  /** The container a row action is in flight for. */
+  busyID?: string;
+  onAction: (id: string, action: Exclude<ContainerAction, 'remove'>) => void;
+  onRemove: (id: string) => void;
   onSort: (key: SortKey) => void;
 }
 
@@ -301,8 +403,14 @@ function ContainerTable({
   onToggleAll,
   sortKey,
   sortAsc,
+  canOperate,
+  canDelete,
+  busyID,
+  onAction,
+  onRemove,
   onSort,
 }: TableProps) {
+  const showActions = canOperate || canDelete;
   const { t } = useTranslation();
 
   // Above the threshold the browser struggles to lay out every row; capping
@@ -354,6 +462,9 @@ function ContainerTable({
               asc={sortAsc}
               onSort={onSort}
             />
+            {showActions && (
+              <th className="px-3 py-2 text-right font-medium">{t('containers.rowActions')}</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -401,6 +512,18 @@ function ContainerTable({
               <td className="whitespace-nowrap px-3 py-2 text-muted">
                 {formatRelative(container.created)}
               </td>
+              {showActions && (
+                <td className="whitespace-nowrap px-3 py-2 text-right">
+                  <RowActions
+                    container={container}
+                    canOperate={canOperate}
+                    canDelete={canDelete}
+                    busy={busyID === container.id}
+                    onAction={onAction}
+                    onRemove={onRemove}
+                  />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -410,6 +533,67 @@ function ContainerTable({
         <p className="border-t border-border px-3 py-2 text-xs text-muted">
           Showing {visible.length} of {rows.length}. Narrow the search to see the rest.
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The one-click actions for a row: the lifecycle toggle and remove.
+ *
+ * Start and stop run at once, as they do on the detail page; remove goes
+ * through the same confirmation as a bulk remove of one container.
+ */
+function RowActions({
+  container,
+  canOperate,
+  canDelete,
+  busy,
+  onAction,
+  onRemove,
+}: {
+  container: Container;
+  canOperate: boolean;
+  canDelete: boolean;
+  busy: boolean;
+  onAction: (id: string, action: Exclude<ContainerAction, 'remove'>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const name = container.name || shortID(container.id);
+
+  const toggle: Exclude<ContainerAction, 'remove'> =
+    container.state === 'running' || container.state === 'restarting'
+      ? 'stop'
+      : container.state === 'paused'
+        ? 'unpause'
+        : 'start';
+  const label = `${t(`containers.actions.${toggle}`)}: ${name}`;
+
+  return (
+    <div className="inline-flex items-center gap-1">
+      {canOperate && (
+        <button
+          type="button"
+          className="btn-ghost px-1.5"
+          onClick={() => onAction(container.id, toggle)}
+          disabled={busy}
+          title={label}
+          aria-label={label}
+        >
+          {toggle === 'stop' ? <Square size={14} aria-hidden /> : <Play size={14} aria-hidden />}
+        </button>
+      )}
+      {canDelete && (
+        <button
+          type="button"
+          className="btn-ghost px-1.5 text-danger"
+          onClick={() => onRemove(container.id)}
+          title={`${t('containers.actions.remove')}: ${name}`}
+          aria-label={`${t('containers.actions.remove')}: ${name}`}
+        >
+          <Trash2 size={14} aria-hidden />
+        </button>
       )}
     </div>
   );

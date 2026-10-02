@@ -15,6 +15,8 @@ import { LogViewer } from './LogViewer';
 import { StatsPanel } from './StatsPanel';
 import { ConsolePanel } from './ConsolePanel';
 import { JsonViewer } from './JsonViewer';
+import { RemoveOptions } from './RemoveOptions';
+import { needsForce, stackOf } from './removal';
 import {
   useContainerAction,
   useContainerRedeploy,
@@ -91,6 +93,7 @@ export function ContainerDetailPage() {
   const container = query.data as ContainerDetail;
   const running = container.state === 'running';
   const paused = container.state === 'paused';
+  const stack = stackOf(container);
 
   return (
     <>
@@ -170,7 +173,19 @@ export function ContainerDetailPage() {
             )}
 
             {canDelete && (
-              <button type="button" className="btn-danger" onClick={() => setConfirmRemove(true)}>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => {
+                  // The engine refuses a running container without force, so
+                  // start from the option that will actually work; the
+                  // operator can still untick it.
+                  setForceRemove(needsForce(container.state));
+                  setRemoveVolumes(false);
+                  remove.reset();
+                  setConfirmRemove(true);
+                }}
+              >
                 <Trash2 size={14} aria-hidden />
                 {t('containers.actions.remove')}
               </button>
@@ -246,31 +261,28 @@ export function ContainerDetailPage() {
         confirmText={container.name || shortID(container.id)}
         confirmLabel={t('containers.actions.remove')}
         onCancel={() => setConfirmRemove(false)}
-        onConfirm={async () => {
-          await remove.mutateAsync({ id, force: forceRemove, volumes: removeVolumes });
-          navigate('/containers', { replace: true });
+        onConfirm={() => {
+          remove.mutate(
+            { id, force: forceRemove, volumes: removeVolumes },
+            {
+              onSuccess: () => {
+                setConfirmRemove(false);
+                navigate('/containers', { replace: true });
+              },
+              // The failure is already reported by the hook's toast; the
+              // dialog stays open so the operator can tick force and retry.
+            },
+          );
         }}
       >
-        <div className="space-y-2 text-sm">
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={forceRemove}
-              onChange={(e) => setForceRemove(e.target.checked)}
-            />
-            {t('containers.forceRemove')}
-          </label>
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              className="accent-accent"
-              checked={removeVolumes}
-              onChange={(e) => setRemoveVolumes(e.target.checked)}
-            />
-            {t('containers.removeVolumes')}
-          </label>
-        </div>
+        <RemoveOptions
+          force={forceRemove}
+          volumes={removeVolumes}
+          onForce={setForceRemove}
+          onVolumes={setRemoveVolumes}
+          running={needsForce(container.state) ? 1 : 0}
+          stacks={stack ? [stack] : []}
+        />
       </ConfirmDialog>
 
       <ConfirmDialog
